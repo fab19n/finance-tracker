@@ -68,3 +68,8 @@ export function lastMonths(month: string, n: number): string[] {
 
 export const isMonth = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}$/.test(s);
 export const isISODate = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+/** "9 Oct" */
+export function shortDate(iso: string): string {
+  return format(parseISO(iso), "d MMM");
+}

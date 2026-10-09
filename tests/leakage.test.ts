@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectLeaks, headlineSavings, type LeakInput } from "@/lib/analytics/leakage";
+import type { CycleFlow } from "@/lib/plan/savings-flow";
 import { row } from "./helpers";
 
 const TODAY = "2026-10-09";
@@ -58,6 +59,14 @@ describe("category creep (like-for-like)", () => {
   it("stays quiet in the first days of a month and with under two months of history", () => {
     const rows = [row({ date: "2026-09-10", rm: 50 }), row({ date: "2026-10-02", rm: 900 })];
     expect(detectLeaks(baseInput(rows, { today: "2026-10-03" })).filter((i) => i.kind === "category_creep")).toEqual([]);
+    expect(detectLeaks(baseInput(rows)).filter((i) => i.kind === "category_creep")).toEqual([]);
+  });
+
+  it("REGRESSION: a month recorded only from the 26th is not a baseline (it looks like a month of no spending)", () => {
+    // Data starts on 27 Aug. September is complete and about the same as October, so October is NOT 'creeping'.
+    // Averaging in August's empty first 9 days once reported "Subscriptions is 111% above your usual pace".
+    const subs = (date: string, rm: number) => row({ date, rm, cat: "Subscriptions", nature: "want", item: "Plan" });
+    const rows = [row({ date: "2026-08-27", rm: 20 }), subs("2026-09-02", 440), subs("2026-09-04", 90), subs("2026-10-02", 445), subs("2026-10-04", 90)];
     expect(detectLeaks(baseInput(rows)).filter((i) => i.kind === "category_creep")).toEqual([]);
   });
 });
@@ -165,3 +174,119 @@ describe("shared behaviour", () => {
     expect(detectLeaks(baseInput([]))).toEqual([]);
   });
 });
+
+describe("spike days", () => {
+  // 40 ordinary RM 10 days, and one day with the rent on it.
+  const rows = [...Array.from({ length: 40 }, (_, i) => row({ date: daysAgo(i + 1), rm: 10 })), row({ date: daysAgo(20), rm: 950, item: "Rent", cat: "Rent / Housing", nature: "need" })].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+  ); // the detector wants them oldest first
+
+  it("flags a day dominated by one huge payment", () => {
+    expect(detectLeaks(baseInput(rows)).find((i) => i.kind === "spike")?.evidence.join(" ")).toMatch(/Rent/);
+  });
+  it("REGRESSION: but not when that payment is one of your registered bills (rent day is not a splurge)", () => {
+    expect(detectLeaks(baseInput(rows, { billItems: ["Rent", "Netflix"] })).find((i) => i.kind === "spike")).toBeUndefined();
+  });
+  it("matches the bill name ignoring case and spaces", () => {
+    expect(detectLeaks(baseInput(rows, { billItems: ["  rent "] })).find((i) => i.kind === "spike")).toBeUndefined();
+  });
+});
+
+describe("savings drawdown findings (from pay-cycle flows)", () => {
+  // The classic pattern: RM5,400 in, RM4,200 moved to savings, RM2,467.70 of bills, RM900 of everyday spending, top-ups to cover both.
+  const cycle = (over: Partial<CycleFlow> = {}): CycleFlow => ({
+    start: "2026-08-28", end: "2026-09-27", complete: true,
+    income: RM(5400), deposited: RM(4200), drawn: RM(2167.7), billsPaid: RM(2467.7), billsFromSpending: RM(2467.7), variable: RM(900),
+    spentFromSavings: 0, savingsSpendTop: [], paydayDeposit: RM(4200),
+    leftAfterDeposit: RM(1200), planningGap: RM(1267.7), everydayFromSavings: RM(900),
+    netSaved: RM(2032.3), trueSaved: RM(2032.3), trueRate: 0.376, ...over,
+  });
+  const find = (flows: CycleFlow[], kind: string) => detectLeaks(baseInput([], { flows })).find((i) => i.kind === kind);
+
+  it("tells you the payday transfer leaves too little for the bills, and what you REALLY save", () => {
+    const gap = find([cycle(), cycle(), cycle()], "planning_gap")!;
+    // (formatRM puts a no-break space after "RM", so these match on the numbers)
+    expect(gap.title).toMatch(/1,267\.70 too little/);
+    expect(gap.evidence.join(" ")).toMatch(/4,200\.00 saved/);
+    expect(gap.evidence.join(" ")).toMatch(/at most .{0,4}2,932\.30/); // 4,200 - 1,267.70
+    expect(gap.href).toBe("/plan");
+  });
+
+  it("does not claim a saving for the planning gap: it's a distorted picture, not money lost", () => {
+    const gap = find([cycle()], "planning_gap")!;
+    expect(gap.monthlySaving).toBe(0);
+    expect(gap.annualSaving).toBe(0);
+  });
+
+  it("flags everyday spending funded by savings, with a modest estimate (30% of it)", () => {
+    const d = find([cycle(), cycle()], "savings_drawdown")!;
+    expect(d.title).toMatch(/900\.00 a cycle/);
+    expect(d.monthlySaving).toBe(Math.round(RM(900) * 0.3));
+    expect(d.severity).toBe("medium"); // 900 < 25% of the 4,200 moved
+  });
+
+  it("is high severity when the shortfall is a big share of what you put in", () => {
+    expect(find([cycle({ everydayFromSavings: RM(1500), drawn: RM(2767.7) })], "savings_drawdown")!.severity).toBe("high");
+  });
+
+  it("says nothing when the payday split covers the bills and nothing comes back out", () => {
+    const clean = cycle({ drawn: 0, planningGap: 0, everydayFromSavings: 0, leftAfterDeposit: RM(3000) });
+    const found = detectLeaks(baseInput([], { flows: [clean, clean] }));
+    expect(found.filter((i) => i.kind === "planning_gap" || i.kind === "savings_drawdown")).toEqual([]);
+  });
+
+  it("ignores the cycle still in progress, cycles without a transfer, and tiny amounts", () => {
+    expect(find([cycle({ complete: false })], "planning_gap")).toBeUndefined();
+    expect(find([cycle({ deposited: 0 })], "planning_gap")).toBeUndefined();
+    expect(find([cycle({ planningGap: RM(40), everydayFromSavings: RM(40), drawn: RM(80) })], "planning_gap")).toBeUndefined();
+  });
+
+  it("averages the last three completed cycles, so one odd month doesn't decide it", () => {
+    const flows = [cycle({ planningGap: RM(1500) }), cycle({ planningGap: RM(1200) }), cycle({ planningGap: RM(900) }), cycle({ planningGap: RM(100000) })];
+    expect(find(flows, "planning_gap")!.title).toMatch(/1,200\.00 too little/); // the 4th (oldest) is ignored
+  });
+
+  it("works without any flows at all", () => {
+    expect(detectLeaks(baseInput([])).filter((i) => i.kind === "planning_gap")).toEqual([]);
+  });
+
+  describe("spending paid straight out of the savings account", () => {
+    const direct = (rm: number, over: Partial<CycleFlow> = {}) =>
+      cycle({
+        drawn: RM(200), planningGap: 0, everydayFromSavings: RM(200), deposited: RM(4700),
+        spentFromSavings: RM(rm), savingsSpendTop: [{ name: "Rent / Housing", amount: RM(973) }, { name: "Subscriptions", amount: RM(485) }], ...over,
+      });
+
+    it("names it, says what it was, and says how little of the transfer really stayed", () => {
+      const f = find([direct(2664)], "savings_spending")!;
+      expect(f.title).toMatch(/2,664\.00 a cycle is paid straight out of your savings/);
+      expect(f.evidence.join(" ")).toMatch(/Rent \/ Housing .{0,4}973\.00/);
+      expect(f.evidence.join(" ")).toMatch(/only about .{0,4}1,836\.00/); // 4,700 - 200 - 2,664
+      expect(f.severity).toBe("high"); // well over a quarter of what you move
+      expect(f.href).toBe("/plan");
+    });
+
+    it("claims no saving: it is spending you were doing anyway, paid from the wrong place", () => {
+      const f = find([direct(2664)], "savings_spending")!;
+      expect([f.monthlySaving, f.annualSaving]).toEqual([0, 0]);
+    });
+
+    it("is medium when it is a smaller share, and silent under RM 300", () => {
+      expect(find([direct(600)], "savings_spending")!.severity).toBe("medium");
+      expect(find([direct(250)], "savings_spending")).toBeUndefined();
+    });
+
+    it("says savings SHRINK when more went out than was moved in", () => {
+      const f = find([direct(5000)], "savings_spending")!;
+      expect(f.evidence.join(" ")).toMatch(/shrinks by about .{0,4}500\.00/); // 4,700 - 200 - 5,000 = -500
+    });
+
+    it("the planning gap only counts bills paid from the spending account", () => {
+      // Rent etc. paid straight from savings never needed a top-up, so they can't make the payday split 'too little'.
+      const gap = cycle({ billsPaid: RM(2467.7), billsFromSpending: RM(800), leftAfterDeposit: RM(1200), planningGap: 0, drawn: RM(215), everydayFromSavings: RM(215) });
+      expect(find([gap, gap], "planning_gap")).toBeUndefined();
+    });
+  });
+});
+
+const RM = (n: number) => Math.round(n * 100);

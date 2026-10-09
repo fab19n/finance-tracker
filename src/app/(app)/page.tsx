@@ -1,9 +1,11 @@
 import { TransactionForm } from "@/components/TransactionForm";
+import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
 import { TransactionRow } from "@/components/TransactionRow";
 import { todayISO } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { lastAccountId, listCategories, listItemHints } from "@/lib/queries/reference";
+import { getPlan } from "@/lib/queries/plan";
 import { listTransactions, sumTransactions } from "@/lib/queries/transactions";
 
 export default async function AddPage() {
@@ -14,6 +16,7 @@ export default async function AddPage() {
     lastAccountId(),
   ]);
   const today = todayISO(); // safe: getDb() already deferred this render to request time
+  const plan = await getPlan(today);
   const [todays, totals] = await Promise.all([
     listTransactions({ from: today, to: today, limit: 100 }),
     sumTransactions({ from: today, to: today }),
@@ -27,6 +30,7 @@ export default async function AddPage() {
     <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
       <section className="space-y-4">
         <h1 className="h-page">Add entry</h1>
+        <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
         <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Account balances">
           {spendable.map((a) => (
             <li key={a.id} className="card min-w-32 shrink-0 !p-3">

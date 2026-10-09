@@ -15,6 +15,13 @@
       "when": 1791543157048,
       "tag": "0001_eager_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791556617985,
+      "tag": "0002_nappy_killer_shrike",
+      "breakpoints": true
     }
   ]
 }

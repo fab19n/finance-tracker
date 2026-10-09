@@ -14,6 +14,16 @@ export type AppSettings = {
   riskProfile: RiskProfile;
   /** How many years the surplus can stay invested. */
   horizonYears: number;
+  /** Usual payday (day of the month) until enough salary is recorded to work it out. */
+  paydayDay: number;
+  /** Take-home pay, sen. Used by the payday plan until a salary has been recorded. 0 = not set. */
+  expectedIncome: number;
+  /** What you allow for groceries, fuel, Touch 'n Go, food and small things per cycle, sen. 0 = not set. */
+  variableAllowance: number;
+  /** Cushion kept in the main account on top of bills + allowance, sen. */
+  cycleBuffer: number;
+  /** What your savings account pays today, % p.a. */
+  savingsRatePct: number;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,6 +32,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   emergencyMonths: 6,
   riskProfile: "balanced",
   horizonYears: 10,
+  paydayDay: 28,
+  expectedIncome: 0,
+  variableAllowance: 0,
+  cycleBuffer: 10_000, // RM 100
+  savingsRatePct: 0.25,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -33,7 +48,12 @@ export async function getSettings(): Promise<AppSettings> {
       case "fdRatePct":
       case "sp500ReturnPct":
       case "emergencyMonths":
-      case "horizonYears": {
+      case "horizonYears":
+      case "paydayDay":
+      case "expectedIncome":
+      case "variableAllowance":
+      case "cycleBuffer":
+      case "savingsRatePct": {
         const n = Number(value);
         if (Number.isFinite(n)) out[key] = n;
         break;

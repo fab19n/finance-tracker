@@ -11,9 +11,11 @@ Your data lives in **one SQLite file on your own computer** (`data/finance.db`).
 |---|---|
 | **Add** | Fast entry: amount, category tap, item (autocompletes from your history and prefills category and amount). Expense / Income / Transfer between your own accounts. |
 | **Activity** | Every entry, searchable and filterable by month, category, account, type. Edit, delete, export CSV. |
+| **Plan** | Built around a payday-to-payday month. **Safe to spend** (spending-account balance minus the bills still to pay before payday), a checklist of your recurring **bills** (rent, Netflix, a loan instalment...) with paid / due / overdue and one-tap "mark paid", a **payday plan** that works out how much to keep in the spending account and how much is genuinely spare to move to savings (in ONE transfer), and a **savings reality check** that separates what your payday split forced you to take back from savings (a planning gap) from everyday spending that ran over, shows how much was **paid straight out of the savings account** (it never passes through the spending account, so top-ups don't show it), and what you really saved. |
+| **Import** | Bring in past months from a bank **PDF e-statement** (or CSV, or pasted text) instead of typing them. Recognises bills, petrol, subscriptions and ATM withdrawals, asks only about the rest, skips anything already recorded, and **checks every line against the statement's own running balance**. |
 | **Dashboard** | Income, spending, what is left, net worth; spending by category; pace vs last month; income vs spending over 6 months; needs/wants/saving vs the 50/30/20 guide; budgets; the items you buy most. |
-| **Insights** | The leak detector: categories creeping up, small-but-frequent habits ("latte factor"), forgotten subscriptions, over-budget categories, wants above 30% of income, spike days, and **cash that went missing** (count your wallet and the gap is logged as "Unaccounted cash"). Each finding shows its evidence and what it could be worth invested. |
-| **Invest** | "What should I do with extra money?": surplus, then emergency fund, then an FD / S&P 500 split by your risk profile and horizon, with cautious / expected / optimistic projections. Plus tracking: value vs money put in, gain, yearly return (XIRR), FD accrual and maturity countdown. |
+| **Insights** | The leak detector: categories creeping up, small-but-frequent habits ("latte factor"), forgotten subscriptions, over-budget categories, wants above 30% of income, spike days, **cash that went missing** (count your wallet and the gap is logged as "Unaccounted cash"), and **money shuffled back out of savings** (top-ups that your payday split made unavoidable, vs everyday overspending). Each finding shows its evidence and what it could be worth invested. |
+| **Invest** | Your **savings account** (how many months of costs it covers, what it earns, and how much of it could earn more while staying safe). "What should I do with extra money?": surplus, then emergency fund, then an FD / S&P 500 split by your risk profile and horizon, with cautious / expected / optimistic projections. Plus tracking: value vs money put in, gain, yearly return (XIRR), FD accrual and maturity countdown. |
 | **Settings** | Accounts (with opening balances), categories (need/want, monthly budget), investing assumptions, backup, PIN lock. |
 
 ## Run it
@@ -29,7 +31,37 @@ Requires [pnpm](https://pnpm.io) 10 or newer (developed on 11) and Node 20.9+ (d
 > This project needs no install scripts (`better-sqlite3` ships its native binary), so they are explicitly denied in `pnpm-workspace.yaml`.
 > If `better-sqlite3` ever fails to load after a Node upgrade, set `better-sqlite3: true` under `allowBuilds` in that file, then run `pnpm rebuild better-sqlite3`.
 
-**First steps:** open *Settings*, set each account's **opening balance** to what it holds today, then start adding entries.
+**First steps:**
+1. *Settings* → give your two main accounts a **role** (*Spending*: where salary lands and bills are paid; *Savings*), and set each account's **opening balance** to what it holds today.
+2. *Plan → Manage bills* → add your recurring payments (amount, or a range like rent 900-950, and the **due day**).
+3. Either import past months (*Plan → Import statement*) or just start adding entries. Record your salary on the Plan page: that is what starts a pay cycle.
+
+## Your payday routine, in this app
+
+The classic leak: send a big chunk to savings on payday, then top up the spending account from savings, bill by bill, all month. Those top-ups are *transfers*, so they hide where money really goes, and the "saved" figure is overstated.
+
+1. **Payday:** record your salary. The Plan page shows what to **keep** in the spending account (bills + an everyday allowance + a buffer) and what is **truly spare**. Move only that to savings, once.
+2. **During the month:** the Add screen shows **Safe to spend**. When it goes red, you're about to spend savings.
+3. **Next payday:** the **savings reality check** shows what went into savings, what came back out and why, and what you really saved.
+
+## Importing bank statements
+
+*Plan → Import statement.* Choose the account, then the statement file. Tested on real files:
+
+- **Maybank** monthly e-statement **PDFs**: read directly, balance chain verified.
+- **CIMB Clicks** *Transaction History* **CSV** (`Date, Transaction Details, Money In, Money Out, Balance`, amounts like `MYR 150.00`): read directly. Use the CSV, not the PDF: the PDF is a print-out of the web page and its rows come out scrambled, so the importer can't use it.
+- Any other bank's PDF, CSV or pasted text: it works from what every statement shares (a date, an amount, a running balance), so most layouts are fine, and the balance check tells you when one isn't.
+
+- Everything is read **on your computer**; nothing is uploaded. If the bank password-protects the PDF, you're asked for the password, used once and not stored.
+- Each line is checked against the statement's **running balance**: previous balance + amount must equal the next balance. A misread column or a wrong in/out direction breaks that chain and is flagged before you import anything.
+- Lines it can't be sure about are shown first ("Needs a look"). Correct one and tick *Remember for next time*; similar lines are then sorted automatically in future imports.
+- ATM withdrawals become a **transfer to your cash account** (not spending). Touch 'n Go reloads are recorded as spending, so they aren't counted twice.
+- Importing the same statement again, or an overlapping one, is safe: lines already recorded are skipped.
+- Import a few months, **oldest first**. Import both accounts; a transfer already recorded from one side is recognised on the other. Start both from the **same day** (your payday works well): a transfer whose other side falls before that day has nothing to pair with.
+- **Card holds are not spending.** Some banks (Maybank especially) show a pre-authorisation as a debit and then a refund of the same amount from the same merchant a day or two later. Those pairs net to RM 0; if you enter them by hand, skip both, or "small frequent charges" will fill with noise.
+- **Mid-month statements.** A monthly PDF only exists once the month closes. For the days since, use whatever recent-transactions list your bank shows: type it, paste it, or copy it into a CSV with `Date, Description, Amount`. The importer can't check those lines against a running balance, so compare the total with your bank.
+- **Bills paid from the savings account.** If rent or a subscription comes straight out of your savings account, it's still recorded as that bill's payment, and counts under **Paid from savings** on the Plan page (and in an Insights finding): that is usually the biggest hidden drain, bigger than the top-ups. Such bills don't count against your payday split, since it never had to cover them.
+- Bank PDFs vary. If a statement isn't read correctly, the review screen says so (and shows which lines don't add up) rather than importing wrong numbers; use *paste text* or tell me what the layout looks like.
 
 ### Try it with demo data first
 

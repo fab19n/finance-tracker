@@ -2,6 +2,7 @@ import { logout } from "@/app/actions/auth";
 import {
   saveAccount,
   saveAssumptions,
+  saveCycleSettings,
   saveCategory,
   toggleAccountArchived,
   toggleCategoryArchived,
@@ -12,6 +13,12 @@ import { getAccountBalances } from "@/lib/queries/accounts";
 import type { SearchParams } from "@/lib/queries/filters";
 import { listCategories, type CategoryWithUsage } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
+
+const ACCOUNT_ROLES = [
+  ["", "No special role"],
+  ["spending", "Spending: salary lands here, bills paid from it"],
+  ["savings", "Savings: emergency fund / money set aside"],
+] as const;
 
 const ACCOUNT_TYPES = [
   ["bank", "Bank"],
@@ -72,6 +79,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           Set each account&apos;s <strong>opening balance</strong> to what it held the day you start tracking. Balances
           are then calculated from your entries.
         </p>
+        <p className="text-sm text-muted">
+          Give two accounts a <strong>role</strong>: <em>Spending</em> (where salary lands and bills are paid) and{" "}
+          <em>Savings</em>. That lets the Plan page tell a top-up from savings apart from real spending.
+        </p>
         <ul className="space-y-2">
           {accounts.map((a) => (
             <li key={a.id} className={`card !p-3 ${a.archived ? "opacity-60" : ""}`}>
@@ -82,12 +93,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     <span className="pill bg-background text-muted">
                       {ACCOUNT_TYPES.find(([t]) => t === a.type)?.[1]}
                     </span>
+                    {a.purpose && (
+                      <span className="pill ml-1 bg-accent-soft text-accent">{a.purpose === "spending" ? "spending" : "savings"}</span>
+                    )}
                     {a.archived && <span className="pill ml-1 bg-warn-soft text-warn">archived</span>}
                   </span>
                   <span className="num font-semibold">{formatRM(a.balance)}</span>
                 </summary>
                 <div className="mt-3 space-y-2">
-                  <form action={saveAccount} className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <form action={saveAccount} className="grid grid-cols-2 gap-2 md:grid-cols-5">
                     <input type="hidden" name="id" value={a.id} />
                     <input name="name" defaultValue={a.name} required className="input" aria-label="Name" />
                     <select name="type" defaultValue={a.type} className="input" aria-label="Type">
@@ -104,6 +118,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       className="input"
                       aria-label="Opening balance"
                     />
+                    <select name="purpose" defaultValue={a.purpose ?? ""} className="input col-span-2 md:col-span-1" aria-label="Role">
+                      {ACCOUNT_ROLES.map(([v, l]) => (
+                        <option key={v} value={v}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
                     <button className="btn-primary !py-2.5 text-sm">Save</button>
                   </form>
                   <form action={toggleAccountArchived}>
@@ -116,7 +137,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             </li>
           ))}
         </ul>
-        <form action={saveAccount} className="card grid grid-cols-2 gap-2 md:grid-cols-4">
+        <form action={saveAccount} className="card grid grid-cols-2 gap-2 md:grid-cols-5">
           <input name="name" placeholder="New account name" required className="input" />
           <select name="type" defaultValue="bank" className="input" aria-label="Type">
             {ACCOUNT_TYPES.map(([v, l]) => (
@@ -126,6 +147,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             ))}
           </select>
           <input name="openingBalance" placeholder="Opening RM" inputMode="decimal" className="input" />
+          <select name="purpose" defaultValue="" className="input col-span-2 md:col-span-1" aria-label="Role">
+            {ACCOUNT_ROLES.map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
           <button className="btn-primary !py-2.5 text-sm">Add account</button>
         </form>
       </section>
@@ -190,6 +218,43 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <h3 className="text-sm font-semibold">Add a category</h3>
           <CategoryForm />
         </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="payday-h">
+        <h2 id="payday-h" className="text-lg font-semibold">
+          Payday &amp; everyday spending
+        </h2>
+        <p className="text-sm text-muted">
+          Your month runs payday to payday. These settings drive the <strong>Plan</strong> page: how much to keep for
+          everyday things, and what to move to savings.
+        </p>
+        <form action={saveCycleSettings} className="card grid grid-cols-2 gap-3 md:grid-cols-3">
+          <label>
+            <span className="label">Usual payday (day of month)</span>
+            <input name="paydayDay" type="number" min={1} max={31} defaultValue={settings.paydayDay} className="input" />
+          </label>
+          <label>
+            <span className="label">Take-home pay (RM)</span>
+            <input name="expectedIncome" inputMode="decimal" defaultValue={settings.expectedIncome ? senToInput(settings.expectedIncome) : ""} placeholder="e.g. 5400" className="input" />
+          </label>
+          <label>
+            <span className="label">Everyday allowance (RM)</span>
+            <input name="variableAllowance" inputMode="decimal" defaultValue={settings.variableAllowance ? senToInput(settings.variableAllowance) : ""} placeholder="groceries, fuel, food..." className="input" />
+          </label>
+          <label>
+            <span className="label">Buffer (RM)</span>
+            <input name="cycleBuffer" inputMode="decimal" defaultValue={senToInput(settings.cycleBuffer)} className="input" />
+          </label>
+          <label>
+            <span className="label">Savings account pays (% p.a.)</span>
+            <input name="savingsRatePct" type="number" step="0.01" min={0} max={15} defaultValue={settings.savingsRatePct} className="input" />
+          </label>
+          <button className="btn-primary !py-2.5 text-sm self-end">Save</button>
+        </form>
+        <p className="text-xs text-muted">
+          Leave the allowance blank and the app suggests one from what you actually spend. The payday day is only used
+          until you&apos;ve recorded a salary; after that it learns your real payday.
+        </p>
       </section>
 
       <section className="space-y-3">

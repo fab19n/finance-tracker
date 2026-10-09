@@ -6,13 +6,17 @@ import { GrowthChart } from "@/components/charts/GrowthChart";
 import { AddInvestmentForm } from "@/components/invest/AddInvestmentForm";
 import { AdvisorSection } from "@/components/invest/AdvisorSection";
 import { HoldingCard } from "@/components/invest/HoldingCard";
+import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
 import { Kpi } from "@/components/Kpi";
 import { todayISO } from "@/lib/dates";
 import { buildAdvice } from "@/lib/investing/advisor";
+import { savingsOpportunity } from "@/lib/investing/idle";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import type { SearchParams } from "@/lib/queries/filters";
 import { getAdviceInput, listInvestments, portfolioSeries } from "@/lib/queries/investments";
+import { getRoleAccounts, listBills } from "@/lib/queries/plan";
+import { monthlyCommitments } from "@/lib/plan/bills";
 import { getSettings } from "@/lib/settings";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -21,11 +25,13 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
   await connection();
   const sp = await searchParams;
   const today = todayISO();
-  const [investments, adviceInput, balances, settings] = await Promise.all([
+  const [investments, adviceInput, balances, settings, roles, bills] = await Promise.all([
     listInvestments(today),
     getAdviceInput(),
     getAccountBalances(),
     getSettings(),
+    getRoleAccounts(),
+    listBills(),
   ]);
 
   const advice = buildAdvice(adviceInput);
@@ -35,6 +41,19 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
   const gain = value - invested;
   const liquid = balances.filter((a) => a.type !== "investment").reduce((s, a) => s + a.balance, 0);
   const funding = balances.filter((a) => a.type !== "investment").map((a) => ({ id: a.id, name: a.name }));
+  // The savings account, when one is chosen: costs to cover = bills + everyday spending (tracked average,
+  // else your allowance setting), never less than what you actually spend per month.
+  const savingsAccount = roles.savings ? balances.find((a) => a.id === roles.savings!.id) : undefined;
+  const billsMonthly = monthlyCommitments(bills).monthly;
+  const idle = savingsAccount
+    ? savingsOpportunity({
+        balance: savingsAccount.balance,
+        monthlyCosts: Math.max(adviceInput.avgMonthlyExpense, billsMonthly + settings.variableAllowance),
+        targetMonths: settings.emergencyMonths,
+        savingsRatePct: settings.savingsRatePct,
+        fdRatePct: settings.fdRatePct,
+      })
+    : null;
   const canRefresh = investments.some((r) => r.holding?.ticker && r.holding.units && r.holding.product !== "fixed_deposit");
 
   const error = first(sp.error);
@@ -76,6 +95,10 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
           hint={invested > 0 ? `${gain >= 0 ? "+" : "−"}${formatPct(Math.abs(gain) / invested, 1)} on money in` : "nothing invested yet"}
         />
       </section>
+
+      {idle && savingsAccount && (
+        <IdleSavingsCard op={idle} accountName={savingsAccount.name} savingsRatePct={settings.savingsRatePct} fdRatePct={settings.fdRatePct} />
+      )}
 
       <AdvisorSection advice={advice} settings={settings} />
 

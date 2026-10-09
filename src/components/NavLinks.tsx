@@ -1,12 +1,13 @@
 "use client";
 
-import { BarChart3, Lightbulb, ListOrdered, PiggyBank, PlusCircle } from "lucide-react";
+import { BarChart3, CalendarCheck, Lightbulb, ListOrdered, PiggyBank, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/", label: "Add", icon: PlusCircle },
   { href: "/transactions", label: "Activity", icon: ListOrdered },
+  { href: "/plan", label: "Plan", icon: CalendarCheck },
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/invest", label: "Invest", icon: PiggyBank },

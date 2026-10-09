@@ -1,6 +1,7 @@
 import { futureValueMonthly } from "@/lib/investing/projection";
 import { formatPct, formatRM } from "@/lib/money";
 import { detectRecurring } from "./recurring";
+import type { CycleFlow } from "@/lib/plan/savings-flow";
 import { mean, stddev, sum } from "./stats";
 import {
   budgetProgress,
@@ -24,7 +25,10 @@ export type InsightKind =
   | "wants_heavy"
   | "spike"
   | "weekend"
-  | "cash_unaccounted";
+  | "cash_unaccounted"
+  | "planning_gap"
+  | "savings_drawdown"
+  | "savings_spending";
 
 export type Severity = "high" | "medium" | "low";
 
@@ -51,6 +55,10 @@ export type LeakInput = {
   categories: BudgetCategory[];
   assumptions: { sp500ReturnPct: number; horizonYears: number };
   cash: { unaccounted90: number; withdrawn90: number };
+  /** Pay-cycle savings flows, newest first (see plan/savings-flow.ts). Omit when no salary has been recorded. */
+  flows?: CycleFlow[];
+  /** Names of your recurring bills (rent, Netflix...). They are planned spending, so never a "spike" or a "habit". */
+  billItems?: string[];
 };
 
 // --- tunable thresholds (sen unless noted) ------------------------------------
@@ -70,6 +78,11 @@ const SPIKE_MIN_EXCESS = 20_000;
 const WEEKEND_RATIO = 1.6;
 const CASH_MIN = 5_000;
 const CASH_CUT = 0.5;
+const PLANNING_GAP_MIN = 10_000; // RM 100 a cycle before the payday split is worth flagging
+const EVERYDAY_DRAWDOWN_MIN = 10_000;
+const EVERYDAY_RECLAIM = 0.3; // a modest tightening, not "stop buying groceries"
+const SAVINGS_SPEND_MIN = 30_000; // RM 300 a cycle paid straight out of savings before it is worth saying
+const SAVINGS_SPEND_HIGH = 0.25; // ...and "high" once it is a quarter of what you move to savings
 
 const SEV_RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 const MS_DAY = 86_400_000;
@@ -100,10 +113,12 @@ export function detectLeaks(input: LeakInput): Insight[] {
 
   const out: Insight[] = [];
   const recurring = detectRecurring(rows, today);
-  const recurringKeys = new Set(recurring.map((r) => r.item.toLowerCase()));
+  const recurringKeys = new Set([...recurring.map((r) => r.item.toLowerCase()), ...(input.billItems ?? []).map((b) => b.trim().toLowerCase())]);
 
-  // Months that actually contain data, so a new user isn't compared against empty history.
-  const monthsWithData = prevMonths(month, 3).filter((m) => rows.some((r) => monthOf(r.date) === m));
+  // Earlier months the data covers from day 1. A month recorded only from the 26th would look like a month in which
+  // little was spent, and make this month look like a creep, so a half-recorded month is never a baseline.
+  const dataStart = rows.reduce((first, r) => (r.date < first ? r.date : first), today);
+  const monthsWithData = prevMonths(month, 3).filter((m) => dataStart <= `${m}-01` && rows.some((r) => monthOf(r.date) === m));
 
   // 1. Category creep ---------------------------------------------------------
   // Like-for-like: spend in days 1..today vs what you usually spent by this day in earlier months.
@@ -345,6 +360,77 @@ export function detectLeaks(input: LeakInput): Insight[] {
           ...money(0),
         });
       }
+    }
+  }
+
+  // 9 & 10. Money shuffled back out of savings (needs spending + savings accounts and a recorded salary) -----
+  // Looked at over the last completed cycles, so one odd month doesn't set it off.
+  const recent = (input.flows ?? []).filter((f) => f.complete && f.income > 0 && f.deposited > 0).slice(0, 3);
+  if (recent.length) {
+    const avgGap = mean(recent.map((f) => f.planningGap));
+    const avgEveryday = mean(recent.map((f) => f.everydayFromSavings));
+    const avgDeposit = mean(recent.map((f) => f.deposited));
+    const avgDrawn = mean(recent.map((f) => f.drawn));
+    const avgLeft = mean(recent.map((f) => f.leftAfterDeposit));
+    // Only bills paid out of the spending account count: the ones paid straight from savings never needed a top-up.
+    const avgBills = mean(recent.map((f) => f.billsFromSpending));
+    const avgDirect = mean(recent.map((f) => f.spentFromSavings));
+    const months = `${recent.length} cycle${recent.length === 1 ? "" : "s"}`;
+
+    if (avgGap >= PLANNING_GAP_MIN) {
+      out.push({
+        id: "planning-gap",
+        kind: "planning_gap",
+        severity: "medium",
+        title: `Your payday transfer leaves ${formatRM(Math.round(avgGap))} too little for your bills`,
+        evidence: [
+          `On average you move ${formatRM(Math.round(avgDeposit))} to savings and leave ${formatRM(Math.round(avgLeft))} behind`,
+          `The bills you pay from that account come to about ${formatRM(Math.round(avgBills))}, so ${formatRM(Math.round(avgGap))} must come back from savings every cycle (average of the last ${months})`,
+          `So the "${formatRM(Math.round(avgDeposit))} saved" is really at most ${formatRM(Math.round(avgDeposit - avgGap))}`,
+        ],
+        suggestion: "Move less at payday - bills plus an everyday allowance stay in your spending account - and stop topping up bill by bill. The Plan page works out the number.",
+        // Not money lost - it is a distorted picture of what you really save, so no saving is claimed.
+        ...money(0),
+        href: "/plan",
+      });
+    }
+    if (avgDirect >= SAVINGS_SPEND_MIN) {
+      const top = recent[0].savingsSpendTop.map((t) => `${t.name} ${formatRM(t.amount)}`).join(", ");
+      const kept = avgDeposit - avgDrawn - avgDirect;
+      out.push({
+        id: "savings-spending",
+        kind: "savings_spending",
+        severity: avgDirect >= avgDeposit * SAVINGS_SPEND_HIGH ? "high" : "medium",
+        title: `About ${formatRM(Math.round(avgDirect))} a cycle is paid straight out of your savings account`,
+        evidence: [
+          `Of the ${formatRM(Math.round(avgDeposit))} you move to savings each cycle, ${formatRM(Math.round(avgDrawn))} comes back as top-ups and ${formatRM(Math.round(avgDirect))} is spent directly from the savings account (average of the last ${months})`,
+          top ? `Latest full cycle, biggest: ${top}` : "",
+          kept >= 0
+            ? `So only about ${formatRM(Math.round(kept))} of the ${formatRM(Math.round(avgDeposit))} you move actually stays there`
+            : `So your savings account shrinks by about ${formatRM(Math.round(-kept))} a cycle`,
+        ].filter(Boolean),
+        suggestion: "Your savings account is acting as a second spending account, so your emergency fund erodes without any single payment looking like a leak. Pay bills and everyday spending from the main account (the Plan page shows how much to keep there) and keep the savings account for savings.",
+        // Not money lost: it is spending you were doing anyway, paid from the wrong place, so no saving is claimed.
+        ...money(0),
+        href: "/plan",
+      });
+    }
+    if (avgEveryday >= EVERYDAY_DRAWDOWN_MIN) {
+      out.push({
+        id: "savings-drawdown",
+        kind: "savings_drawdown",
+        severity: avgEveryday >= avgDeposit * 0.25 ? "high" : "medium",
+        title: `Everyday spending took about ${formatRM(Math.round(avgEveryday))} a cycle out of your savings`,
+        evidence: [
+          `Beyond what your payday split forced, you took ${formatRM(Math.round(avgEveryday))} a cycle back out of savings (last ${months})`,
+          `That's groceries, fuel, Touch 'n Go, food and small things spent past what was left in your spending account`,
+          `Total taken back: ${formatRM(Math.round(avgDrawn))} a cycle of the ${formatRM(Math.round(avgDeposit))} you put in`,
+        ],
+        suggestion: "Give everyday spending an allowance and watch 'Safe to spend' on the Add screen. Overspending then shows up as a number going red, not as a quiet top-up.",
+        // A top-up isn't necessarily a leak (groceries are real), so only the overshoot beyond a sensible allowance is counted.
+        ...money(avgEveryday * EVERYDAY_RECLAIM),
+        href: "/plan",
+      });
     }
   }
 

@@ -170,7 +170,7 @@ describe("settings actions", () => {
     const { saveAssumptions } = await import("@/app/actions/settings");
     const { getSettings } = await import("@/lib/settings");
     await redirected(saveAssumptions(fd({ fdRatePct: "3.5", sp500ReturnPct: "8", emergencyMonths: "4", horizonYears: "15", riskProfile: "growth" })));
-    expect(await getSettings()).toEqual({ fdRatePct: 3.5, sp500ReturnPct: 8, emergencyMonths: 4, horizonYears: 15, riskProfile: "growth" });
+    expect(await getSettings()).toMatchObject({ fdRatePct: 3.5, sp500ReturnPct: 8, emergencyMonths: 4, horizonYears: 15, riskProfile: "growth" });
 
     expect(await redirected(saveAssumptions(fd({ fdRatePct: "300", sp500ReturnPct: "8", emergencyMonths: "4", horizonYears: "15", riskProfile: "growth" })))).toMatch(/error=/);
     expect((await getSettings()).fdRatePct).toBe(3.5);

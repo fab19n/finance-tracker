@@ -19,6 +19,8 @@ const AccountInput = z.object({
   name: z.string().trim().min(1, "Account needs a name").max(60),
   type: z.enum(["bank", "cash", "ewallet", "investment"]),
   openingBalance: z.string().optional(),
+  // '' = no special role
+  purpose: z.enum(["", "spending", "savings"]).optional(),
 });
 
 export async function saveAccount(formData: FormData): Promise<void> {
@@ -30,13 +32,15 @@ export async function saveAccount(formData: FormData): Promise<void> {
   const negative = v.openingBalance?.trim().startsWith("-");
   const openingBalance = negative ? -opening! : opening!;
   const db = await getDb();
+  const purpose = v.purpose || null;
+  // Each role belongs to one account: giving it to this one takes it from whoever had it.
+  if (purpose) db.update(accounts).set({ purpose: null }).where(eq(accounts.purpose, purpose)).run();
   if (v.id) {
-    db.update(accounts)
-      .set({ name: v.name, type: v.type, openingBalance })
-      .where(eq(accounts.id, Number(v.id)))
-      .run();
+    // A form without the role field (older callers) leaves the existing role alone.
+    const set = { name: v.name, type: v.type, openingBalance, ...(v.purpose !== undefined ? { purpose } : {}) };
+    db.update(accounts).set(set).where(eq(accounts.id, Number(v.id))).run();
   } else {
-    db.insert(accounts).values({ name: v.name, type: v.type, openingBalance, sortOrder: 99 }).run();
+    db.insert(accounts).values({ name: v.name, type: v.type, openingBalance, purpose, sortOrder: 99 }).run();
   }
   done();
 }
@@ -106,5 +110,35 @@ export async function saveAssumptions(formData: FormData): Promise<void> {
   for (const [k, v] of Object.entries(p.data!)) {
     await setSetting(k as keyof typeof p.data, v);
   }
+  done();
+}
+
+const CycleSettingsInput = z.object({
+  paydayDay: z.coerce.number().int().min(1).max(31),
+  expectedIncome: z.string().optional(),
+  variableAllowance: z.string().optional(),
+  cycleBuffer: z.string().optional(),
+  savingsRatePct: z.coerce.number().min(0).max(15),
+});
+
+/** Money fields arrive as RM text; blank means "not set" (0). */
+function rmOrZero(v: string | undefined): number | null {
+  if (!v?.trim()) return 0;
+  return parseSen(v);
+}
+
+export async function saveCycleSettings(formData: FormData): Promise<void> {
+  const p = CycleSettingsInput.safeParse(Object.fromEntries(formData));
+  if (!p.success) done("Check the payday settings - one of the numbers is out of range");
+  const v = p.data!;
+  const income = rmOrZero(v.expectedIncome);
+  const allowance = rmOrZero(v.variableAllowance);
+  const buffer = rmOrZero(v.cycleBuffer);
+  if (income === null || allowance === null || buffer === null) done("One of the RM amounts isn't valid");
+  await setSetting("paydayDay", v.paydayDay);
+  await setSetting("expectedIncome", income!);
+  await setSetting("variableAllowance", allowance!);
+  await setSetting("cycleBuffer", buffer!);
+  await setSetting("savingsRatePct", v.savingsRatePct);
   done();
 }

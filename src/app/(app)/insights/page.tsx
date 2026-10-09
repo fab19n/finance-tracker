@@ -9,6 +9,7 @@ import { formatRM, formatRMWhole } from "@/lib/money";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { getCashStatus } from "@/lib/queries/cash";
 import type { SearchParams } from "@/lib/queries/filters";
+import { getPlan } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
@@ -65,11 +66,12 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   await connection();
   const sp = await searchParams;
   const today = todayISO();
-  const [rows, categories, settings, cash] = await Promise.all([
+  const [rows, categories, settings, cash, plan] = await Promise.all([
     listFlowRows(shiftDays(today, -150), today),
     listCategories(),
     getSettings(),
     getCashStatus(todayISO()),
+    getPlan(today),
   ]);
 
   const insights = detectLeaks({
@@ -78,6 +80,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     categories: categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon, monthlyBudget: c.monthlyBudget })),
     assumptions: { sp500ReturnPct: settings.sp500ReturnPct, horizonYears: settings.horizonYears },
     cash: { unaccounted90: cash.unaccounted90, withdrawn90: cash.withdrawn90 },
+    flows: plan.flows,
+    billItems: plan.bills.map((b) => b.bill.name),
   });
   const headline = headlineSavings(insights);
   const recurring = detectRecurring(rows, today).filter((r) => r.active);
