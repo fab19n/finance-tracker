@@ -13,12 +13,15 @@ import { ColumnMapper } from "./ColumnMapper";
 type Account = { id: number; name: string; type: string; purpose: string | null };
 type Category = { id: number; name: string; type: "income" | "expense"; icon: string };
 type Bill = { id: number; name: string };
+type Share = { id: number; label: string };
 
 type EditRow = ClassifiedRow & {
   kind: ProposalKind;
   categoryId: number | null;
   item: string;
   billId: number | null;
+  /** Money in from someone who shares one of your bills. */
+  shareId: number | null;
   transferAccountId: number | null;
   remember: boolean;
   /** The user touched this row, so changes to similar rows no longer overwrite it. */
@@ -32,10 +35,10 @@ const KIND_LABEL: Record<ProposalKind, string> = { expense: "Spending", income: 
 
 function toEdit(r: ClassifiedRow): EditRow {
   const p = r.proposal;
-  return { ...r, kind: p.kind, categoryId: p.categoryId, item: p.item, billId: p.billId, transferAccountId: p.transferAccountId, remember: false, edited: false };
+  return { ...r, kind: p.kind, categoryId: p.categoryId, item: p.item, billId: p.billId, shareId: p.shareId, transferAccountId: p.transferAccountId, remember: false, edited: false };
 }
 
-export function ImportWizard({ accounts, categories, bills }: { accounts: Account[]; categories: Category[]; bills: Bill[] }) {
+export function ImportWizard({ accounts, categories, bills, shares }: { accounts: Account[]; categories: Category[]; bills: Bill[]; shares: Share[] }) {
   const statementAccounts = accounts.filter((a) => a.type !== "investment");
   const [accountId, setAccountId] = useState<number>((statementAccounts.find((a) => a.purpose === "spending") ?? statementAccounts[0])?.id ?? 0);
   const [file, setFile] = useState<File | null>(null);
@@ -52,16 +55,19 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
   const [shown, setShown] = useState(PAGE);
   const [setOpening, setSetOpening] = useState(true);
   const [ack, setAck] = useState(false);
+  const [ackAccount, setAckAccount] = useState(false);
   const [result, setResult] = useState<Extract<CommitResult, { ok: true }> | null>(null);
   const [pending, start] = useTransition();
 
   const account = accounts.find((a) => a.id === accountId);
 
-  async function read(overrides?: object) {
+  async function read(overrides?: object, asAccount?: number) {
     setError(null);
     setMapping(null);
+    const forAccount = asAccount ?? accountId;
+    if (asAccount) setAccountId(asAccount);
     const fd = new FormData();
-    fd.set("accountId", String(accountId));
+    fd.set("accountId", String(forAccount));
     if (file) fd.set("file", file);
     if (text.trim()) fd.set("text", text);
     if (password) fd.set("password", password);
@@ -82,6 +88,7 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
       setShown(PAGE);
       setSetOpening(res.account.existingEntries === 0 && res.openingBalance !== null);
       setAck(false);
+      setAckAccount(false);
     });
   }
 
@@ -93,6 +100,7 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
       if (!target) return all;
       const merged: EditRow = { ...target, ...change, edited: true, remember: change.remember ?? true };
       if (change.kind === "transfer") merged.billId = null;
+      if (change.kind && change.kind !== "income") merged.shareId = null; // a share payment is money in, nothing else
       // Carry the decision to the other untouched lines from the same payee going the same way, so one
       // correction fixes them all ("Starbucks" -> Eating Out, everywhere).
       const carried = Object.fromEntries((["kind", "categoryId", "transferAccountId", "item"] as const).filter((k) => k in change).map((k) => [k, merged[k]])) as Partial<EditRow>;
@@ -134,6 +142,7 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
           categoryId: r.kind === "transfer" || r.kind === "skip" ? null : r.categoryId,
           item: r.item,
           billId: r.kind === "expense" ? r.billId : null,
+          shareId: r.kind === "income" ? r.shareId : null,
           transferAccountId: r.kind === "transfer" ? r.transferAccountId : null,
           remember: r.remember && r.kind !== "skip",
         })),
@@ -252,10 +261,11 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
         <aside className="rounded-2xl border border-line bg-background p-4 text-xs text-muted">
           <p className="mb-1 font-semibold text-foreground">Where to get the file</p>
           <ul className="list-disc space-y-1 pl-4">
-            <li><strong>Maybank:</strong> the monthly PDF e-statement. <strong>CIMB:</strong> the Transaction History <strong>CSV</strong> (a PDF print-out of that page can&apos;t be read reliably).</li>
+            <li><strong>Maybank:</strong> the monthly PDF e-statement. <strong>CIMB:</strong> the e-statement PDF, the Transaction History <strong>CSV</strong>, or the Transaction History page printed to PDF for a month.</li>
+            <li><strong>Touch &lsquo;n Go eWallet:</strong> the &ldquo;TNG WALLET TRANSACTION HISTORY&rdquo; PDF the app e-mails you. Choose your e-Wallet account. Your top-ups from the bank are recognised as already recorded; what you spent and what you earned on GO+ is added.</li>
             <li>Bank PDFs are often password-protected. Enter the password when asked; it is used once and never stored.</li>
-            <li>Import oldest first, and your <strong>spending account before your savings account</strong>, so transfers between them are recognised once. Tick &ldquo;set the starting balance&rdquo; only on the earliest statement of each account.</li>
-            <li>The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly.</li>
+            <li>Import oldest first, and your <strong>spending account before your savings account</strong>, so transfers between them are recognised once. Import your banks before an e-wallet&apos;s history for the same reason. Tick &ldquo;set the starting balance&rdquo; only on the earliest statement of each account.</li>
+            <li>The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly. (A wallet history prints no running balance, so the whole statement is checked against its closing balance instead.)</li>
           </ul>
         </aside>
       </div>
@@ -264,7 +274,9 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
 
   // ---------------------------------------------------------------- review
   const { check, stats } = preview;
-  const allGood = check.mismatches.length === 0 && check.checked > 0;
+  // A statement with no running balance (a wallet history) is checked as a whole: where it started + its lines = where it ended.
+  const total = check.total;
+  const allGood = total ? total.ok : check.mismatches.length === 0 && check.checked > 0;
   return (
     <div className="space-y-4">
       <section className="card space-y-3" aria-label="Summary">
@@ -286,11 +298,15 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
         <p className={`flex gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ${allGood ? "bg-accent-soft text-accent" : check.mismatches.length ? "bg-danger-soft text-danger" : "bg-warn-soft text-warn"}`}>
           {allGood ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />}
           <span>
-            {allGood
-              ? `Every line adds up to the bank's running balance (${check.matched} of ${check.checked} checked).`
-              : check.checked === 0
-                ? "This statement has no running balance to check against, so please look over the amounts and directions yourself."
-                : `${check.mismatches.length} line${check.mismatches.length === 1 ? "" : "s"} don't add up to the bank's running balance - they're marked below.`}
+            {total
+              ? total.ok
+                ? `These lines take the account from ${formatRM(total.opening)} to ${formatRM(total.closing)}, exactly where the statement says it ended.`
+                : "These lines don't reach the statement's closing balance - see below."
+              : allGood
+                ? `Every line adds up to the bank's running balance (${check.matched} of ${check.checked} checked).`
+                : check.checked === 0
+                  ? "This statement has no running balance to check against, so please look over the amounts and directions yourself."
+                  : `${check.mismatches.length} line${check.mismatches.length === 1 ? "" : "s"} don't add up to the bank's running balance - they're marked below.`}
           </span>
         </p>
         {preview.warnings.filter((w) => !/add up/.test(w)).map((w) => (
@@ -302,10 +318,33 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
         <p className="text-sm text-muted">
           <strong className="text-foreground">{stats.fresh}</strong> new
           {stats.duplicates > 0 && <> · {stats.duplicates} already recorded (skipped)</>}
-          {stats.holds > 0 && <> · {stats.holds} card hold lines that cancel out (skipped)</>}
+          {stats.holds > 0 && <> · {stats.holds} lines that cancel out: card holds and reversed transfers (skipped)</>}
           {preview.leftOut > 0 && <> · {preview.leftOut} earlier lines left out (before {dayLabel(startDate)})</>}
           {stats.needsReview > 0 && <> · <strong className="text-warn">{stats.needsReview}</strong> need a look</>}
         </p>
+
+        {preview.accountCheck && (
+          <div role="alert" className={`rounded-xl px-3 py-2.5 text-sm ${preview.accountCheck.looksLike ? "bg-danger-soft text-danger" : "bg-warn-soft text-warn"}`}>
+            <p className="flex gap-2 font-medium">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+              {preview.accountCheck.looksLike
+                ? `This looks like ${preview.accountCheck.looksLike.name}'s statement, not ${preview.account.name}'s`
+                : `This statement doesn't start where your books for ${preview.account.name} leave off`}
+            </p>
+            <p className="mt-1 text-xs">
+              On {dayLabel(preview.accountCheck.date)} the statement starts at <strong>{formatRM(preview.accountCheck.statement)}</strong>, but your entries say {preview.account.name} held{" "}
+              <strong>{formatRM(preview.accountCheck.books)}</strong>
+              {preview.accountCheck.looksLike
+                ? `, while ${preview.accountCheck.looksLike.name} should hold exactly the statement's figure. Importing it here would file ${preview.accountCheck.looksLike.name}'s transactions under ${preview.account.name}.`
+                : ` (a difference of ${formatRM(Math.abs(preview.accountCheck.statement - preview.accountCheck.books))}). Either it belongs to a different account, or entries before this date are missing or wrong (a transfer to an account the app doesn't track, for example).`}
+            </p>
+            {preview.accountCheck.looksLike && (
+              <button type="button" className="btn-primary mt-2 !py-1.5 text-sm" disabled={pending} onClick={() => read(undefined, preview.accountCheck!.looksLike!.id)}>
+                Read it as {preview.accountCheck.looksLike.name} instead
+              </button>
+            )}
+          </div>
+        )}
 
         {preview.oneSided.length > 0 && (
           <div className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
@@ -411,6 +450,14 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
                       </button>
                     </span>
                   )}
+                  {r.shareId && r.kind === "income" && (
+                    <span className="pill bg-accent-soft text-accent">
+                      Shared bill: {shares.find((s) => s.id === r.shareId)?.label}
+                      <button type="button" aria-label="Don't count it towards that person" className="ml-1" onClick={() => patch(r.key, { shareId: null, remember: r.remember })}>
+                        <X size={12} />
+                      </button>
+                    </span>
+                  )}
                   <span className={r.proposal.confidence === "low" && !r.edited ? "font-medium text-warn" : "text-muted"}>{r.edited ? "Your choice" : r.proposal.reason}</span>
                   {r.signedBy === "guess" && <span className="font-medium text-warn">Direction guessed: check it</span>}
                   {mismatch.has(r.index) && <span className="font-medium text-danger">Doesn&apos;t add up to the running balance</span>}
@@ -446,7 +493,13 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-1 size-4 accent-[var(--accent)]" />I&apos;ve checked the lines marked red and want to import anyway.
           </label>
         )}
-        <button className="btn-primary w-full" onClick={save} disabled={pending || problems.size > 0 || toImport.length === 0 || (check.mismatches.length > 0 && !ack)}>
+        {preview.accountCheck?.looksLike && (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={ackAccount} onChange={(e) => setAckAccount(e.target.checked)} className="mt-1 size-4 accent-[var(--accent)]" />
+            This really is {preview.account.name}&apos;s statement; import it here anyway.
+          </label>
+        )}
+        <button className="btn-primary w-full" onClick={save} disabled={pending || problems.size > 0 || toImport.length === 0 || (check.mismatches.length > 0 && !ack) || (!!preview.accountCheck?.looksLike && !ackAccount)}>
           {pending && <Loader2 size={18} className="animate-spin" />} Import {toImport.length} {toImport.length === 1 ? "entry" : "entries"}
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { getDocumentProxy } from "unpdf";
-import { itemsToLines, type TextItem } from "./pdf-lines";
+import { itemsToPositionedLines, type PositionedLine, type TextItem } from "./pdf-lines";
 
 export type PdfErrorCode = "password-required" | "password-wrong" | "unreadable" | "no-text";
 
@@ -19,10 +19,10 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
 }
 
 /**
- * Read the text of a PDF statement, page by page, as lines. Runs entirely on this computer: the file is
- * never sent anywhere, and the password (if the bank protected the file) is used once and not stored.
+ * Read a PDF statement page by page, as positioned lines. Runs entirely on this computer: the file is never sent
+ * anywhere, and the password (if the bank protected the file) is used once and not stored.
  */
-export async function extractPdfLines(data: Uint8Array, password?: string): Promise<string[]> {
+export async function extractPdfPages(data: Uint8Array, password?: string): Promise<PositionedLine[][]> {
   let doc;
   try {
     // pdf.js takes ownership of the buffer it is given, so hand it a copy.
@@ -38,7 +38,7 @@ export async function extractPdfLines(data: Uint8Array, password?: string): Prom
     throw new PdfError("unreadable", "That file couldn't be read as a PDF.");
   }
 
-  const lines: string[] = [];
+  const pages: PositionedLine[][] = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const content = await page.getTextContent();
@@ -46,11 +46,16 @@ export async function extractPdfLines(data: Uint8Array, password?: string): Prom
     for (const it of content.items) {
       if ("str" in it && it.transform) items.push({ str: it.str, x: it.transform[4], y: it.transform[5], width: it.width });
     }
-    lines.push(...itemsToLines(items));
+    pages.push(itemsToPositionedLines(items));
   }
 
-  if (!lines.length) {
+  if (!pages.some((p) => p.length)) {
     throw new PdfError("no-text", "This PDF has no readable text - it may be a scanned image. Try pasting the statement text instead.");
   }
-  return lines;
+  return pages;
+}
+
+/** The text of a PDF statement as lines, top to bottom, page after page. */
+export async function extractPdfLines(data: Uint8Array, password?: string): Promise<string[]> {
+  return (await extractPdfPages(data, password)).flatMap((page) => page.map((l) => l.text));
 }

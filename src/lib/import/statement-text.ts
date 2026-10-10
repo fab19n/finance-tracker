@@ -58,6 +58,50 @@ function stripMoney(text: string, money: Money[]): string {
   return out.replace(/\s+/g, " ").trim();
 }
 
+/** "MYR 25. 00" -> "MYR 25.00". Some web pages printed to PDF put the cents in a separate, spaced-out piece of text. */
+const fixSplitDecimals = (s: string) => s.replace(/(\d)\.\s(\d{2})(?!\d)/g, "$1.$2");
+
+/** The line of a row block that carries the date AND amounts (a card-swipe date on another line has no amount). */
+const datedLineIndex = (block: string[]) => block.findIndex((l) => DATE_AT_START.test(fixSplitDecimals(l)) && moneyIn(fixSplitDecimals(l)).length > 0);
+
+/**
+ * Do the rows have text ABOVE their date line? That is the signature of a bank web page printed to PDF, where a
+ * transaction reads "POS DEBIT / merchant / <date and amounts> / reference". Ordinary statements start each row
+ * with its date, so this is false for them.
+ */
+export function blocksHaveHeads(blocks: string[][]): boolean {
+  // The text above the date must be a payee/description. A statement's own furniture is not: in a month with a single
+  // transaction, the column headings and "BEGINNING BALANCE" share a block with that one row and sit above its date.
+  return blocks.some((b) => {
+    const at = datedLineIndex(b);
+    return at > 0 && !b.slice(0, at).some((l) => isHeaderLine(l) || OPENING.test(l));
+  });
+}
+
+/**
+ * Rebuild each table row (the lines of one transaction, found by the gap between rows) as the single line the
+ * parser expects: "<date> <whole description> <amount> <balance>". The head lines above the date line and the
+ * lines below it all belong to the same transaction.
+ */
+export function rowBlocksToLines(blocks: string[][], directions: (1 | -1 | 0)[] = []): string[] {
+  const out: string[] = [];
+  blocks.forEach((block, index) => {
+    const clean = block.map((l) => fixSplitDecimals(l.trim()));
+    const at = datedLineIndex(block);
+    if (at < 0) return;
+    const m = clean[at].match(DATE_AT_START)!;
+    const all = [...clean.slice(0, at), clean[at].slice(m[0].length), ...clean.slice(at + 1)].join(" ");
+    const money = moneyIn(all);
+    const description = stripMoney(all, money).replace(/\b(?:MYR|RM)\b/gi, " ").replace(/\s+/g, " ").trim();
+    // The page said which column the amount was in: say so with the sign the parser already understands ("25.00-" is
+    // money out, "10.00+" is money in). Only the transaction amount is marked, never the balance after it.
+    const way = directions[index] ?? 0;
+    const tokens = money.map((x, i) => (i === 0 && money.length > 1 && way !== 0 && !/[+-]$/.test(x.raw) ? `${x.raw}${way === 1 ? "+" : "-"}` : x.raw));
+    out.push(`${m[1]} ${description} ${tokens.join(" ")}`);
+  });
+  return out;
+}
+
 /** First full date with a year in the first lines, to give year-less dates ("01/09") a year. */
 export function inferYear(lines: string[]): number | null {
   for (const line of lines.slice(0, 80)) {
@@ -108,7 +152,7 @@ export function parseStatementText(
   };
 
   let inPageBreak = false;
-  for (const text of lines.map((l) => l.trim()).filter(Boolean)) {
+  for (const text of lines.map((l) => fixSplitDecimals(l.trim())).filter(Boolean)) {
     // Footer -> next page's header: drop it all, and do NOT end the transaction above, whose payee lines may follow.
     if (inPageBreak) {
       if (isHeaderLine(text)) inPageBreak = false;

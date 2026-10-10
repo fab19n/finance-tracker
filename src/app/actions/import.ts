@@ -61,6 +61,7 @@ const Row = z.object({
   categoryId: z.number().int().nullable(),
   item: z.string().max(120),
   billId: z.number().int().nullable(),
+  shareId: z.number().int().nullable().optional(),
   transferAccountId: z.number().int().nullable(),
   remember: z.boolean(),
 });

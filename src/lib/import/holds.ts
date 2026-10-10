@@ -8,10 +8,16 @@ import type { StatementRow } from "./types";
  *
  * Starts from the refund (its description says PRE-AUTH REFUND / REV PREAUTH, so it can't be anything else) and
  * looks for the debit it released: same amount, same merchant, within 3 days.
+ *
+ * Reversals are the same idea. A transfer the bank could not complete is debited, then put back with a line like
+ * "TRNSFR FROM A/C REV" (no merchant to compare, and worded differently from the original), so that second pass
+ * pairs a REV / REVERSAL line with an equal, opposite line no more than 3 days before it.
  */
 
 const WRAPPERS = /^(?:(?:sale debit|pre auth debit|pre auth refund|pre auth mydebit|rev preauth mydebit|payment via mydebit|mydebit purchase|pos debit)\s+)+/;
 const IS_AUTH = /\bpre ?auth\b/;
+// "PYMT VIA MYDEBIT RE" is Maybank's cut-off wording for a debit-card payment that was reversed.
+const IS_REVERSAL = /\b(?:rev|reversal|reversed)\b|\bpymt via mydebit re\b/;
 const MAX_GAP_DAYS = 3;
 
 /** First two words of the merchant, without the "SALE DEBIT / PRE-AUTH ..." wrapper. */
@@ -21,7 +27,7 @@ export function merchantKey(description: string): string {
 
 const gap = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
 
-/** Row index -> why it is skipped, for both halves of every hold that was released within this statement. */
+/** Row index -> why it is skipped, for both halves of every hold released, or entry reversed, within this statement. */
 export function findCardHolds(rows: StatementRow[]): Map<number, string> {
   const out = new Map<number, string>();
   const used = new Set<number>();
@@ -38,6 +44,19 @@ export function findCardHolds(rows: StatementRow[]): Map<number, string> {
     const why = `Card hold released (${key}): the authorisation and its refund cancel out`;
     out.set(debit.index, why);
     out.set(release.index, why);
+  }
+
+  for (const reversal of rows) {
+    if (used.has(reversal.index) || IS_AUTH.test(normalizeName(reversal.description)) || !IS_REVERSAL.test(normalizeName(reversal.description))) continue;
+    const original = rows
+      .filter((o) => o.index !== reversal.index && o.amount === -reversal.amount && !used.has(o.index) && !IS_REVERSAL.test(normalizeName(o.description)) && o.date <= reversal.date && gap(o.date, reversal.date) <= MAX_GAP_DAYS)
+      .sort((a, b) => Math.abs(a.index - reversal.index) - Math.abs(b.index - reversal.index))[0];
+    if (!original) continue;
+    used.add(original.index);
+    used.add(reversal.index);
+    const why = `Reversed by the bank: RM ${(Math.abs(reversal.amount) / 100).toFixed(2)} ${original.amount < 0 ? "went out and was put straight back" : "came in and was taken straight back"}, so nothing changed`;
+    out.set(original.index, why);
+    out.set(reversal.index, why);
   }
   return out;
 }

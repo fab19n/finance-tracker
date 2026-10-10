@@ -25,9 +25,13 @@ const EXPENSE: CatSeed[] = [
   { name: "Family & Kids", type: "expense", nature: "need", color: "#db2777", icon: "👨‍👩‍👧" },
   { name: "Education", type: "expense", nature: "need", color: "#0d9488", icon: "📚" },
   { name: "Shopping", type: "expense", nature: "want", color: "#c026d3", icon: "🛍️" },
+  // Phones, computers, parts: big, occasional purchases that would otherwise swamp everyday shopping.
+  { name: "IT & Gadgets", type: "expense", nature: "want", color: "#6366f1", icon: "💻" },
   { name: "Entertainment", type: "expense", nature: "want", color: "#e11d48", icon: "🎬" },
   { name: "Subscriptions", type: "expense", nature: "want", color: "#9333ea", icon: "🔁" },
   { name: "Personal Care", type: "expense", nature: "want", color: "#ca8a04", icon: "💈" },
+  // Reloading GrabPay / ShopeePay / Boost: spent inside a wallet this app doesn't see, so the top-up is the spending.
+  { name: "E-wallet top-up", type: "expense", nature: "want", color: "#0ea5e9", icon: "👛" },
   { name: "Gifts & Donations", type: "expense", nature: "want", color: "#ea580c", icon: "🎁" },
   { name: "Travel", type: "expense", nature: "want", color: "#0284c7", icon: "✈️" },
   { name: "Miscellaneous", type: "expense", nature: "want", color: "#64748b", icon: "📦" },
@@ -46,6 +50,8 @@ const INCOME: CatSeed[] = [
   { name: "Side Income", type: "income", nature: "saving", color: "#10b981", icon: "🛠️" },
   { name: "Bonus", type: "income", nature: "saving", color: "#14b8a6", icon: "🎉" },
   { name: "Gift Received", type: "income", nature: "saving", color: "#22c55e", icon: "🎁" },
+  // Friends and family paying you back (a shared subscription, a dinner they owed): money in, but neither earnings nor a gift.
+  { name: "Reimbursements", type: "income", nature: "saving", color: "#4ade80", icon: "🤝" },
   { name: "Investment Income", type: "income", nature: "saving", color: "#65a30d", icon: "📈" },
   { name: "Other Income", type: "income", nature: "saving", color: "#84cc16", icon: "➕" },
   {

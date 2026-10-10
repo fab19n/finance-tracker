@@ -1,6 +1,6 @@
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { DB } from "@/db/open";
-import { accounts, categories, importRules, recurringBills, transactions } from "@/db/schema";
+import { accounts, billShares, categories, importRules, recurringBills, transactions } from "@/db/schema";
 import type { CommitInput, CommitResult, CommitRow } from "./api-types";
 import { rulePattern } from "./classify";
 
@@ -28,6 +28,7 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
   const cats = new Map(db.select().from(categories).all().map((c) => [c.id, c]));
   const accIds = new Set(db.select({ id: accounts.id }).from(accounts).all().map((a) => a.id));
   const billIds = new Set(db.select({ id: recurringBills.id }).from(recurringBills).all().map((b) => b.id));
+  const shareIds = new Set(db.select({ id: billShares.id }).from(billShares).all().map((s) => s.id));
 
   for (const [i, r] of todo.entries()) {
     const where = `Row ${i + 1} (${r.date} ${r.description.slice(0, 30)})`;
@@ -43,6 +44,7 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
       if (cat.type !== r.kind) return { ok: false, error: `${where}: "${cat.name}" is a${cat.type === "income" ? "n income" : "n expense"} category.` };
     }
     if (r.billId && !billIds.has(r.billId)) return { ok: false, error: `${where}: that bill no longer exists.` };
+    if (r.shareId && !shareIds.has(r.shareId)) return { ok: false, error: `${where}: that person is no longer on a shared bill.` };
   }
 
   // Another run (a double click, a second tab) may have imported some of these meanwhile.
@@ -93,6 +95,7 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
             item: r.item.trim() || null,
             note,
             billId: r.kind === "expense" ? r.billId : null,
+            shareId: r.kind === "income" ? r.shareId ?? null : null,
             importKey: r.key,
           })
           .run();
@@ -110,9 +113,16 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
             billId: r.kind === "expense" ? r.billId : null,
             transferAccountId: r.kind === "transfer" ? r.transferAccountId : null,
           };
-          // The latest decision for a pattern wins.
-          tx.insert(importRules).values(values).onConflictDoUpdate({ target: importRules.pattern, set: values }).run();
-          rulesSaved++;
+          // A name that goes to SEVERAL of your accounts ("FABIAN A/L LESLIE": CIMB one day, your e-wallet the next) can't
+          // be one rule. A transfer decision never re-points an existing transfer rule at a different account, or one
+          // correction would send every later own-name transfer to the wrong place.
+          const known = r.kind === "transfer" ? tx.select().from(importRules).where(eq(importRules.pattern, pattern)).get() : undefined;
+          const repoints = known?.kind === "transfer" && known.transferAccountId !== values.transferAccountId;
+          if (!repoints) {
+            // Otherwise the latest decision for a pattern wins.
+            tx.insert(importRules).values(values).onConflictDoUpdate({ target: importRules.pattern, set: values }).run();
+            rulesSaved++;
+          }
         }
       }
     }

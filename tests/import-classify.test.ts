@@ -9,9 +9,9 @@ const SAVINGS = 2;
 const CASH = 3;
 
 const categories = [
-  ["Transport & Fuel", "expense"], ["Eating Out", "expense"], ["Groceries", "expense"], ["Subscriptions", "expense"],
+  ["Transport & Fuel", "expense"], ["Eating Out", "expense"], ["Groceries", "expense"], ["Subscriptions", "expense"], ["E-wallet top-up", "expense"],
   ["Rent / Housing", "expense"], ["Bills & Utilities", "expense"], ["Miscellaneous", "expense"], ["Shopping", "expense"],
-  ["Salary", "income"], ["Other Income", "income"], ["Investment Income", "income"],
+  ["Salary", "income"], ["Other Income", "income"], ["Investment Income", "income"], ["Reimbursements", "income"],
 ].map(([name, type], i) => ({ id: i + 1, name: name as string, type: type as "income" | "expense" }));
 const cat = (name: string) => categories.find((c) => c.name === name)!.id;
 
@@ -172,6 +172,9 @@ describe("4. known merchants", () => {
     ["TNG EWALLET RELOAD", -50, "Transport & Fuel", "Touch 'n Go reload"],
     ["GRABFOOD 22", -31, "Eating Out", "Food delivery"],
     ["GRAB* RIDE", -14, "Transport & Fuel", "Ride-hailing"],
+    ["I-PAYMENT FPXPAY GPAY NETWORK (M) SDN BHD 78725372 3385279105", -20, "E-wallet top-up", "E-wallet top-up"],
+    ["GRABPAY TOP UP 55", -50, "E-wallet top-up", "E-wallet top-up"], // not mistaken for a Grab ride
+    ["SHOPEEPAY RELOAD", -30, "E-wallet top-up", "E-wallet top-up"], // not mistaken for a Shopee purchase
     ["99 SPEEDMART 1234", -23, "Groceries", "99 Speedmart"],
     ["STARBUCKS COFFEE", -14.5, "Eating Out", "Coffee / drinks"],
     ["SHOPEE MALAYSIA", -88, "Shopping", "Online / retail"],
@@ -180,6 +183,10 @@ describe("4. known merchants", () => {
     ["REFUND SHOPEE", 20, "Other Income", "Refund"],
   ])("%s -> %s", (description, rm, category, item) => {
     expect(one(row(description, rm))).toMatchObject({ categoryId: cat(category), item, source: "builtin", confidence: "high" });
+  });
+
+  it("only real wallets are recognised: a juice bar called Boost is not an e-wallet", () => {
+    expect(one(row("BOOST JUICE BARS MID VALLEY", -12)).categoryId).not.toBe(cat("E-wallet top-up"));
   });
 
   it("an ATM withdrawal is a transfer into your cash account, NOT spending", () => {
@@ -213,18 +220,43 @@ describe("5. salary and 6. the rest", () => {
 
   describe("a small QR payment", () => {
     it("is assumed to be food, named after the payee, and still flagged as a guess", () => {
-      expect(one(row("IBK FUND TFR FR A/C WARUNG PAK ALI * QR71188980 DUITNOW QR", -12.5))).toMatchObject({
-        kind: "expense", categoryId: cat("Eating Out"), item: "Warung Pak Ali", source: "default", confidence: "low", reason: expect.stringMatching(/assumed to be food/),
+      expect(one(row("IBK FUND TFR FR A/C PAK ALI ENTERPRISE * QR71188980 DUITNOW QR", -12.5))).toMatchObject({
+        kind: "expense", categoryId: cat("Eating Out"), item: "Pak Ali Enterprise", source: "default", confidence: "low", reason: expect.stringMatching(/assumed to be food/),
       });
       expect(one(row("DUITNOW||123456|STALL ABC|DuitNow QR|CASAOffUs|", -9))).toMatchObject({ categoryId: cat("Eating Out"), item: "Stall Abc" });
       expect(one(row("MAE QR SOME NAME * 638314039Q", -14)).categoryId).toBe(cat("Eating Out"));
     });
     it("is left as 'Miscellaneous' above RM 45, because it could be anything", () => {
-      expect(one(row("DUITNOW QR WARUNG PAK ALI", -60))).toMatchObject({ categoryId: cat("Miscellaneous") });
+      expect(one(row("DUITNOW QR PAK ALI ENTERPRISE", -60))).toMatchObject({ categoryId: cat("Miscellaneous") });
     });
     it("is never claimed for a person-to-person TRANSFER, nor for money coming in", () => {
       expect(one(row("DUITNOW TO ACCOUNT||123456|SOMEONE|Lunch||", -20)).categoryId).toBe(cat("Miscellaneous"));
-      expect(one(row("DUITNOW QR WARUNG PAK ALI", 20))).toMatchObject({ kind: "income" });
+      expect(one(row("DUITNOW QR PAK ALI ENTERPRISE", 20))).toMatchObject({ kind: "income" });
+    });
+    it("is recognised outright when the payee's NAME says food, even with the words run together", () => {
+      for (const name of ["RESTORANMAHBUB", "WARUNGJFD'BUKIT", "CAFE@SUASANA DAMAI", "AMERANOS FOOD SERVI", "RESTORANXIUYEMAO"]) {
+        expect(one(row(`IBK FUND TFR FR A/C ${name} * QR70260554 DUITNOW QR`, -10))).toMatchObject({ categoryId: cat("Eating Out"), source: "builtin", confidence: "high" });
+      }
+      // ...at any amount: a restaurant bill is still a restaurant bill
+      expect(one(row("DUITNOW QR RESTORANMAHBUB", -80))).toMatchObject({ categoryId: cat("Eating Out"), source: "builtin" });
+      // the name must START with the word (or have it as a whole word), not merely contain it
+      expect(one(row("IBK FUND TFR FR A/C AUTOCAFETERIA * QR1 DUITNOW QR", -10)).source).toBe("default");
+      expect(one(row("IBK FUND TFR FR A/C SUPERFOODMART * QR1 DUITNOW QR", -10)).source).toBe("default");
+    });
+    it("treats a MEPS withdrawal as cash, and the bank's own transaction charge as a bank charge", () => {
+      expect(one(row("WITHDRAWAL AT MEPS", -50))).toMatchObject({ kind: "transfer", source: "builtin", reason: expect.stringMatching(/Cash withdrawal/) });
+      expect(one(row("TRANSACTION CHARGE", -1))).toMatchObject({ kind: "expense", categoryId: cat("Miscellaneous"), item: "Bank charge", source: "builtin", confidence: "high" });
+    });
+    it("an ATM withdrawal FEE is a bank charge, not cash in your hand, even though its wording says ATM", () => {
+      // the fee and the withdrawal it belongs to share a reference number; only the withdrawal is cash
+      expect(one(row("ATM WITHDRAWAL FEES (ISSUER) 1234B5678901", -1))).toMatchObject({ kind: "expense", categoryId: cat("Miscellaneous"), item: "Bank charge", source: "builtin" });
+      expect(one(row("ATM WITHDRAWAL AT MEPS 1234B5678901", -50))).toMatchObject({ kind: "transfer", transferAccountId: CASH, source: "builtin" });
+      expect(one(row("INTERBANK ATM FEE", -1))).toMatchObject({ kind: "expense", item: "Bank charge" });
+    });
+    it("recognises coffee shops and car parks, which run words together less often but never say 'parking'", () => {
+      expect(one(row("PAYMENT VIA MYDEBIT GIGI COFFEE-BDR UTA* PETALING JAYA, MYS PAYMENT VIA", -14))).toMatchObject({ categoryId: cat("Eating Out"), item: "Coffee / drinks" });
+      expect(one(row("PAYMENT VIA MYDEBIT Jaya One Car Park * PETALING JAYA PAYMENT VIA", -5.5))).toMatchObject({ categoryId: cat("Transport & Fuel"), item: "Parking" });
+      expect(one(row("PAYMENT VIA MYDEBIT APSB.MY.LOWYAT_PLAZ* Kuala Lumpur PAYMENT VIA", -8))).toMatchObject({ categoryId: cat("Transport & Fuel"), item: "Parking" });
     });
   });
 
@@ -241,6 +273,96 @@ describe("5. salary and 6. the rest", () => {
     it("leaves a lone refund alone: its debit is not in this statement", () => {
       expect(classifyRows([hold[1]], ctx())[0].proposal.kind).toBe("income");
     });
+  });
+
+  describe("a transfer the bank reversed within the statement", () => {
+    const reversed = [
+      row("TRANSFER FROM A/C JANE A/L DOE * Savings", -500, "2026-03-17"),
+      row("TRNSFR FROM A/C REV", 500, "2026-03-17"),
+    ];
+    it("skips BOTH halves: the money went out and came straight back, so it is no transfer at all", () => {
+      const out = classifyRows(reversed, ctx({ rules: [{ pattern: "jane a l doe", kind: "transfer", categoryId: null, item: null, billId: null, transferAccountId: SAVINGS }] }));
+      expect(out.map((r) => [r.proposal.kind, r.proposal.source])).toEqual([["skip", "hold"], ["skip", "hold"]]);
+      expect(out[0].proposal.reason).toMatch(/Reversed by the bank.*RM 500\.00.*went out/);
+    });
+    it("pairs each reversal with its own amount when two happen on the same day", () => {
+      const two = [
+        row("TRANSFER FROM A/C JANE A/L DOE * Savings", -500, "2026-03-17"),
+        row("TRNSFR FROM A/C REV", 500, "2026-03-17"),
+        row("TRANSFER FROM A/C JANE A/L DOE * Savings", -22, "2026-03-17"),
+        row("TRNSFR FROM A/C REV", 22, "2026-03-17"),
+      ];
+      expect(classifyRows(two, ctx()).map((r) => r.proposal.source)).toEqual(["hold", "hold", "hold", "hold"]);
+    });
+    it("works the other way round too: money that came in and was taken back", () => {
+      const back = [row("DUITNOW CREDIT SOMEONE", 80, "2026-03-10"), row("REVERSAL DUITNOW CREDIT", -80, "2026-03-11")];
+      const out = classifyRows(back, ctx());
+      expect(out.map((r) => r.proposal.source)).toEqual(["hold", "hold"]);
+      expect(out[0].proposal.reason).toMatch(/came in and was taken straight back/);
+    });
+    it("recognises a reversed card payment (Maybank's truncated 'PYMT VIA MYDEBIT RE') and keeps the payment that stood", () => {
+      const parking = [
+        row("PAYMENT VIA MYDEBIT STALL IPOH", -5, "2026-04-06"),
+        row("PYMT VIA MYDEBIT RE STALL IPOH", 5, "2026-04-06"),
+        row("PAYMENT VIA MYDEBIT STALL IPOH", -1, "2026-04-06"),
+      ];
+      expect(classifyRows(parking, ctx()).map((r) => r.proposal.source)).toEqual(["hold", "hold", "default"]);
+      // a merchant that merely starts with "re" is not a reversal
+      const regal = [row("PAYMENT VIA MYDEBIT REGAL CAFE", -5, "2026-04-06"), row("PYMT VIA MYDEBIT REGAL CAFE", 5, "2026-04-06")];
+      expect(classifyRows(regal, ctx()).some((r) => r.proposal.source === "hold")).toBe(false);
+    });
+    it("leaves a lone reversal alone, and one whose original is more than 3 days away", () => {
+      expect(classifyRows([reversed[1]], ctx())[0].proposal.source).not.toBe("hold");
+      const late = [row("TRANSFER FROM A/C JANE A/L DOE * Savings", -500, "2026-03-10"), row("TRNSFR FROM A/C REV", 500, "2026-03-17")];
+      expect(classifyRows(late, ctx()).some((r) => r.proposal.source === "hold")).toBe(false);
+    });
+    it("does not pair a reversal with a debit of a different amount", () => {
+      const other = [row("TRANSFER FROM A/C JANE A/L DOE * Savings", -400, "2026-03-17"), row("TRNSFR FROM A/C REV", 500, "2026-03-17")];
+      expect(classifyRows(other, ctx()).some((r) => r.proposal.source === "hold")).toBe(false);
+    });
+  });
+});
+
+describe("2b. someone who shares one of your bills, paying you", () => {
+  const share = (id: number, name: string, billName: string, rm: number, keywords: string | null = name.toLowerCase()) => ({ id, name, billName, share: RM(rm), matchKeywords: keywords, active: true });
+  const shares = [share(1, "Jane", "Netflix", 22.25), share(2, "Ahmad", "Netflix", 22.25), share(3, "Jane", "Spotify", 5.15)];
+
+  it("is recognised: filed as Reimbursements, named after the bill, and linked to the person", () => {
+    expect(one(row("DUITNOW TO ACCOUNT 612772696 JANE A/L DOE Rms Oct25 to Mar26", 133.5), ctx({ shares }))).toMatchObject({
+      kind: "income", categoryId: cat("Reimbursements"), item: "Netflix share", shareId: 1, source: "share", confidence: "high", reason: expect.stringMatching(/Jane.*Netflix/),
+    });
+  });
+
+  it("another person in the same plan", () => {
+    expect(one(row("DUITNOW TO ACCOUNT 5 AHMAD BIN ALI", 22.25), ctx({ shares }))).toMatchObject({ shareId: 2, item: "Netflix share" });
+  });
+
+  it("one friend in two plans: the amount decides which bill it was for", () => {
+    expect(one(row("DUITNOW JANE", 30.9), ctx({ shares }))).toMatchObject({ shareId: 3, item: "Spotify share" }); // 6 x 5.15
+    expect(one(row("DUITNOW JANE", 66.75), ctx({ shares }))).toMatchObject({ shareId: 1, item: "Netflix share" }); // 3 x 22.25
+  });
+
+  it("is left for you when it can't tell (an amount that fits no whole month of either)", () => {
+    expect(one(row("DUITNOW JANE", 7), ctx({ shares }))).toMatchObject({ source: "default", shareId: null });
+  });
+
+  it("is never claimed for money going OUT, or for someone who isn't on a plan", () => {
+    expect(one(row("DUITNOW TO ACCOUNT JANE A/L DOE", -22.25), ctx({ shares })).shareId).toBeNull();
+    expect(one(row("DUITNOW SOMEONE ELSE", 22.25), ctx({ shares })).shareId).toBeNull();
+  });
+
+  it("ignores people who have left", () => {
+    expect(one(row("DUITNOW JANE", 22.25), ctx({ shares: [{ ...share(1, "Jane", "Netflix", 22.25), active: false }] })).shareId).toBeNull();
+  });
+
+  it("a rule you taught it still wins", () => {
+    const rules = [{ pattern: "jane", kind: "income" as const, categoryId: cat("Other Income"), item: "Jane (other)", billId: null, transferAccountId: null }];
+    expect(one(row("DUITNOW JANE", 22.25), ctx({ shares, rules }))).toMatchObject({ source: "rule", categoryId: cat("Other Income"), shareId: null });
+  });
+
+  it("a payment already recorded is still just a duplicate", () => {
+    const existing: ExistingTx[] = [{ id: 9, date: "2026-09-10", amount: RM(22.25), type: "income", accountId: MAIN, toAccountId: null, importKey: "k" }];
+    expect(one(row("DUITNOW JANE", 22.25), ctx({ shares, existing })).source).toBe("duplicate");
   });
 });
 

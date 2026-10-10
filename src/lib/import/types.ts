@@ -36,6 +36,11 @@ export type BalanceCheck = {
   openingVerified: boolean;
   /** No opening balance was stated, so the FIRST row's direction (money in/out) is only a guess. */
   firstRowGuessed: boolean;
+  /**
+   * For a statement that prints NO running balance per line but does state where the account started and ended (a
+   * wallet's history): the statement is checked as a whole instead. `ok` = opening + every line = closing, to the sen.
+   */
+  total?: { opening: number; closing: number; ok: boolean };
 };
 
 export type CsvLayout = {

@@ -1,4 +1,5 @@
 import { descriptionMatchesBill, normalizeName, type BillDef } from "@/lib/plan/bills";
+import { pickShare, type ShareDef } from "@/lib/plan/shares";
 import { stripBoilerplate } from "./boilerplate";
 import { BUILTIN_RULES } from "./builtin-rules";
 import { findCardHolds } from "./holds";
@@ -22,9 +23,11 @@ export type Proposal = {
   categoryId: number | null;
   item: string;
   billId: number | null;
+  /** For money in: the person (sharing one of your bills) whose payment this is. */
+  shareId: number | null;
   /** For transfers: the OTHER account (money leaves the statement account to it, or arrives from it). */
   transferAccountId: number | null;
-  source: "duplicate" | "hold" | "rule" | "bill" | "builtin" | "salary" | "default";
+  source: "duplicate" | "hold" | "rule" | "share" | "bill" | "history" | "builtin" | "salary" | "default";
   /** 'low' rows are the ones to look at. */
   confidence: "high" | "low";
   /** One line of "why", shown on the review screen. */
@@ -62,12 +65,22 @@ export type SavedRule = {
   transferAccountId: number | null;
 };
 
+/** Someone who shares one of your bills, as far as the classifier needs to know them. */
+export type ClassifyShare = Pick<ShareDef, "id" | "name" | "matchKeywords" | "share" | "active"> & { billName: string };
+
+/** A payee your imported history files the same way every time (see history.ts). */
+export type HistoryRule = { pattern: string; kind: "expense" | "income"; categoryId: number; item: string; count: number };
+
 export type ClassifyContext = {
   accountId: number;
   categories: { id: number; name: string; type: "income" | "expense" }[];
   accounts: { id: number; type: string }[];
   bills: BillDef[];
+  /** People who pay you back for a shared bill: money in from them is recognised as their payment. */
+  shares?: ClassifyShare[];
   rules: SavedRule[];
+  /** Payees already filed one way, every time, in what you have imported. Below your own rules and bills, above the built-ins. */
+  history?: HistoryRule[];
   existing: ExistingTx[];
   /** Take-home pay in sen (0 if unknown): a credit near this on the spending account is probably salary. */
   expectedIncome: number;
@@ -141,7 +154,7 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
       ...row,
       key,
       group,
-      proposal: { categoryId: null, item, billId: null, transferAccountId: null, ...p },
+      proposal: { categoryId: null, item, billId: null, shareId: null, transferAccountId: null, ...p },
     });
 
     // 1. Already here?
@@ -201,6 +214,24 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
       });
     }
 
+    // 2b. A person who shares one of your bills, paying you their part. (Several people matching, or an amount that fits
+    // no whole month, is left for you rather than guessed.)
+    if (!out && ctx.shares?.length) {
+      const who = pickShare(ctx.shares, row.description, abs);
+      if (who) {
+        const cat = catByName.get("Reimbursements") ?? catByName.get("Other Income");
+        return make({
+          kind: "income",
+          categoryId: cat?.id ?? null,
+          item: `${who.billName} share`,
+          shareId: who.id,
+          source: "share",
+          confidence: "high",
+          reason: `${who.name} paying their share of ${who.billName}`,
+        });
+      }
+    }
+
     // 3. A recurring bill (money out of the account that pays it).
     if (out) {
       const candidates = ctx.bills.filter((b) => b.active && b.accountId === ctx.accountId);
@@ -236,8 +267,26 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
       }
     }
 
+    // 3b. A payee your own imported history files one way, every time. Never for a name a transfer rule knows (your own
+    // name): on the statement that rule points back at, step 2 skips it, and the line must NOT fall through to here and
+    // be filed as spending when it is money moving between your accounts.
+    const payee = rulePattern(row.description);
+    const knownTransferName = rules.some((r) => r.kind === "transfer" && norm.includes(normalizeName(r.pattern)));
+    const past = payee && !knownTransferName ? ctx.history?.find((h) => h.pattern === payee && h.kind === (out ? "expense" : "income")) : undefined;
+    const pastCat = past ? ctx.categories.find((c) => c.id === past.categoryId && c.type === past.kind) : undefined;
+    if (past && pastCat) {
+      return make({
+        kind: past.kind,
+        categoryId: pastCat.id,
+        item: past.item || item,
+        source: "history",
+        confidence: "high",
+        reason: `You've filed this as ${pastCat.name} ${past.count} times before`,
+      });
+    }
+
     // 4. A merchant we know.
-    const known = BUILTIN_RULES.find((r) => r.direction === (out ? "out" : "in") && r.pattern.test(norm));
+    const known =BUILTIN_RULES.find((r) => r.direction === (out ? "out" : "in") && r.pattern.test(norm));
     if (known) {
       if (known.cash && cashAccount) {
         return make({

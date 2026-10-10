@@ -61,6 +61,8 @@ export const transactions = sqliteTable(
     note: text("note"),
     // The recurring bill this payment settles, if any.
     billId: integer("bill_id").references(() => recurringBills.id),
+    // Money received from someone who shares a bill with you (their payment towards it). See bill_shares.
+    shareId: integer("share_id").references(() => billShares.id),
     // Fingerprint of the bank-statement row this came from; lets a re-import skip what is already here.
     importKey: text("import_key"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -135,7 +137,53 @@ export const recurringBills = sqliteTable("recurring_bills", {
   matchKeywords: text("match_keywords"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // How a shared bill is split. 'monthly': everyone owes an equal part of every month (Netflix). 'turns': ONE person pays
+  // the whole bill each month, in rotation, with you taking some months yourself (Spotify); see bill_turns.
+  sharing: text("sharing", { enum: ["monthly", "turns"] }).notNull().default("monthly"),
 });
+
+/**
+ * Someone who splits a recurring bill with you (Netflix among 4, Spotify among 6). Each person owes `share` for every
+ * month the bill is charged from `startMonth` on; whatever they send you (income entries carrying their id) is applied
+ * to the oldest unpaid month first, so a lump sum for three months and a single month both just work.
+ */
+export const billShares = sqliteTable("bill_shares", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  billId: integer("bill_id")
+    .notNull()
+    .references(() => recurringBills.id),
+  name: text("name").notNull(),
+  // What they owe per month, in sen.
+  share: integer("share").notNull(),
+  // First month they take part: 'YYYY-MM'.
+  startMonth: text("start_month").notNull(),
+  // Last month they take part, if they have left the plan ('YYYY-MM'); null = still sharing.
+  endMonth: text("end_month"),
+  // Comma-separated lowercase words that identify them on a bank line when they pay you (a surname, a nickname).
+  matchKeywords: text("match_keywords"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+/**
+ * Whose turn it is to pay a 'turns' bill, month by month. One row per month: the person who covers the WHOLE bill that
+ * month, or null when it is you. A person's payment settles their own turn, not "six months": Spotify is paid by one
+ * person a month, each of the five once per six-month cycle, and you take the first month of every cycle.
+ */
+export const billTurns = sqliteTable(
+  "bill_turns",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    billId: integer("bill_id")
+      .notNull()
+      .references(() => recurringBills.id),
+    // 'YYYY-MM'
+    month: text("month").notNull(),
+    // The person covering it; null = you.
+    shareId: integer("share_id").references(() => billShares.id),
+  },
+  (t) => [uniqueIndex("bill_turn_month_idx").on(t.billId, t.month)],
+);
 
 /** "Remember this": a statement description pattern -> how to record it. Learned during import review. */
 export const importRules = sqliteTable(

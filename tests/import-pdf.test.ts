@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractPdfLines, looksLikePdf, PdfError } from "@/lib/import/pdf-extract";
-import { parseStatementText } from "@/lib/import/statement-text";
-import { makePdf, tablePage } from "./pdf-fixture";
+import { extractPdfLines, extractPdfPages, looksLikePdf, PdfError } from "@/lib/import/pdf-extract";
+import { amountColumns, blockDirection, splitRowBlocks, splitRowBlocksPositioned } from "@/lib/import/pdf-lines";
+import { blocksHaveHeads, parseStatementText, rowBlocksToLines } from "@/lib/import/statement-text";
+import { makePdf, PRINTOUT_COLUMNS, printoutPdf, tablePage } from "./pdf-fixture";
 
 const RM = (n: number) => Math.round(n * 100);
 const COLS = [20, 90, 380, 470];
@@ -91,6 +92,90 @@ describe("PDF statements, end to end (real PDF bytes -> transactions)", () => {
     const r = parseStatementText(await extractPdfLines(shuffled));
     expect(r.rows).toMatchObject([{ date: "2026-09-01", description: "RENT", amount: -RM(965) }]);
     expect(r.check.openingVerified).toBe(true);
+  });
+});
+
+describe("a bank web page printed to PDF (several lines per transaction, the date in the middle)", () => {
+  // Invented data in the shape of CIMB Clicks' Transaction History print-out: head / date + amounts / tail, newest first,
+  // cents as separate pieces of text ("MYR 25. 00"), rows set apart by extra space.
+  const pdf = printoutPdf();
+
+  it("REGRESSION: reading line by line found no amounts at all, because of the spaced-out cents", async () => {
+    const lines = await extractPdfLines(pdf);
+    expect(lines.some((l) => /MYR 25\. 00 MYR 975\. 00/.test(l))).toBe(true); // that is really what the PDF yields
+    expect(parseStatementText(lines).rows).toHaveLength(4); // and it is now read as 25.00 / 975.00
+  });
+
+  it("splits the page into one block per transaction (after the column headings), with text above the date line", async () => {
+    const blocks = (await extractPdfPages(pdf)).flatMap((page) => splitRowBlocks(page));
+    expect(blocks).toHaveLength(5);
+    expect(blocks[0]).toEqual(["Date Transaction Details Money In Money Out Balance"]);
+    expect(blocks[1]).toEqual(["POS DEBIT", "20260301CAFE ABC KL", "03 Mar 2026 T11111 MYR 25. 00 MYR 975. 00", "01/03/2026 5814", "CAFE ABC KL"]);
+    expect(blocksHaveHeads(blocks)).toBe(true);
+  });
+
+  it("finds the Money In / Money Out headings (printed on the first page only) and each row's direction from its column", async () => {
+    const pages = await extractPdfPages(pdf);
+    const cols = amountColumns(pages);
+    expect(cols).toEqual({ inX: PRINTOUT_COLUMNS.inX, outX: PRINTOUT_COLUMNS.outX });
+    const blocks = pages.flatMap((page) => splitRowBlocksPositioned(page)).filter((b) => b.some((l) => /\d{4}/.test(l.text) && /MYR/.test(l.text)));
+    // newest first: three purchases (under Money Out), then the friend's payment (under Money In)
+    expect(blocks.map((b) => blockDirection(b, cols!))).toEqual([-1, -1, -1, 1]);
+  });
+
+  it("says nothing when the page has no Money In / Money Out headings, or the amount sits under neither", async () => {
+    expect(amountColumns(await extractPdfPages(printoutPdf(false)))).toBeNull();
+    const blocks = (await extractPdfPages(pdf)).flatMap((page) => splitRowBlocksPositioned(page));
+    const row = blocks.find((b) => b.some((l) => /03 Mar/.test(l.text)))!;
+    expect(blockDirection(row, { inX: 50, outX: 100 })).toBe(0); // the real columns are nowhere near these
+  });
+
+  it("an ordinary statement has no such headings", async () => {
+    const maybankLike = makePdf([tablePage([["ENTRY DATE", "TRANSACTION DESCRIPTION", "TRANSACTION AMOUNT", "STATEMENT BALANCE"], ["28/08/26", "SALARY ACME", "5,400.00+", "6,600.00"]], COLS)]);
+    expect(amountColumns(await extractPdfPages(maybankLike))).toBeNull();
+  });
+
+  it("an ordinary statement (the date first on each row) is not mistaken for one", async () => {
+    const maybankLike = makePdf([tablePage([["28/08/26", "SALARY ACME", "5,400.00+", "6,600.00"], ["28/08/26", "TRANSFER", "4,200.00-", "2,400.00"]], COLS)]);
+    expect(blocksHaveHeads((await extractPdfPages(maybankLike)).flatMap((page) => splitRowBlocks(page)))).toBe(false);
+  });
+
+  /** Read the way the importer does: by table row, with each amount's direction taken from its column. */
+  const readByRow = async (bytes: Uint8Array) => {
+    const pages = await extractPdfPages(bytes);
+    const positioned = pages.flatMap((page) => splitRowBlocksPositioned(page));
+    const cols = amountColumns(pages);
+    return parseStatementText(rowBlocksToLines(positioned.map((b) => b.map((l) => l.text)), cols ? positioned.map((b) => blockDirection(b, cols)) : []));
+  };
+
+  it("REGRESSION: the oldest line, a friend paying in with nothing in its text to say so, is money IN (it was guessed as a purchase)", async () => {
+    const r = await readByRow(pdf);
+    expect(r.rows[0]).toMatchObject({ date: "2026-02-28", amount: RM(22.25), signedBy: "hint" });
+    expect(r.rows[0].description).toMatch(/JANE A\/L DOE.*Netflix jul/);
+    // ...and with no headings to read the columns from, it can only guess (and says so), as before
+    const blind = await readByRow(printoutPdf(false));
+    expect(blind.rows[0]).toMatchObject({ amount: -RM(22.25), signedBy: "guess" });
+    expect(blind.check.firstRowGuessed).toBe(true);
+  });
+
+  it("rebuilds each transaction from its head, date line and tail, and reconciles with the running balance", async () => {
+    const r = await readByRow(pdf);
+    // oldest first, even though the page lists newest first
+    expect(r.rows.map((x) => [x.date, x.amount])).toEqual([
+      ["2026-02-28", RM(22.25)],
+      ["2026-03-01", -RM(4.95)],
+      ["2026-03-02", -RM(10)],
+      ["2026-03-03", -RM(25)],
+    ]);
+    // each row has ITS OWN head and tail, not its neighbour's
+    expect(r.rows[3].description).toMatch(/POS DEBIT.*CAFE ABC KL/);
+    expect(r.rows[3].description).not.toMatch(/KEDAI SATU/);
+    expect(r.rows[2].description).toMatch(/555111.*KEDAI SATU/);
+    expect(r.rows[2].description).not.toMatch(/CAFE/);
+    expect(r.check).toMatchObject({ checked: 3, matched: 3, mismatches: [] });
+    expect(r.openingBalance).toBe(RM(992.7)); // 1,014.95 after the first line, which was +22.25
+    expect(r.check.firstRowGuessed).toBe(false); // the page's columns settled the direction, so nothing is a guess
+    expect(r.warnings).toEqual([]);
   });
 });
 

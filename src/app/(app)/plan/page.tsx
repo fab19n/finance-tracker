@@ -1,4 +1,4 @@
-import { FileUp, Settings2 } from "lucide-react";
+import { FileUp, Settings2, Users } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { recordSalary } from "@/app/actions/plan";
@@ -32,12 +32,15 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             {cycle.source === "setting" && " (estimated - record your salary to make it exact)"}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/import" className="btn">
             <FileUp size={16} aria-hidden /> Import statement
           </Link>
           <Link href="/plan/bills" className="btn">
             <Settings2 size={16} aria-hidden /> Manage bills
+          </Link>
+          <Link href="/plan/shared" className="btn">
+            <Users size={16} aria-hidden /> Shared bills
           </Link>
         </div>
       </div>

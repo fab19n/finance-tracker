@@ -23,7 +23,13 @@ export type PreviewOk = {
    * where "here": in this statement, but the other account's imported history has no matching line.
    */
   oneSided: { date: string; amount: number; note: string; where: "other" | "here" }[];
-  /** `holds` = card pre-authorisations and their refunds, which cancel out and are skipped. */
+  /**
+   * Set when the account already has history but the bank's balance at the start of this statement (`statement`) is
+   * not what the books say it held then (`books`). `looksLike` names another account whose books DO match, which
+   * means the statement was most likely uploaded for the wrong account.
+   */
+  accountCheck: { date: string; statement: number; books: number; looksLike: { id: number; name: string } | null } | null;
+  /** `holds` = card pre-authorisations and their refunds, and transfers the bank reversed: they cancel out and are skipped. */
   stats: { total: number; fresh: number; duplicates: number; holds: number; needsReview: number };
   /**
    * For the optional "set the opening balance so the books match the bank" step. `existingEntries` counts entries
@@ -56,6 +62,8 @@ export type CommitRow = {
   categoryId: number | null;
   item: string;
   billId: number | null;
+  /** Money in only: the person sharing one of your bills whose payment this is. Absent = nobody's. */
+  shareId?: number | null;
   transferAccountId: number | null;
   /** Teach it: next time a description like this arrives, decide the same way. */
   remember: boolean;

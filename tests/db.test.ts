@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { inArray, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { DB } from "@/db/open";
 import { accounts, categories, holdings, transactions, valuations } from "@/db/schema";
@@ -130,5 +133,71 @@ describe("seeding", () => {
     const names = h.db.select().from(categories).all().map((c) => c.name);
     expect(names).toEqual(expect.arrayContaining(["Groceries", "Salary", "Unaccounted cash", "Cash adjustment"]));
     expect(h.db.select().from(accounts).all().filter((a) => a.type === "bank")).toHaveLength(1);
+  });
+
+  it("includes an e-wallet top-up category (spending) and a reimbursements category (money in)", () => {
+    const all = h.db.select().from(categories).all();
+    expect(all.find((c) => c.name === "E-wallet top-up")).toMatchObject({ type: "expense", archived: false });
+    expect(all.find((c) => c.name === "Reimbursements")).toMatchObject({ type: "income", archived: false });
+    expect(new Set(all.map((c) => c.name)).size).toBe(all.length); // no name twice
+  });
+});
+
+describe("migration 0005: adds the IT & Gadgets category to a database that already exists", () => {
+  const file = path.join(process.cwd(), "drizzle", "0005_add_it_and_gadgets_category.sql");
+  const fresh = async () => (await import("@/db/open")).openDb(":memory:");
+  const run = (db: DB) => {
+    for (const statement of fs.readFileSync(file, "utf8").split("--> statement-breakpoint")) db.run(sql.raw(statement));
+  };
+  const named = (db: DB) => db.select().from(categories).all().filter((c) => c.name === "IT & Gadgets");
+
+  it("is a default for a new database", async () => {
+    expect(named(await fresh())).toMatchObject([{ type: "expense", nature: "want", icon: "💻", archived: false }]);
+  });
+  it("adds it to a database that has categories but lacks it, and never twice", async () => {
+    const db = await fresh();
+    db.delete(categories).where(inArray(categories.name, ["IT & Gadgets"])).run();
+    run(db);
+    run(db);
+    expect(named(db)).toMatchObject([{ type: "expense", nature: "want" }]);
+  });
+  it("leaves a brand-new, still-empty database alone, so the seeder can add ALL the defaults", async () => {
+    const db = await fresh();
+    db.delete(categories).run();
+    run(db);
+    expect(db.select().from(categories).all()).toHaveLength(0);
+  });
+});
+
+describe("migration 0003: adds the two categories to a database that already exists", () => {
+  // Each test gets its own throwaway database: these tests delete categories, which the shared one above must keep.
+  const file = path.join(process.cwd(), "drizzle", "0003_add_ewallet_topup_and_reimbursement_categories.sql");
+  const fresh = async () => (await import("@/db/open")).openDb(":memory:");
+  const run = (db: DB) => {
+    for (const statement of fs.readFileSync(file, "utf8").split("--> statement-breakpoint")) db.run(sql.raw(statement));
+  };
+  const named = (db: DB, n: string) => db.select().from(categories).all().filter((c) => c.name === n);
+
+  it("adds them to a database that has categories but lacks these two", async () => {
+    const db = await fresh();
+    db.delete(categories).where(inArray(categories.name, ["E-wallet top-up", "Reimbursements"])).run();
+    run(db);
+    expect(named(db, "E-wallet top-up")).toMatchObject([{ type: "expense", nature: "want", icon: "👛" }]);
+    expect(named(db, "Reimbursements")).toMatchObject([{ type: "income" }]);
+  });
+
+  it("running it again adds nothing (it never duplicates a category you already have)", async () => {
+    const db = await fresh(); // already has both, from the seeder
+    run(db);
+    run(db);
+    expect(named(db, "E-wallet top-up")).toHaveLength(1);
+    expect(named(db, "Reimbursements")).toHaveLength(1);
+  });
+
+  it("leaves a brand-new, still-empty database alone, so the seeder can add ALL the defaults", async () => {
+    const db = await fresh();
+    db.delete(categories).run(); // the seeder runs AFTER migrations, so a new database has no categories when this runs
+    run(db);
+    expect(db.select().from(categories).all()).toHaveLength(0);
   });
 });

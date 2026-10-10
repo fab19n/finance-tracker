@@ -22,6 +22,34 @@
       "when": 1791556617985,
       "tag": "0002_nappy_killer_shrike",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791626205463,
+      "tag": "0003_add_ewallet_topup_and_reimbursement_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791626719120,
+      "tag": "0004_shared_bills",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791634298350,
+      "tag": "0005_add_it_and_gadgets_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791640684318,
+      "tag": "0006_turn_based_sharing",
+      "breakpoints": true
     }
   ]
 }

@@ -1,11 +1,11 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { accounts, categories, importRules, recurringBills, transactions } from "@/db/schema";
+import { accounts, billShares, billTurns, categories, importRules, recurringBills, transactions } from "@/db/schema";
 import { parseSen } from "@/lib/money";
 import { getRoleAccounts } from "@/lib/queries/plan";
 
@@ -78,6 +78,13 @@ export async function deleteBill(formData: FormData): Promise<void> {
   if (!id) done("/plan/bills");
   const db = await getDb();
   db.update(transactions).set({ billId: null }).where(eq(transactions.billId, id)).run();
+  // People sharing this bill go with it; money they sent stays, just no longer counted towards anyone.
+  const shareIds = db.select({ id: billShares.id }).from(billShares).where(eq(billShares.billId, id)).all().map((s) => s.id);
+  db.delete(billTurns).where(eq(billTurns.billId, id)).run();
+  if (shareIds.length) {
+    db.update(transactions).set({ shareId: null }).where(inArray(transactions.shareId, shareIds)).run();
+    db.delete(billShares).where(eq(billShares.billId, id)).run();
+  }
   db.delete(importRules).where(eq(importRules.billId, id)).run();
   db.delete(recurringBills).where(eq(recurringBills.id, id)).run();
   done("/plan/bills");

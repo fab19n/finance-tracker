@@ -58,6 +58,15 @@ export function monthTotals(rows: FlowRow[], month: string, throughDay = 31): Mo
   };
 }
 
+/**
+ * Has a paycheck landed in this stretch? A few sen of interest, or a friend paying back RM 22, is not one: without this,
+ * RM 0.11 of interest turned "no pay recorded yet" into a red "Overspent" and "-2461200% of income". "Real" is a tenth of
+ * the pay you expect (or RM 5 when you haven't said).
+ */
+export function paycheckIn(income: number, expectedIncome: number): boolean {
+  return income >= Math.max(500, Math.round(expectedIncome * 0.1));
+}
+
 export type CategorySpend = {
   categoryId: number | null;
   name: string;
