@@ -3,7 +3,7 @@ import type { DB } from "@/db/open";
 import { accounts, categories, importRules, transactions } from "@/db/schema";
 import { shiftDays } from "@/lib/dates";
 import { selectBills } from "@/lib/queries/plan";
-import type { PreviewResult } from "./api-types";
+import type { PreviewOk, PreviewResult } from "./api-types";
 import { classifyRows, type ExistingTx, type SavedRule } from "./classify";
 import { countEntriesBefore } from "./commit";
 import { parseCsvStatement, type CsvOverrides } from "./csv";
@@ -19,6 +19,11 @@ export type PreviewInput = {
   overrides?: CsvOverrides;
   /** Take-home pay in sen, to spot a salary credit. */
   expectedIncome: number;
+  /**
+   * Leave out every line before this day (YYYY-MM-DD). Two banks' statements rarely start on the same day; starting
+   * both accounts from one date keeps the transfers between them from being counted before the other side begins.
+   */
+  startDate?: string;
 };
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -97,6 +102,19 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
     return { ok: false, error: warnings[0] ?? "No transactions were found in that file." };
   }
 
+  // Start from a chosen day. The starting balance becomes the bank's own balance just before the first line kept.
+  // Lines keep their original positions, so their fingerprints equal those of a full import of the same file.
+  let leftOut = 0;
+  if (input.startDate) {
+    const cut = rows.findIndex((r) => r.date >= input.startDate!);
+    if (cut === -1) return { ok: false, error: `Every line in this statement is before ${input.startDate}, so there is nothing to import from it.` };
+    if (cut > 0) {
+      leftOut = cut;
+      openingBalance = rows[cut - 1].balance;
+      rows = rows.slice(cut);
+    }
+  }
+
   const first = rows[0].date;
   const last = rows[rows.length - 1].date;
   const lo = first < last ? first : last;
@@ -110,6 +128,7 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
       accountId: transactions.accountId,
       toAccountId: transactions.toAccountId,
       importKey: transactions.importKey,
+      note: transactions.note,
     })
     .from(transactions)
     .where(between(transactions.date, shiftDays(lo, -3), shiftDays(hi, 3)))
@@ -127,7 +146,29 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
     isSpendingAccount: account.purpose === "spending",
   });
 
-  const duplicates = classified.filter((r) => r.proposal.kind === "skip").length;
+  // Transfers that exist on only one side. A transfer shows up once on EACH account's statement, so one that doesn't is
+  // money that went to (or came from) an account this app doesn't know about.
+  const oneSided: PreviewOk["oneSided"] = [];
+  const thisStatement = new Set(classified.map((r) => r.key));
+  const matched = new Set(classified.map((r) => r.proposal.matchedId).filter((id): id is number => id !== undefined));
+  for (const e of existing) {
+    if (e.type !== "transfer" || e.importKey === null || e.date < lo || e.date > hi) continue;
+    if (e.accountId !== account.id && e.toAccountId !== account.id) continue;
+    if (thisStatement.has(e.importKey) || matched.has(e.id)) continue;
+    oneSided.push({ date: e.date, amount: e.toAccountId === account.id ? e.amount : -e.amount, note: (e.note ?? "").replace(/\s+/g, " ").slice(0, 70), where: "other" });
+  }
+  const accountType = new Map(db.select({ id: accounts.id, type: accounts.type }).from(accounts).all().map((a) => [a.id, a.type]));
+  // Only judge the other side if its own statement has been imported for these dates (else it is simply not here yet).
+  const otherImported = (id: number) => existing.some((e) => e.date >= lo && e.date <= hi && e.accountId === id && e.type !== "transfer");
+  for (const r of classified) {
+    const p = r.proposal;
+    if (p.kind !== "transfer" || p.source === "duplicate" || !p.transferAccountId || accountType.get(p.transferAccountId) === "cash") continue;
+    if (otherImported(p.transferAccountId)) oneSided.push({ date: r.date, amount: r.amount, note: r.description.replace(/\s+/g, " ").slice(0, 70), where: "here" });
+  }
+  oneSided.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const duplicates = classified.filter((r) => r.proposal.source === "duplicate").length;
+  const holds = classified.filter((r) => r.proposal.source === "hold").length;
   const entries = countEntriesBefore(db, account.id, lo);
 
   return {
@@ -140,10 +181,13 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
     warnings,
     skipped,
     dateRange: { from: lo, to: hi },
+    leftOut,
+    oneSided,
     stats: {
       total: classified.length,
-      fresh: classified.length - duplicates,
+      fresh: classified.length - duplicates - holds,
       duplicates,
+      holds,
       needsReview: classified.filter((r) => r.proposal.kind !== "skip" && r.proposal.confidence === "low").length,
     },
     account: { id: account.id, name: account.name, existingEntries: entries, openingBalance: account.openingBalance },

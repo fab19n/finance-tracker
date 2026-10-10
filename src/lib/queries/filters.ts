@@ -13,7 +13,10 @@ export type TxView = {
   raw: { q: string; category: string; account: string; type: string };
 };
 
-/** Turn URL search params into query filters. Shared by the page and the CSV export. */
+/**
+ * Turn URL search params into query filters. Shared by the page and the CSV export.
+ * With no `month` it defaults to the current one, i.e. it reads the clock: call `await connection()` first in a page.
+ */
 export function parseTxSearch(sp: SearchParams): TxView {
   const monthParam = first(sp.month);
   const month = monthParam === "all" ? "all" : isMonth(monthParam) ? monthParam : currentMonth();

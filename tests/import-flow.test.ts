@@ -75,7 +75,8 @@ describe("preview: reading and proposing", () => {
     expect(byDesc("NETFLIX")).toMatchObject({ item: "Netflix", source: "bill", confidence: "high" });
     expect(byDesc("PETRONAS")).toMatchObject({ categoryId: cat("Transport & Fuel"), item: "Petrol", source: "builtin" });
     expect(byDesc("ATM")).toMatchObject({ kind: "transfer", transferAccountId: cash }); // cash out of the bank is not spending
-    expect(byDesc("MAKAN")).toMatchObject({ kind: "expense", categoryId: cat("Miscellaneous"), source: "default", confidence: "low" });
+    // an unrecognised QR payment this small is assumed to be food, but still flagged as a guess
+    expect(byDesc("MAKAN")).toMatchObject({ kind: "expense", categoryId: cat("Eating Out"), item: "Makan Enak", source: "default", confidence: "low" });
   });
 
   it("counts what needs a human look", async () => {
@@ -92,6 +93,46 @@ describe("preview: reading and proposing", () => {
     const p = await preview();
     expect(p.account).toMatchObject({ existingEntries: 0, openingBalance: 0 });
     expect(p.openingBalance).toBe(RM(1200));
+  });
+
+  describe("starting from a chosen date", () => {
+    it("leaves earlier lines out, and the starting balance becomes the bank's balance just before the first line kept", async () => {
+      const p = await preview({ startDate: "2026-09-08" });
+      expect(p.leftOut).toBe(3); // the salary, the transfer and the rent
+      expect(p.rows.map((r) => r.date)).toEqual(["2026-09-08", "2026-09-09", "2026-09-10", "2026-09-12"]);
+      expect(p.openingBalance).toBe(RM(1435)); // what the statement printed after the rent line
+      expect(p.dateRange).toEqual({ from: "2026-09-08", to: "2026-09-12" });
+    });
+
+    it("keeps each line's fingerprint, so a partial import and a full import of the same file recognise each other", async () => {
+      const full = await preview();
+      const partial = await preview({ startDate: "2026-09-08" });
+      expect(partial.rows.map((r) => r.key)).toEqual(full.rows.slice(3).map((r) => r.key));
+      commitRows(h.db, { accountId: main, rows: accept(partial), setOpeningBalance: null });
+      const again = await preview();
+      expect(again.rows.map((r) => r.proposal.source === "duplicate")).toEqual([false, false, false, true, true, true, true]);
+    });
+
+    it("with the starting balance applied, the app ends on the bank's own closing balance", async () => {
+      const p = await preview({ startDate: "2026-09-08" });
+      const res = commitRows(h.db, { accountId: main, rows: accept(p), setOpeningBalance: p.openingBalance });
+      expect(res).toMatchObject({ ok: true, openingSet: true });
+      const opening = h.db.select().from(accounts).where(eq(accounts.id, main)).get()!.openingBalance;
+      const net = txs().reduce((s, t) => s + (t.type === "income" ? t.amount : t.type === "expense" || (t.type === "transfer" && t.accountId === main) ? -t.amount : 0), 0);
+      expect(opening + net).toBe(RM(965.6)); // the last balance printed on the statement
+    });
+
+    it("a start date on or before the first line changes nothing", async () => {
+      const p = await preview({ startDate: "2026-08-01" });
+      expect(p.leftOut).toBe(0);
+      expect(p.rows).toHaveLength(7);
+      expect(p.openingBalance).toBe(RM(1200));
+    });
+
+    it("says so plainly when every line is earlier than the start date", async () => {
+      const r = await buildPreview(h.db, { accountId: main, text: MAIN_STATEMENT, expectedIncome: RM(5400), startDate: "2027-01-01" });
+      expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/before 2027-01-01/) });
+    });
   });
 });
 
@@ -133,7 +174,8 @@ describe("commit: saving the reviewed rows", () => {
       rows: accept(p, (r) => (r.description.includes("MAKAN") ? { categoryId: cat("Eating Out"), item: "QR meal", remember: true } : {})),
       setOpeningBalance: null,
     });
-    expect(h.db.select().from(importRules).all()).toMatchObject([{ pattern: "duitnow qr makan enak", kind: "expense", categoryId: cat("Eating Out"), item: "QR meal" }]);
+    // the pattern is the payee, not the bank's "DUITNOW QR" wrapper, so it can't swallow every other QR payment
+    expect(h.db.select().from(importRules).all()).toMatchObject([{ pattern: "makan enak", kind: "expense", categoryId: cat("Eating Out"), item: "QR meal" }]);
 
     const next = await preview({ text: "BEGINNING BALANCE 100.00\n20/10/26 DUITNOW QR MAKAN ENAK 99887 12.00- 88.00", accountId: main });
     expect(next.rows[0].proposal).toMatchObject({ source: "rule", confidence: "high", categoryId: cat("Eating Out"), item: "QR meal" });
@@ -252,6 +294,44 @@ describe("commit refuses bad input and writes NOTHING", () => {
     const res = commitRows(h.db, { accountId: main, rows: [base()], setOpeningBalance: RM(1200) });
     expect(res).toMatchObject({ ok: true, openingSet: false });
     expect(h.db.select().from(accounts).where(eq(accounts.id, main)).get()!.openingBalance).toBe(RM(500));
+  });
+});
+
+describe("transfers that appear on only ONE side (money that went to an account you don't track)", () => {
+  const toSavings = (r: PreviewOk["rows"][number]) => (r.description.startsWith("TRANSFER TO A/C") ? { kind: "transfer" as const, transferAccountId: savings, categoryId: null } : {});
+  const importMain = async () => commitRows(h.db, { accountId: main, rows: accept(await preview(), toSavings), setOpeningBalance: null });
+  // a savings statement covering the same dates
+  const savingsText = (withCredit: boolean) =>
+    ["BEGINNING BALANCE 20,000.00", "28/08/26 SOME DEPOSIT 100.00+ 20,100.00", ...(withCredit ? ["28/08/26 TRANSFER FROM A/C 4,200.00+ 24,300.00"] : []), "05/09/26 INTEREST CREDIT 12.40+ 24,312.40"].join("\n");
+
+  it("flags a transfer recorded from the other statement that this statement doesn't show", async () => {
+    await importMain();
+    const p = await preview({ accountId: savings, text: savingsText(false) });
+    expect(p.oneSided).toEqual([expect.objectContaining({ date: "2026-08-28", amount: RM(4200), where: "other", note: expect.stringMatching(/TRANSFER TO A\/C/) })]);
+  });
+
+  it("flags a transfer in THIS statement when the other account is already imported for those dates but has no matching line", async () => {
+    h.db.insert(importRules).values({ pattern: "mr tan", kind: "transfer", transferAccountId: savings }).run();
+    const s = await preview({ accountId: savings, text: savingsText(false) });
+    commitRows(h.db, { accountId: savings, rows: accept(s), setOpeningBalance: null });
+    const p = await preview();
+    expect(p.oneSided).toEqual([expect.objectContaining({ date: "2026-08-28", amount: -RM(4200), where: "here" })]);
+  });
+
+  it("says nothing when every transfer is on both sides", async () => {
+    await importMain();
+    expect((await preview({ accountId: savings, text: savingsText(true) })).oneSided).toEqual([]);
+  });
+
+  it("says nothing while the other account simply hasn't been imported yet", async () => {
+    h.db.insert(importRules).values({ pattern: "mr tan", kind: "transfer", transferAccountId: savings }).run();
+    expect((await preview()).oneSided).toEqual([]);
+  });
+
+  it("never counts a cash withdrawal: cash has no statement to appear on", async () => {
+    const p = await preview();
+    expect(p.rows.find((r) => r.description.includes("ATM"))!.proposal).toMatchObject({ kind: "transfer", transferAccountId: cash });
+    expect(p.oneSided).toEqual([]);
   });
 });
 

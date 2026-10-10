@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
 import Link from "next/link";
+import { connection } from "next/server";
 import { TransactionRow } from "@/components/TransactionRow";
 import { dayLabel, monthLabel, shiftMonth } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
@@ -14,6 +15,8 @@ export default async function TransactionsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  // parseTxSearch defaults the month to "now", so the render must already be at request time (see src/lib/dates.ts).
+  await connection();
   const view = parseTxSearch(await searchParams);
   const [accounts, categories, rows, totals] = await Promise.all([
     listAccounts(true),

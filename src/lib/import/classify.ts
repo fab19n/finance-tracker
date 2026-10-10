@@ -1,10 +1,13 @@
 import { descriptionMatchesBill, normalizeName, type BillDef } from "@/lib/plan/bills";
+import { stripBoilerplate } from "./boilerplate";
 import { BUILTIN_RULES } from "./builtin-rules";
+import { findCardHolds } from "./holds";
 import type { StatementRow } from "./types";
 
 /**
  * Decide what each statement line IS, so you review instead of typing. In priority order:
  *   1. already recorded here  -> skip (re-imports and overlapping statements are safe)
+ *      a card hold released   -> skip (a pre-authorisation and its refund cancel out)
  *   2. a rule you taught it   -> your decision wins
  *   3. a recurring bill       -> linked to the bill
  *   4. a known merchant       -> category
@@ -21,11 +24,13 @@ export type Proposal = {
   billId: number | null;
   /** For transfers: the OTHER account (money leaves the statement account to it, or arrives from it). */
   transferAccountId: number | null;
-  source: "duplicate" | "rule" | "bill" | "builtin" | "salary" | "default";
+  source: "duplicate" | "hold" | "rule" | "bill" | "builtin" | "salary" | "default";
   /** 'low' rows are the ones to look at. */
   confidence: "high" | "low";
   /** One line of "why", shown on the review screen. */
   reason: string;
+  /** For a duplicate matched to an entry that was already recorded (not by exact fingerprint): that entry's id. */
+  matchedId?: number;
 };
 
 export type ClassifiedRow = StatementRow & {
@@ -44,6 +49,8 @@ export type ExistingTx = {
   accountId: number;
   toAccountId: number | null;
   importKey: string | null;
+  /** What it was recorded from, for showing it back to you. */
+  note?: string | null;
 };
 
 export type SavedRule = {
@@ -67,22 +74,32 @@ export type ClassifyContext = {
   isSpendingAccount: boolean;
 };
 
+const SMALL_QR = 4_500; // RM 45: up to this, an unrecognised QR payment is assumed to be food
+// QR payments only: a "DUITNOW TO ACCOUNT ..." line is a transfer between people, which this must never claim.
+const QR_PAYMENT = /\bduitnow qr\b|\bmae qr\b|\bmbbqr/;
+// Wording of a movement between accounts (people or your own). A QR payment never is one, even if it starts "IBK FUND TFR".
+const TRANSFER_WORDS = /\b(?:transfer|tfr|mbb ct|giro|ibft|duitnow to account|duitnow to mobile)\b/;
+
 const NOISE_TOKENS = new Set(["ibg", "ibk", "ibft", "pos", "fpx", "giro", "instant", "online", "ref", "txn"]);
 
-/** The stable core of a description: no reference numbers, at most four words. Used to group payees and to remember rules. */
+/**
+ * The stable core of a description: the payee, without the bank's wrapper words or reference numbers, at most four
+ * words. Used to group payees on the review screen and to remember rules. Empty when nothing identifies the payee
+ * (a bare "MBBQR1234 ..." line), so such lines are never grouped together or turned into a rule.
+ */
 export function rulePattern(description: string): string {
-  const tokens = normalizeName(description)
+  const tokens = normalizeName(stripBoilerplate(description))
     .split(" ")
     .filter((t) => t && !NOISE_TOKENS.has(t) && !/\d/.test(t));
-  const core = tokens.slice(0, 4).join(" ");
-  return core.length >= 3 ? core : normalizeName(description).split(" ").slice(0, 2).join(" ");
+  // "a l" (from A/L) alone would match half the statement: something readable has to be in there.
+  return tokens.some((t) => t.length >= 3) ? tokens.slice(0, 4).join(" ") : "";
 }
 
-/** "DEBIT CARD PURCHASE PETRONAS 123456" -> "Debit Card Purchase Petronas". Short, readable, no reference numbers. */
+/** "IBK FUND TFR FR A/C RESTORAN MAHBUB *QR123" -> "Restoran Mahbub". Short, readable, no wrapper words or reference numbers. */
 export function cleanItem(description: string): string {
-  const words = description
+  const words = stripBoilerplate(description)
     .split(/\s+/)
-    .filter((w) => w && !(/\d/.test(w) && w.length >= 5))
+    .filter((w) => /[a-z0-9]/i.test(w) && !/^\d+$/.test(w) && !(/\d/.test(w) && w.length >= 5))
     .join(" ")
     .toLowerCase()
     .replace(/\b[a-z]/g, (c) => c.toUpperCase())
@@ -110,13 +127,15 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
   const catByName = new Map(ctx.categories.map((c) => [c.name, c]));
   const cashAccount = ctx.accounts.find((a) => a.type === "cash");
   const rules = [...ctx.rules].sort((a, b) => b.pattern.length - a.pattern.length);
+  const holds = findCardHolds(rows);
 
   return rows.map((row, i): ClassifiedRow => {
     const key = keys[i];
     const out = row.amount < 0;
     const abs = Math.abs(row.amount);
     const norm = normalizeName(row.description);
-    const group = rulePattern(row.description);
+    // A line with no identifiable payee gets a group of its own, so correcting it never touches another line.
+    const group = rulePattern(row.description) || `line-${row.index}`;
     const item = cleanItem(row.description);
     const make = (p: Partial<Proposal> & Pick<Proposal, "kind" | "source" | "confidence" | "reason">): ClassifiedRow => ({
       ...row,
@@ -127,12 +146,23 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
 
     // 1. Already here?
     if (knownKeys.has(key)) return make({ kind: "skip", source: "duplicate", confidence: "high", reason: "Already imported from this statement" });
+    const hold = holds.get(row.index);
+    if (hold) return make({ kind: "skip", source: "hold", confidence: "high", reason: hold });
+    // Looks like a transfer if it says so, or if a rule you taught it knows this name is a transfer (so a layout that
+    // drops the bank's wording, leaving just "JANE A/L DOE", is still recognised).
+    const transferLike = rules.some((r) => r.kind === "transfer" && norm.includes(normalizeName(r.pattern))) || (!QR_PAYMENT.test(norm) && TRANSFER_WORDS.test(norm));
     const near = ctx.existing
       .filter((e) => !consumed.has(e.id) && e.amount === abs)
       .map((e) => {
         const mine = out ? e.accountId === ctx.accountId : e.type !== "transfer" ? e.accountId === ctx.accountId : e.toAccountId === ctx.accountId;
         const matchesSign = out ? (e.type === "expense" || e.type === "transfer") : (e.type === "income" || e.type === "transfer");
-        const window = e.type === "transfer" ? 3 : 2;
+        // An entry typed in by hand can be a day or two off. One imported from a statement carries the bank's own
+        // posting date, so it is the same line only on the same day: tomorrow's RM 8 lunch is not today's.
+        const imported = e.importKey !== null;
+        // A transfer imported from the OTHER account's statement is mirrored here, but only a transfer-looking line is
+        // its other half (a RM 50 QR payment is not, even when the amounts and dates happen to agree).
+        if (imported && e.type === "transfer" && !transferLike) return null;
+        const window = e.type === "transfer" ? 3 : imported ? 0 : 2;
         const gap = dayDiff(e.date, row.date);
         return mine && matchesSign && gap <= window ? { e, gap } : null;
       })
@@ -145,6 +175,7 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
         source: "duplicate",
         confidence: "high",
         reason: `Looks like the ${near.e.type} you already recorded on ${near.e.date}`,
+        matchedId: near.e.id,
       });
     }
 
@@ -246,7 +277,19 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
       }
     }
 
-    // 6. Unknown: record it plainly and ask for a look.
+    // 6a. A small QR payment is most often a meal or a snack. Say so, but still ask for a look: it is a guess.
+    const eating = catByName.get("Eating Out");
+    if (out && eating && abs <= SMALL_QR && QR_PAYMENT.test(norm)) {
+      return make({
+        kind: "expense",
+        categoryId: eating.id,
+        source: "default",
+        confidence: "low",
+        reason: "A small QR payment: assumed to be food. Change it if it isn't (it will be remembered)",
+      });
+    }
+
+    // 6b. Unknown: record it plainly and ask for a look.
     const fallback = catByName.get(out ? "Miscellaneous" : "Other Income");
     return make({
       kind: out ? "expense" : "income",

@@ -41,6 +41,8 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
   const [file, setFile] = useState<File | null>(null);
   const [text, setText] = useState("");
   const [password, setPassword] = useState("");
+  // Kept between statements: every file in a batch should start from the same day.
+  const [startDate, setStartDate] = useState("");
   const [needPassword, setNeedPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapping, setMapping] = useState<{ sample: string[][] } | null>(null);
@@ -63,6 +65,7 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
     if (file) fd.set("file", file);
     if (text.trim()) fd.set("text", text);
     if (password) fd.set("password", password);
+    if (startDate) fd.set("startDate", startDate);
     if (overrides) fd.set("overrides", JSON.stringify(overrides));
     start(async () => {
       const res: PreviewResult = await previewStatement(fd);
@@ -203,6 +206,17 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
             </p>
           </div>
 
+          <div>
+            <label className="label" htmlFor="imp-start">
+              Only import lines from this date on <span className="font-normal text-muted">(optional)</span>
+            </label>
+            <input id="imp-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input md:max-w-xs" />
+            <p className="mt-1 text-xs text-muted">
+              Use the same date for every statement and both banks (say 1 Jan). Banks cut their statements on different days, so without this, transfers between your two accounts get
+              counted before the other account&apos;s history begins.
+            </p>
+          </div>
+
           {needPassword && (
             <div>
               <label className="label" htmlFor="imp-pw">
@@ -238,9 +252,10 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
         <aside className="rounded-2xl border border-line bg-background p-4 text-xs text-muted">
           <p className="mb-1 font-semibold text-foreground">Where to get the file</p>
           <ul className="list-disc space-y-1 pl-4">
-            <li>Download the monthly <strong>PDF e-statement</strong> from your bank&apos;s website or app (Maybank2u: statements; CIMB Clicks: Services → View e-Statement).</li>
+            <li><strong>Maybank:</strong> the monthly PDF e-statement. <strong>CIMB:</strong> the Transaction History <strong>CSV</strong> (a PDF print-out of that page can&apos;t be read reliably).</li>
             <li>Bank PDFs are often password-protected. Enter the password when asked; it is used once and never stored.</li>
-            <li>Import a few months, oldest first. The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly.</li>
+            <li>Import oldest first, and your <strong>spending account before your savings account</strong>, so transfers between them are recognised once. Tick &ldquo;set the starting balance&rdquo; only on the earliest statement of each account.</li>
+            <li>The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly.</li>
           </ul>
         </aside>
       </div>
@@ -287,8 +302,32 @@ export function ImportWizard({ accounts, categories, bills }: { accounts: Accoun
         <p className="text-sm text-muted">
           <strong className="text-foreground">{stats.fresh}</strong> new
           {stats.duplicates > 0 && <> · {stats.duplicates} already recorded (skipped)</>}
+          {stats.holds > 0 && <> · {stats.holds} card hold lines that cancel out (skipped)</>}
+          {preview.leftOut > 0 && <> · {preview.leftOut} earlier lines left out (before {dayLabel(startDate)})</>}
           {stats.needsReview > 0 && <> · <strong className="text-warn">{stats.needsReview}</strong> need a look</>}
         </p>
+
+        {preview.oneSided.length > 0 && (
+          <div className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
+            <p className="flex gap-2 font-medium">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+              {preview.oneSided.length} transfer{preview.oneSided.length === 1 ? "" : "s"} between your accounts {preview.oneSided.length === 1 ? "has" : "have"} no matching line on the other side
+            </p>
+            <p className="mt-1 text-xs">
+              A transfer should appear on both accounts&apos; statements. These didn&apos;t, so the money probably went to (or came from) an account this app doesn&apos;t track. If so, add that account in Settings and
+              edit these transfers; otherwise the two balances will drift apart by these amounts.
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              {preview.oneSided.slice(0, 8).map((t, i) => (
+                <li key={i}>
+                  {dayLabel(t.date)} · <strong>{t.amount > 0 ? "+" : "−"}{formatRM(Math.abs(t.amount))}</strong> · {t.note || "transfer"}
+                  <span className="text-muted"> ({t.where === "other" ? "from the other account's statement; not on this one" : "on this statement; not on the other account's"})</span>
+                </li>
+              ))}
+              {preview.oneSided.length > 8 && <li>…and {preview.oneSided.length - 8} more</li>}
+            </ul>
+          </div>
+        )}
 
         {preview.openingBalance !== null && preview.account.existingEntries === 0 && (
           <label className="flex items-start gap-2 text-sm">

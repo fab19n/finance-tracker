@@ -62,6 +62,38 @@ describe("1. duplicates are skipped, so re-importing is safe", () => {
     expect(out.map((r) => r.proposal.kind)).toEqual(["skip", "expense"]);
   });
 
+  it("REGRESSION: a line imported from a statement only matches on the SAME day (tomorrow's RM 8 lunch is not today's)", () => {
+    // Consecutive statements meet on a boundary, and people buy the same thing most days. A +-2 day window once threw away
+    // the first line of the next statement as a "duplicate" of the last line of the previous one.
+    const imported: ExistingTx[] = [{ id: 9, date: "2026-09-09", amount: RM(8), type: "expense", accountId: MAIN, toAccountId: null, importKey: "another-statement-key" }];
+    expect(one(row("LUNCH STALL", -8, "2026-09-10"), ctx({ existing: imported })).kind).toBe("expense");
+    expect(one(row("LUNCH STALL", -8, "2026-09-09"), ctx({ existing: imported }))).toMatchObject({ kind: "skip", source: "duplicate" }); // same day: the same line in another file
+  });
+
+  it("an entry typed in by hand can still be a couple of days off", () => {
+    const typed: ExistingTx[] = [{ id: 9, date: "2026-09-08", amount: RM(8), type: "expense", accountId: MAIN, toAccountId: null, importKey: null }];
+    expect(one(row("LUNCH STALL", -8, "2026-09-10"), ctx({ existing: typed })).kind).toBe("skip");
+  });
+
+  it("a transfer mirrored from the other account's statement is matched by a transfer-looking line, never by a QR payment", () => {
+    const mirrored: ExistingTx[] = [{ id: 9, date: "2026-09-10", amount: RM(50), type: "transfer", accountId: SAVINGS, toAccountId: MAIN, importKey: "k" }];
+    const onSavings = (description: string) => one(row(description, -50), ctx({ accountId: SAVINGS, isSpendingAccount: false, existing: mirrored }));
+    expect(onSavings("IBK FUND TFR FR A/C WARUNG PAK ALI * QR71188980 DUITNOW QR").kind).toBe("expense");
+    expect(onSavings("TRANSFER FROM A/C MBBQR2221880 * 11113764330704").kind).toBe("expense");
+    expect(onSavings("IBK FUND TFR FR A/C JANE A/L DOE * Top up MBB CT")).toMatchObject({ kind: "skip", source: "duplicate" });
+  });
+
+  it("a transfer is still recognised in a layout that drops the bank's wording, when a rule knows the name", () => {
+    const mirrored: ExistingTx[] = [{ id: 9, date: "2026-09-10", amount: RM(50), type: "transfer", accountId: SAVINGS, toAccountId: MAIN, importKey: "k" }];
+    const rules = [{ pattern: "jane a l doe", kind: "transfer" as const, categoryId: null, item: null, billId: null, transferAccountId: SAVINGS }];
+    const onSavings = (description: string, r = rules) => one(row(description, -50), ctx({ accountId: SAVINGS, isSpendingAccount: false, existing: mirrored, rules: r }));
+    expect(onSavings("JANE A/L DOE")).toMatchObject({ kind: "skip", source: "duplicate" });
+    // ...but without that rule a bare name proves nothing, so it is not guessed to be the mirror of a transfer
+    expect(onSavings("JANE A/L DOE", []).kind).not.toBe("skip");
+    // ...and an unrelated QR payment of the same amount is still not mistaken for it
+    expect(onSavings("IBK FUND TFR FR A/C WARUNG PAK ALI * QR71188980 DUITNOW QR").kind).toBe("expense");
+  });
+
   it("doesn't confuse different amounts, different accounts or far-apart dates", () => {
     const existing: ExistingTx[] = [
       { id: 1, date: "2026-09-10", amount: RM(60), type: "expense", accountId: MAIN, toAccountId: null, importKey: null },
@@ -173,23 +205,81 @@ describe("5. salary and 6. the rest", () => {
     expect(one(row("IBG CREDIT", 5300), ctx({ expectedIncome: 0 })).source).toBe("default");
   });
   it("anything unrecognised is plain spending/income, flagged low, with a tidy item name", () => {
-    expect(one(row("DUITNOW QR MAKAN ENAK 99887766", -18))).toMatchObject({
-      kind: "expense", categoryId: cat("Miscellaneous"), source: "default", confidence: "low", item: "Duitnow Qr Makan Enak",
+    expect(one(row("CORNER STALL SEREMBAN 99887766", -18))).toMatchObject({
+      kind: "expense", categoryId: cat("Miscellaneous"), source: "default", confidence: "low", item: "Corner Stall Seremban",
     });
     expect(one(row("SOME PERSON", 40))).toMatchObject({ kind: "income", categoryId: cat("Other Income") });
+  });
+
+  describe("a small QR payment", () => {
+    it("is assumed to be food, named after the payee, and still flagged as a guess", () => {
+      expect(one(row("IBK FUND TFR FR A/C WARUNG PAK ALI * QR71188980 DUITNOW QR", -12.5))).toMatchObject({
+        kind: "expense", categoryId: cat("Eating Out"), item: "Warung Pak Ali", source: "default", confidence: "low", reason: expect.stringMatching(/assumed to be food/),
+      });
+      expect(one(row("DUITNOW||123456|STALL ABC|DuitNow QR|CASAOffUs|", -9))).toMatchObject({ categoryId: cat("Eating Out"), item: "Stall Abc" });
+      expect(one(row("MAE QR SOME NAME * 638314039Q", -14)).categoryId).toBe(cat("Eating Out"));
+    });
+    it("is left as 'Miscellaneous' above RM 45, because it could be anything", () => {
+      expect(one(row("DUITNOW QR WARUNG PAK ALI", -60))).toMatchObject({ categoryId: cat("Miscellaneous") });
+    });
+    it("is never claimed for a person-to-person TRANSFER, nor for money coming in", () => {
+      expect(one(row("DUITNOW TO ACCOUNT||123456|SOMEONE|Lunch||", -20)).categoryId).toBe(cat("Miscellaneous"));
+      expect(one(row("DUITNOW QR WARUNG PAK ALI", 20))).toMatchObject({ kind: "income" });
+    });
+  });
+
+  describe("a card hold released within the statement", () => {
+    const hold = [
+      row("PRE-AUTH DEBIT STREAMCO help.streamco.* SALE DEBIT", -19.9, "2026-09-24"),
+      row("PRE-AUTH REFUND STREAMCO help.streamco.* SALE DEBIT", 19.9, "2026-09-25"),
+    ];
+    it("skips BOTH halves, so neither a spend nor an income is invented", () => {
+      const out = classifyRows(hold, ctx());
+      expect(out.map((r) => [r.proposal.kind, r.proposal.source])).toEqual([["skip", "hold"], ["skip", "hold"]]);
+      expect(out[0].proposal.reason).toMatch(/cancel out/);
+    });
+    it("leaves a lone refund alone: its debit is not in this statement", () => {
+      expect(classifyRows([hold[1]], ctx())[0].proposal.kind).toBe("income");
+    });
   });
 });
 
 describe("helpers", () => {
-  it("rulePattern drops reference numbers and bank noise, keeping the stable core", () => {
-    expect(rulePattern("TRANSFER TO A/C 1234567890 MR TAN")).toBe("transfer to a c");
-    expect(rulePattern("IBG CREDIT ACME SDN BHD 55555")).toBe("credit acme sdn bhd");
+  it("rulePattern drops reference numbers and the bank's wrapper words, keeping the payee", () => {
+    expect(rulePattern("TRANSFER TO A/C 1234567890 MR TAN")).toBe("mr tan");
+    expect(rulePattern("IBG CREDIT ACME SDN BHD 55555")).toBe("acme sdn bhd");
     expect(rulePattern("PETRONAS 1234")).toBe("petronas");
-    // a description with almost nothing stable in it falls back to its first two words rather than an empty pattern
-    expect(rulePattern("A 9")).toBe("a 9");
+  });
+  it("REGRESSION: different payees behind the same bank wrapper get different patterns", () => {
+    // Maybank puts "IBK FUND TFR FR A/C" in front of every DuitNow QR payment. All of these once shared ONE group,
+    // so correcting a single line rewrote the rest and "remember" saved a rule that swallowed every QR payment.
+    const lines = [
+      "IBK FUND TFR FR A/C RESTORAN SEDAP * QR71188980 DUITNOW QR",
+      "IBK FUND TFR FR A/C KEDAI RUNCIT AMAN * QR84862286 DUITNOW QR",
+      "PAYMENT VIA MYDEBIT KLINIK SIHAT * PETALING JAYA PAYMENT VIA MYDEBIT",
+      "DUITNOW||261762217|NASI KANDAR TEPI|DuitNow QR|CASAOffUs|",
+    ];
+    expect(lines.map(rulePattern)).toEqual(["restoran sedap", "kedai runcit aman", "klinik sihat petaling jaya", "nasi kandar tepi"]);
+    expect(new Set(lines.map(rulePattern)).size).toBe(4);
+  });
+  it("rulePattern is empty (never a group or a rule) when nothing identifies the payee", () => {
+    expect(rulePattern("TRANSFER FROM A/C MBBQR2221880 * 11113764330704 364340267Q")).toBe("");
+    expect(rulePattern("DUITNOW||215713604|DuitNow QR||")).toBe("");
+    expect(rulePattern("A 9")).toBe("");
+  });
+  it("rulePattern keeps the holder's name together, so every transfer to your own account shares one pattern", () => {
+    // whatever note follows the name, and whichever bank's wording, the pattern is the name
+    expect(rulePattern("DUITNOW TO ACCOUNT||409485185|JANE A/L DOE|Gpt||")).toBe("jane a l doe");
+    expect(rulePattern("IBK FUND TFR FR A/C JANE A/L DOE * Top up MBB CT")).toBe("jane a l doe");
+    expect(rulePattern("MBB CT- JANE A/L DOE * Savings")).toBe("jane a l doe");
+  });
+  it("lines with no identifiable payee are each in a group of their own", () => {
+    const out = classifyRows([row("TRANSFER FROM A/C MBBQR111 * 22222222 3333333Q", -20), row("TRANSFER FROM A/C MBBQR444 * 55555555 6666666Q", -30)], ctx());
+    expect(out[0].group).not.toBe(out[1].group);
   });
   it("cleanItem makes a short readable name without reference numbers", () => {
     expect(cleanItem("DEBIT CARD PURCHASE PETRONAS 123456")).toBe("Debit Card Purchase Petronas");
+    expect(cleanItem("IBK FUND TFR FR A/C RESTORANMAHBUB * QR71188980 DUITNOW QR")).toBe("Restoranmahbub");
     expect(cleanItem("x".repeat(80)).length).toBe(40);
     expect(cleanItem("1234567890")).toBe("Statement entry");
   });

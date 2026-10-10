@@ -14,7 +14,17 @@ export type PreviewOk = {
   /** A few lines the reader couldn't make sense of, for troubleshooting. */
   skipped: string[];
   dateRange: { from: string; to: string } | null;
-  stats: { total: number; fresh: number; duplicates: number; needsReview: number };
+  /** Lines before the chosen start date that were left out (0 when no start date was given). */
+  leftOut: number;
+  /**
+   * Transfers between your own accounts that appear on only ONE side, which is where money has gone to an account
+   * that isn't tracked here. `amount` is from this account's point of view (positive = money in).
+   * where "other": recorded from the other account's statement, but this statement has no matching line.
+   * where "here": in this statement, but the other account's imported history has no matching line.
+   */
+  oneSided: { date: string; amount: number; note: string; where: "other" | "here" }[];
+  /** `holds` = card pre-authorisations and their refunds, which cancel out and are skipped. */
+  stats: { total: number; fresh: number; duplicates: number; holds: number; needsReview: number };
   /**
    * For the optional "set the opening balance so the books match the bank" step. `existingEntries` counts entries
    * on the account dated BEFORE the statement's first line: only when it is 0 can the starting balance be set.

@@ -45,8 +45,11 @@ export async function previewStatement(formData: FormData): Promise<PreviewResul
     }
   }
 
+  const rawStart = formData.get("startDate");
+  const startDate = typeof rawStart === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawStart) ? rawStart : undefined;
+
   const [db, settings] = [await getDb(), await getSettings()];
-  return buildPreview(db, { accountId, bytes, text: text?.trim() ? text : undefined, password, overrides, expectedIncome: settings.expectedIncome });
+  return buildPreview(db, { accountId, bytes, text: text?.trim() ? text : undefined, password, overrides, expectedIncome: settings.expectedIncome, startDate });
 }
 
 const Row = z.object({

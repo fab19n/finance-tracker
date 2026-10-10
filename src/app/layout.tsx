@@ -31,9 +31,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
+    // Browser extensions (screen recorders, translators, dark-mode tools) add attributes to <html> before React
+    // hydrates. This silences that one element only; a real mismatch anywhere inside the page is still reported.
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full">{children}</body>
     </html>
