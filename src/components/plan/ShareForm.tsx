@@ -1,4 +1,5 @@
 import { deleteShare, saveShare } from "@/app/actions/shares";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { senToInput } from "@/lib/money";
 import type { ShareRow } from "@/lib/queries/shares";
 
@@ -45,7 +46,13 @@ export function ShareForm({ share, bills, defaultBillId, defaultStart }: { share
       {share && (
         <form action={deleteShare}>
           <input type="hidden" name="id" value={share.id} />
-          <button className="btn-danger">Remove from this bill (money they sent stays in your records)</button>
+          <ConfirmSubmit
+            trigger="Remove from this bill (money they sent stays in your records)"
+            triggerClassName="btn-danger"
+            title={`Remove ${share.name} from this bill?`}
+            body="They stop being counted on this bill. Money they already sent stays in your records."
+            confirmLabel="Remove"
+          />
         </form>
       )}
     </div>

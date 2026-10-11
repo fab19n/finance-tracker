@@ -305,8 +305,8 @@ export function TransactionForm({
         <label htmlFor="amount" className="label">
           Amount
         </label>
-        <div className="flex items-baseline gap-2 rounded-xl border border-line bg-background px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
-          <span className="text-xl font-semibold text-muted">RM</span>
+        <div className="flex items-baseline gap-2 rounded-[18px] border border-line bg-background px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
+          <span className="text-xl font-bold text-muted">RM</span>
           <input
             ref={amountRef}
             id="amount"
@@ -316,7 +316,7 @@ export function TransactionForm({
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="num w-full bg-transparent text-4xl font-semibold outline-none placeholder:text-line"
+            className="num w-full bg-transparent text-[32px] font-extrabold tracking-[-0.03em] outline-none placeholder:text-line"
             required
           />
         </div>
@@ -335,10 +335,16 @@ export function TransactionForm({
                   onClick={() => setCategoryId(c.id)}
                   aria-pressed={selected}
                   style={selected ? { borderColor: c.color, backgroundColor: `${c.color}1f` } : undefined}
-                  className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 text-center text-xs font-medium leading-tight transition active:scale-95 ${
+                  className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-[14px] border px-1 py-2 text-center text-xs font-semibold leading-tight transition active:scale-95 ${
                     selected ? "border-2" : "border-line bg-background"
                   }`}
                 >
+                  {/* Selected = the category's own colour (tinted fill and border) AND a check, so it never relies on colour alone. */}
+                  {selected && (
+                    <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-foreground text-background" aria-hidden>
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                  )}
                   <span className="text-lg leading-none">{c.icon}</span>
                   {c.name}
                 </button>
@@ -349,7 +355,7 @@ export function TransactionForm({
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="mt-2 text-xs font-medium text-accent"
+              className="mt-2 text-sm font-semibold text-accent"
             >
               {showAll ? "Show fewer" : `Show all ${chips.length} categories`}
             </button>
@@ -360,7 +366,7 @@ export function TransactionForm({
       {type !== "transfer" && (
         <div>
           <label htmlFor="item" className="label">
-            What exactly? <span className="normal-case text-muted/80">(item - helps find leaks)</span>
+            What exactly? <span className="normal-case text-muted">(item - helps find leaks)</span>
           </label>
           <input
             id="item"
@@ -484,7 +490,7 @@ export function TransactionForm({
             {lookalikes.map((l) => (
               <li key={l.id} className="py-2">
                 <span className="block truncate font-medium">{l.label}</span>
-                <span className="block truncate text-xs opacity-80">
+                <span className="block truncate text-xs">
                   {l.where} · {shortDate(l.date)}
                   {l.bankText ? ` · ${l.bankText}` : ""}
                 </span>
@@ -506,7 +512,7 @@ export function TransactionForm({
               </li>
             ))}
           </ul>
-          <p className="text-xs opacity-80">
+          <p className="text-xs">
             {offerUse && !canAdopt
               ? `Pick a category, or say what it was, and "Use this one" puts it on the bank's entry.`
               : "A separate purchase for the same amount? Add it as normal."}

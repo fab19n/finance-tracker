@@ -1,34 +1,114 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens (v3 redesign). Every colour in the app comes from a token below; components never contain a raw hex
+ * (the one exception is a category's own colour, which is user data).
+ *
+ * Themes: Light is the default. Dark applies when the OS is dark AND the user hasn't forced Light, or when the user
+ * forced Dark on this device (<html data-theme="dark">, set before paint by the inline script in layout.tsx and
+ * changed in Settings > Data > Appearance). CSS can't share one rule between a media query and an attribute selector,
+ * so the dark values are written twice below: keep the two blocks identical.
+ */
 :root {
-  --background: #f5f7f6;
+  color-scheme: light;
+
+  --background: #f0faf5;
   --foreground: #0f1f1a;
   --card: #ffffff;
-  --muted: #64748b;
-  --line: #e2e8e5;
+  --card-subtle: #f5fdf9;
+  --muted: #4d6c62;
+  --line: #c6e8d7;
   --accent: #047857;
   --accent-fg: #ffffff;
-  --accent-soft: #d6f1e5;
+  --accent-soft: #d1fae5;
   --danger: #b91c1c;
   --danger-soft: #fde4e4;
-  --warn: #b45309;
+  --warn: #92400e;
   --warn-soft: #fdecc8;
+  --info: #1e40af;
+  --info-soft: #dbeafe;
+  /* Colour of income TEXT and positive amounts. Chart fills use --series-*, never this. */
   --income: #047857;
 
   /* Chart tokens (validated categorical slots 1-3; see dataviz palette) */
   --series-1: #2a78d6; /* spending / needs */
   --series-2: #eb6834; /* wants / comparison */
   --series-3: #1baf7a; /* income / saved */
-  --series-gray: #b9bdb8; /* de-emphasis: last month, contributions */
+  --series-gray: #a8b4ae; /* de-emphasis: last month, contributions */
+  --ink-muted: #587068; /* chart axis text: the design's #6b807a measured 3.9:1, so this is darker */
+  --grid: #c9e8d9;
+
+  /* Safe-to-spend card: a white card with a mint border in Light, a bordered dark card in Dark. */
+  --hero-bg: #ffffff;
+  --hero-fg: #0f1f1a;
+  --hero-secondary: #4d6c62;
+  --hero-border: rgba(4, 120, 87, 0.25);
+  --hero-shadow: none;
+  --hero-icon-bg: #d1fae5;
+  /* The same card when safe-to-spend is negative. */
+  --hero-danger-bg: #fff1f2;
+  --hero-danger-fg: #991b1b;
+  --hero-danger-secondary: #b91c1c;
+  --hero-danger-border: #fecaca;
+
+  --btn-shadow: 0 1px 4px rgba(4, 120, 87, 0.3);
+  --card-shadow: 0 1px 3px rgba(15, 31, 26, 0.08);
+  --focus-ring: #047857;
+  --overlay: rgba(15, 31, 26, 0.6);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: #0b1210;
+  --foreground: #e6efeb;
+  --card: #121c18;
+  --card-subtle: #0f1815;
+  --muted: #8fa39b;
+  --line: #22312b;
+  --accent: #34d399;
+  --accent-fg: #052e1f;
+  --accent-soft: #10392b;
+  --danger: #f87171;
+  --danger-soft: #3a1717;
+  --warn: #fbbf24;
+  --warn-soft: #3a2c0c;
+  --info: #60a5fa;
+  --info-soft: #1e3a5f;
+  --income: #34d399;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-gray: #56605b;
   --ink-muted: #898781;
-  --grid: #e1e0d9;
+  --grid: #2c2c2a;
+
+  --hero-bg: #121c18;
+  --hero-fg: #e6efeb;
+  --hero-secondary: #8fa39b;
+  --hero-border: #34d399;
+  --hero-shadow: none;
+  --hero-icon-bg: #10392b;
+  --hero-danger-bg: #2d1212;
+  --hero-danger-fg: #fca5a5;
+  --hero-danger-secondary: #f87171;
+  --hero-danger-border: #7f1d1d;
+
+  --btn-shadow: none;
+  --card-shadow: none;
+  --focus-ring: #34d399;
+  --overlay: rgba(0, 0, 0, 0.72);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
     --background: #0b1210;
     --foreground: #e6efeb;
     --card: #121c18;
+    --card-subtle: #0f1815;
     --muted: #8fa39b;
     --line: #22312b;
     --accent: #34d399;
@@ -38,6 +118,8 @@
     --danger-soft: #3a1717;
     --warn: #fbbf24;
     --warn-soft: #3a2c0c;
+    --info: #60a5fa;
+    --info-soft: #1e3a5f;
     --income: #34d399;
 
     --series-1: #3987e5;
@@ -46,6 +128,22 @@
     --series-gray: #56605b;
     --ink-muted: #898781;
     --grid: #2c2c2a;
+
+    --hero-bg: #121c18;
+    --hero-fg: #e6efeb;
+    --hero-secondary: #8fa39b;
+    --hero-border: #34d399;
+    --hero-shadow: none;
+    --hero-icon-bg: #10392b;
+    --hero-danger-bg: #2d1212;
+    --hero-danger-fg: #fca5a5;
+    --hero-danger-secondary: #f87171;
+    --hero-danger-border: #7f1d1d;
+
+    --btn-shadow: none;
+    --card-shadow: none;
+    --focus-ring: #34d399;
+    --overlay: rgba(0, 0, 0, 0.72);
   }
 }
 
@@ -53,6 +151,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
+  --color-card-subtle: var(--card-subtle);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
@@ -62,10 +161,24 @@
   --color-danger-soft: var(--danger-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
   --color-income: var(--income);
   --color-series-1: var(--series-1);
   --color-series-2: var(--series-2);
   --color-series-3: var(--series-3);
+  --color-hero-bg: var(--hero-bg);
+  --color-hero-fg: var(--hero-fg);
+  --color-hero-secondary: var(--hero-secondary);
+  --color-hero-border: var(--hero-border);
+  --color-hero-icon-bg: var(--hero-icon-bg);
+  --color-hero-danger-bg: var(--hero-danger-bg);
+  --color-hero-danger-fg: var(--hero-danger-fg);
+  --color-hero-danger-secondary: var(--hero-danger-secondary);
+  --color-hero-danger-border: var(--hero-danger-border);
+  --color-overlay: var(--overlay);
+  --shadow-card: var(--card-shadow);
+  --shadow-btn: var(--btn-shadow);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -77,6 +190,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Keyboard focus: one visible ring everywhere. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* Money should line up in columns. */
 .num {
   font-variant-numeric: tabular-nums;
@@ -84,28 +203,68 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-line bg-card p-4 shadow-sm;
+    @apply rounded-2xl border border-line bg-card p-4 shadow-card;
   }
   .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-muted;
+    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-[0.08em] text-muted;
   }
+  /* 16px on phones (iOS zooms the page when a smaller input is focused), 14px from md up. */
   .input {
-    @apply w-full rounded-xl border border-line bg-background px-3 py-2.5 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30;
+    @apply w-full rounded-xl border border-line bg-background px-3.5 py-2.5 text-base outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 md:text-sm;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-card px-4 py-2.5 text-sm font-medium transition hover:bg-background active:scale-[0.98] disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-card px-4 py-3 text-sm font-semibold transition hover:bg-background active:scale-[0.98] disabled:opacity-50;
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-base font-semibold text-accent-fg transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-base font-bold text-accent-fg shadow-btn transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-danger transition hover:bg-danger-soft;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-danger transition hover:bg-danger-soft;
   }
   .pill {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
+  /* A page's <h1>. On phones the top bar already says it (see NavLinks PageTitle), so it stays for screen readers only. */
   .h-page {
-    @apply text-xl font-semibold tracking-tight;
+    @apply text-xl font-extrabold tracking-tight max-md:sr-only;
+  }
+
+  /* Banners: an icon-led message in one of four tones. */
+  .banner {
+    @apply flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm;
+  }
+  .banner-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .banner-danger {
+    @apply bg-danger-soft text-danger;
+  }
+  .banner-good {
+    @apply bg-accent-soft text-accent;
+  }
+  .banner-info {
+    @apply bg-info-soft text-info;
+  }
+
+  /* The safe-to-spend card. Differences between themes live in the --hero-* tokens, not here. */
+  .hero {
+    @apply rounded-[18px] border border-hero-border bg-hero-bg p-4 text-hero-fg;
+    box-shadow: var(--hero-shadow);
+  }
+  .hero-danger {
+    @apply rounded-[18px] border border-hero-danger-border bg-hero-danger-bg p-4 text-hero-danger-fg;
+  }
+
+  /* Underline tab strip (Plan, More, Settings). Tabs are links. */
+  .tab-strip {
+    @apply flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line;
+  }
+  .tab {
+    @apply -mb-px shrink-0 whitespace-nowrap border-b-2 border-transparent px-3.5 py-3 text-sm font-medium text-muted transition hover:text-foreground;
+  }
+  .tab[aria-current="page"],
+  .tab[aria-selected="true"] {
+    @apply border-accent font-bold text-accent;
   }
 }
 

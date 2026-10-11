@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { BillForm } from "@/components/plan/BillForm";
+import { PlanHeader } from "@/components/plan/PlanHeader";
 import { Kpi } from "@/components/Kpi";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { monthlyCommitments } from "@/lib/plan/bills";
@@ -24,18 +24,17 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <PlanHeader />
+
       <div>
-        <Link href="/plan" className="text-sm font-medium text-accent">
-          ← Plan
-        </Link>
-        <h1 className="h-page">Bills &amp; subscriptions</h1>
+        <h2 className="text-[15px] font-bold">Bills &amp; subscriptions</h2>
         <p className="text-sm text-muted">
           Everything that leaves your account every month. For a bill that varies (rent 950-980, electricity), give the lowest amount and the &quot;up to&quot; amount.
         </p>
       </div>
 
       {error && (
-        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+        <p role="alert" className="banner banner-danger font-medium">
           {error}
         </p>
       )}

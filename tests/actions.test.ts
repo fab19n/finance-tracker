@@ -124,6 +124,21 @@ describe("deleteTransaction", () => {
     await deleteTransaction(fd({})); // no id: harmless
     expect(txs()).toHaveLength(1);
   });
+
+  it("from the entry's own page it goes back to where `next` says, and only to a path on this site", async () => {
+    const { saveTransaction, deleteTransaction } = await import("@/app/actions/transactions");
+    const f = fd({ type: "expense", amount: "5", date: "2026-10-09", accountId: String(ids.cash), categoryId: String(ids.food) });
+    await saveTransaction({ ok: false }, f);
+    await saveTransaction({ ok: false }, f);
+    await saveTransaction({ ok: false }, f);
+    const [a, b, c] = txs();
+    expect(await redirected(deleteTransaction(fd({ id: String(a.id), next: "/transactions" })))).toBe("/transactions");
+    expect(txs().map((t) => t.id)).toEqual([b.id, c.id]); // deleted, then redirected
+    // A link off the site is ignored: the row still goes, and there is no redirect.
+    expect(await redirected(deleteTransaction(fd({ id: String(b.id), next: "https://evil.example/x" })))).toBeNull();
+    expect(await redirected(deleteTransaction(fd({ id: String(c.id), next: "//evil.example" })))).toBeNull();
+    expect(txs()).toHaveLength(0);
+  });
 });
 
 describe("settings actions", () => {
@@ -158,6 +173,16 @@ describe("settings actions", () => {
     expect(h.db.select().from(categories).where(eq(categories.id, ids.unaccounted)).get()!.archived).toBe(false);
     await redirected(toggleCategoryArchived(fd({ id: String(pets.id), archived: "1" })));
     expect(h.db.select().from(categories).where(eq(categories.id, pets.id)).get()!.archived).toBe(true);
+  });
+
+  it("sends each form back to the Settings tab it was on, with any error shown there", async () => {
+    const { saveCategory, toggleCategoryArchived, saveAssumptions, saveCycleSettings } = await import("@/app/actions/settings");
+    expect(await redirected(saveCategory(fd({ name: "Hobbies", type: "expense", nature: "want" })))).toBe("/settings?tab=categories");
+    expect(await redirected(saveCategory(fd({ name: " ", type: "expense", nature: "want" })))).toMatch(/^\/settings\?tab=categories&error=.*needs%20a%20name/);
+    expect(await redirected(toggleCategoryArchived(fd({ id: String(ids.unaccounted), archived: "1" })))).toMatch(/^\/settings\?tab=categories&error=/);
+    expect(await redirected(saveAssumptions(fd({ fdRatePct: "3.5", sp500ReturnPct: "8", emergencyMonths: "4", horizonYears: "15", riskProfile: "growth" })))).toBe("/settings?tab=investing");
+    expect(await redirected(saveCycleSettings(fd({ paydayDay: "26", savingsRatePct: "2.5" })))).toBe("/settings?tab=payday");
+    expect(await redirected(saveCycleSettings(fd({ paydayDay: "99", savingsRatePct: "2.5" })))).toMatch(/^\/settings\?tab=payday&error=/);
   });
 
   it("income categories never keep a budget", async () => {

@@ -1,4 +1,5 @@
 import { deleteBill, saveBill } from "@/app/actions/plan";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { senToInput } from "@/lib/money";
 import type { BillRow } from "@/lib/queries/plan";
 
@@ -48,7 +49,13 @@ export function BillForm({ bill, categories, accounts }: { bill?: BillRow; categ
       {bill && (
         <form action={deleteBill}>
           <input type="hidden" name="id" value={bill.id} />
-          <button className="btn-danger">Delete this bill (payments already recorded stay)</button>
+          <ConfirmSubmit
+            trigger="Delete this bill (payments already recorded stay)"
+            triggerClassName="btn-danger"
+            title={`Delete ${bill.name}?`}
+            body="The bill goes away. Payments you already recorded for it stay in your books."
+            confirmLabel="Delete bill"
+          />
         </form>
       )}
     </div>

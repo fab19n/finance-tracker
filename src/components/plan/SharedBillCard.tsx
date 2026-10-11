@@ -107,7 +107,7 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                 {shown.map((m) => (
                   <th key={m} scope="col" className="px-1 py-1 text-center font-medium">
                     {shortMonthLabel(m).split(" ")[0]}
-                    <span className="block text-[10px] font-normal opacity-70">{m.slice(2, 4)}</span>
+                    <span className="block text-[11px] font-normal">{m.slice(2, 4)}</span>
                   </th>
                 ))}
               </tr>

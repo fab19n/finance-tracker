@@ -1,14 +1,27 @@
-import { ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { Download, X } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
+import { ActivitySearch } from "@/components/activity/ActivitySearch";
+import { FilterSheet } from "@/components/activity/FilterSheet";
+import { MonthNav } from "@/components/MonthNav";
 import { TransactionRow } from "@/components/TransactionRow";
-import { dayLabel, monthLabel, shiftMonth } from "@/lib/dates";
+import { currentMonth, dayLabel } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
 import { parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
 import { listAccounts, listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, type TxRow } from "@/lib/queries/transactions";
 
 const PAGE_SIZE = 100;
+
+const TYPES = [
+  ["", "All"],
+  ["expense", "Expense"],
+  ["income", "Income"],
+  ["transfer", "Transfer"],
+] as const;
+
+/** Drop empty values so the rest can be written into hidden form fields or a query string. */
+const present = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== ""));
 
 export default async function TransactionsPage({
   searchParams,
@@ -43,101 +56,123 @@ export default async function TransactionsPage({
     type: view.raw.type,
   };
   const monthNav = view.month !== "all";
+  const { q, category, account, type } = view.raw;
+  const categoryChoice = categories.find((c) => String(c.id) === category);
+  const accountChoice = accounts.find((a) => String(a.id) === account);
+  const filtered = Boolean(category || account || q.trim());
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 max-md:justify-end">
         <h1 className="h-page">Activity</h1>
-        <Link href={`/transactions/export${qs(base)}`} className="btn" prefetch={false}>
-          <Download size={16} /> Export CSV
+        <Link href={`/transactions/export${qs(base)}`} className="btn !px-3.5 !py-2" prefetch={false}>
+          <Download size={16} aria-hidden /> Export CSV
         </Link>
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        {monthNav ? (
-          <div className="flex items-center gap-1">
-            <Link
-              href={qs({ ...base, month: shiftMonth(view.month, -1) })}
-              aria-label="Previous month"
-              className="btn !px-2.5"
-            >
-              <ChevronLeft size={18} />
+      {monthNav ? (
+        <MonthNav
+          month={view.month}
+          maxMonth={currentMonth()}
+          path="/transactions"
+          query={new URLSearchParams(present({ q: base.q, category, account, type })).toString()}
+          sublabel={
+            <Link href={qs({ ...base, month: "all" })} className="font-semibold text-accent hover:underline">
+              Show all time
             </Link>
-            <span className="min-w-36 text-center font-semibold">{monthLabel(view.month)}</span>
-            <Link
-              href={qs({ ...base, month: shiftMonth(view.month, 1) })}
-              aria-label="Next month"
-              className="btn !px-2.5"
-            >
-              <ChevronRight size={18} />
-            </Link>
-          </div>
-        ) : (
-          <span className="font-semibold">All time</span>
-        )}
-        <Link href={qs({ ...base, month: monthNav ? "all" : undefined })} className="text-sm font-medium text-accent">
-          {monthNav ? "Show all time" : "Back to monthly"}
-        </Link>
+          }
+          className="mx-auto max-w-sm"
+        />
+      ) : (
+        <div className="text-center">
+          <p className="text-[15px] font-bold">All time</p>
+          <Link href={qs({ ...base, month: undefined })} className="text-xs font-semibold text-accent hover:underline">
+            Back to monthly
+          </Link>
+        </div>
+      )}
+
+      <ActivitySearch q={q} others={present({ month: view.month, type, category, account })} />
+
+      <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" role="group" aria-label="Type">
+        {TYPES.map(([value, label]) => (
+          <Link
+            key={label}
+            href={qs({ ...base, type: value })}
+            aria-current={type === value ? "true" : undefined}
+            className={`shrink-0 rounded-full border px-3.5 py-2 text-sm transition ${
+              type === value ? "border-accent bg-accent-soft font-bold text-accent" : "border-line bg-card font-medium text-muted hover:text-foreground"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+        <FilterSheet
+          categories={categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+          category={category}
+          account={account}
+          others={present({ month: view.month, type, q: base.q })}
+          clearHref={qs({ ...base, category: undefined, account: undefined })}
+        />
       </div>
 
-      <form method="get" className="card grid grid-cols-2 gap-2 md:grid-cols-[1fr_auto_auto_auto_auto]">
-        <input type="hidden" name="month" value={view.month} />
-        <div className="relative col-span-2 md:col-span-1">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input name="q" defaultValue={view.raw.q} placeholder="Search item, note, category" className="input !pl-9" />
-        </div>
-        <select name="category" defaultValue={view.raw.category} className="input" aria-label="Category">
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.icon} {c.name}
-            </option>
-          ))}
-        </select>
-        <select name="account" defaultValue={view.raw.account} className="input" aria-label="Account">
-          <option value="">All accounts</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <select name="type" defaultValue={view.raw.type} className="input" aria-label="Type">
-          <option value="">All types</option>
-          <option value="expense">Expenses</option>
-          <option value="income">Income</option>
-          <option value="transfer">Transfers</option>
-        </select>
-        <button className="btn-primary !py-2.5 text-sm">Filter</button>
-      </form>
+      {filtered && (
+        <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
+          {q.trim() && (
+            <li>
+              <Link href={qs({ ...base, q: undefined })} className="pill gap-1 bg-accent-soft text-accent">
+                Search: {q.trim()} <X size={12} aria-label="Remove" />
+              </Link>
+            </li>
+          )}
+          {categoryChoice && (
+            <li>
+              <Link href={qs({ ...base, category: undefined })} className="pill gap-1 bg-accent-soft text-accent">
+                {categoryChoice.icon} {categoryChoice.name} <X size={12} aria-label="Remove" />
+              </Link>
+            </li>
+          )}
+          {accountChoice && (
+            <li>
+              <Link href={qs({ ...base, account: undefined })} className="pill gap-1 bg-accent-soft text-accent">
+                {accountChoice.name} <X size={12} aria-label="Remove" />
+              </Link>
+            </li>
+          )}
+        </ul>
+      )}
 
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="card !p-3">
-          <p className="text-xs text-muted">Income</p>
-          <p className="num font-semibold text-income">{formatRM(totals.income)}</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="card !rounded-xl !p-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Income</p>
+          <p className="num text-[15px] font-extrabold text-income">{formatRM(totals.income)}</p>
         </div>
-        <div className="card !p-3">
-          <p className="text-xs text-muted">Spent</p>
-          <p className="num font-semibold">{formatRM(totals.expense)}</p>
+        <div className="card !rounded-xl !p-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Spent</p>
+          <p className="num text-[15px] font-extrabold">{formatRM(totals.expense)}</p>
         </div>
-        <div className="card !p-3">
-          <p className="text-xs text-muted">Net</p>
-          <p className={`num font-semibold ${totals.income - totals.expense < 0 ? "text-danger" : ""}`}>
-            {formatRM(totals.income - totals.expense)}
+        <div className="card !rounded-xl !p-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Net</p>
+          <p className={`num text-[15px] font-extrabold ${totals.income - totals.expense < 0 ? "text-danger" : "text-income"}`}>
+            {totals.income - totals.expense < 0 ? "−" : "+"}
+            {formatRM(Math.abs(totals.income - totals.expense))}
           </p>
         </div>
       </div>
 
       {groups.length === 0 ? (
-        <div className="card text-center text-sm text-muted">No entries match.</div>
+        <div className="card text-center text-sm text-muted">
+          No entries match.{filtered ? " Try clearing the filters or searching all time." : ""}
+        </div>
       ) : (
         groups.map((g) => {
           const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);
           return (
             <section key={g.date}>
-              <div className="mb-1 flex items-baseline justify-between px-1">
-                <h2 className="text-sm font-semibold">{dayLabel(g.date)}</h2>
-                {spent > 0 && <span className="num text-xs text-muted">spent {formatRM(spent)}</span>}
+              <div className="mb-1.5 flex items-baseline justify-between px-1">
+                <h2 className="text-[13px] font-bold">{dayLabel(g.date)}</h2>
+                {spent > 0 && <span className="num text-xs text-muted">Spent {formatRM(spent)}</span>}
               </div>
               <ul className="card divide-y divide-line !py-1">
                 {g.items.map((t) => (

@@ -190,8 +190,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               {columns.map((m) => (
                 <th key={m} scope="col" className="px-1 py-1 text-center font-medium">
                   {shortMonthLabel(m).split(" ")[0]}
-                  <span className="block text-[10px] font-normal opacity-70">{m.slice(2, 4)}</span>
-                  {whoIn(m) === undefined && <span className="block text-[10px] font-semibold text-warn" title="Open: nobody has covered it yet">?</span>}
+                  <span className="block text-[11px] font-normal">{m.slice(2, 4)}</span>
+                  {whoIn(m) === undefined && <span className="block text-[11px] font-semibold text-warn" title="Open: nobody has covered it yet">?</span>}
                 </th>
               ))}
             </tr>

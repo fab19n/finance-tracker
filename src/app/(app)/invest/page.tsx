@@ -8,6 +8,7 @@ import { AdvisorSection } from "@/components/invest/AdvisorSection";
 import { HoldingCard } from "@/components/invest/HoldingCard";
 import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
 import { Kpi } from "@/components/Kpi";
+import { MoreHeader } from "@/components/MoreHeader";
 import { todayISO } from "@/lib/dates";
 import { buildAdvice } from "@/lib/investing/advisor";
 import { savingsOpportunity } from "@/lib/investing/idle";
@@ -62,24 +63,26 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="h-page">Invest</h1>
-        {canRefresh && (
-          <form action={refreshPrices}>
-            <button className="btn">
-              <RefreshCw size={16} aria-hidden /> Refresh prices
-            </button>
-          </form>
-        )}
-      </div>
+      <MoreHeader
+        title="Invest"
+        actions={
+          canRefresh && (
+            <form action={refreshPrices}>
+              <button className="btn !px-3.5 !py-2">
+                <RefreshCw size={16} aria-hidden /> Refresh prices
+              </button>
+            </form>
+          )
+        }
+      />
 
       {priced && !error && (
-        <p role="status" className="rounded-xl bg-accent-soft px-3 py-2 text-sm font-medium text-accent">
+        <p role="status" className="banner banner-good font-medium">
           Updated {priced} price{priced === "1" ? "" : "s"} from the market.
         </p>
       )}
       {error && (
-        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+        <p role="alert" className="banner banner-danger font-medium">
           {error}
         </p>
       )}

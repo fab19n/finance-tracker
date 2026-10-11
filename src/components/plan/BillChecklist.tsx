@@ -28,22 +28,23 @@ const range = (min: number, max: number) => (min === max ? formatRM(min) : `${fo
 /** This cycle's bills as a checklist, most urgent first. Unpaid ones can be ticked off with the real amount. */
 export function BillChecklist({ items, summary, today }: { items: Item[]; summary: BillsSummary; today: string }) {
   if (items.length === 0) {
-    return <p className="card text-sm text-muted">No bills yet. Add your rent, insurance and subscriptions and this becomes your payday checklist.</p>;
+    return <p className="px-4 pb-4 text-sm text-muted">No bills yet. Add your rent, insurance and subscriptions and this becomes your payday checklist.</p>;
   }
+  // Drawn inside the "Bills this cycle" card on the Plan page, which supplies the frame.
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted">
+    <div>
+      <p className="px-4 pb-3 text-sm text-muted">
         <strong className="text-foreground">
           {summary.paidCount} of {summary.count}
         </strong>{" "}
         paid · {formatRM(summary.paidTotal)} out · <strong className="text-foreground">{formatRM(summary.remaining)}</strong> still to find
-        {summary.overdueCount > 0 && <span className="font-medium text-danger"> · {summary.overdueCount} overdue</span>}
+        {summary.overdueCount > 0 && <span className="font-semibold text-danger"> · {summary.overdueCount} overdue</span>}
       </p>
-      <ul className="card divide-y divide-line !py-1">
+      <ul className="divide-y divide-line border-t border-line">
         {items.map((i) => {
           const pill = PILL[i.status];
           return (
-            <li key={i.bill.id} className="py-2.5">
+            <li key={i.bill.id} className={`px-4 py-3 ${i.status === "overdue" ? "bg-danger-soft/40" : ""}`}>
               <div className="flex items-center gap-3">
                 <span
                   className={`grid size-9 shrink-0 place-items-center rounded-full ${i.status === "paid" ? "bg-accent-soft text-accent" : "bg-background"}`}
@@ -61,13 +62,13 @@ export function BillChecklist({ items, summary, today }: { items: Item[]; summar
                 </div>
               </div>
               {i.unusual && i.paid && (
-                <p className="mt-1 pl-12 text-xs font-medium text-warn">
+                <p className="mt-1 pl-12 text-xs font-semibold text-warn">
                   {formatRM(i.paid.amount)} is outside the usual {range(i.bill.amountMin, i.bill.amountMax)} - worth a look.
                 </p>
               )}
               {i.status !== "paid" && (
                 <details className="pl-12 pt-1 text-sm">
-                  <summary className="cursor-pointer text-xs font-medium text-accent">Mark paid</summary>
+                  <summary className="cursor-pointer list-none py-1 text-xs font-bold text-accent">Mark paid →</summary>
                   <form action={payBill} className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-[1fr_1fr_auto]">
                     <input type="hidden" name="billId" value={i.bill.id} />
                     <div>

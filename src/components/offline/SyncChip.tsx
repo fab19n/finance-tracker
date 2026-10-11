@@ -9,7 +9,7 @@ import { useOfflineState } from "./hooks";
  * A small badge in the header, there only when something needs your attention: the PC can't be reached, entries are waiting
  * to be sent, or the PC refused some. Tapping it goes to the list.
  */
-export function SyncChip() {
+export function SyncChip({ block = false }: { block?: boolean }) {
   const s = useOfflineState();
   const waiting = pending(s).length;
   const bad = failed(s).length;
@@ -20,7 +20,10 @@ export function SyncChip() {
   const Icon = bad > 0 ? TriangleAlert : gone ? CloudOff : RefreshCw;
   const label = bad > 0 ? `${bad} failed` : gone ? (waiting > 0 ? `Offline · ${waiting} waiting` : "Offline") : s.syncing ? "Sending…" : `${waiting} waiting`;
   return (
-    <Link href="/#waiting" className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>
+    <Link
+      href="/#waiting"
+      className={`flex items-center gap-1.5 text-xs font-semibold ${tone} ${block ? "rounded-xl px-3 py-2.5" : "rounded-full px-2.5 py-1"}`}
+    >
       <Icon size={14} aria-hidden className={s.syncing && !gone && bad === 0 ? "animate-spin" : undefined} />
       {label}
     </Link>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Kpi } from "@/components/Kpi";
+import { PlanHeader } from "@/components/plan/PlanHeader";
 import { ShareForm } from "@/components/plan/ShareForm";
 import { SharedBillCard } from "@/components/plan/SharedBillCard";
 import { UnassignedPayments } from "@/components/plan/UnassignedPayments";
@@ -41,25 +42,27 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <PlanHeader />
+
       <div>
-        <Link href="/plan" className="text-sm font-medium text-accent">
-          ← Plan
-        </Link>
-        <h1 className="h-page">Shared subscriptions</h1>
-        <p className="text-sm text-muted">
-          A bill can be split two ways. <strong>Equal parts</strong> (Netflix): each person owes their share of every month, and whatever they send pays their oldest unpaid month first, so a lump sum for three
-          months and a single month both work. <strong>In turns</strong> (Spotify): one person pays the whole month, you take the first month of each cycle, and a payment settles that person&apos;s own month.
-          Set up who shares what, and this shows who has paid for which month.
-        </p>
+        <h2 className="text-[15px] font-bold">Shared subscriptions</h2>
+        <details className="group text-sm text-muted">
+          <summary className="cursor-pointer py-1 font-semibold text-accent">How shared bills work</summary>
+          <p className="mt-1">
+            A bill can be split two ways. <strong className="text-foreground">Equal parts</strong> (Netflix): each person owes their share of every month, and whatever they send pays their oldest unpaid month first, so a lump sum for three
+            months and a single month both work. <strong className="text-foreground">In turns</strong> (Spotify): one person pays the whole month, you take the first month of each cycle, and a payment settles that person&apos;s own month.
+            Set up who shares what, and this shows who has paid for which month.
+          </p>
+        </details>
       </div>
 
       {error && (
-        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+        <p role="alert" className="banner banner-danger font-medium">
           {error}
         </p>
       )}
       {linked > 0 && (
-        <p role="status" className="rounded-xl bg-accent-soft px-3 py-2 text-sm font-medium text-accent">
+        <p role="status" className="banner banner-good font-medium">
           Counted {linked} payment{linked === 1 ? "" : "s"} you had already received from them.
         </p>
       )}

@@ -2,6 +2,7 @@ import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle2, HandCoins, Info, 
 import Link from "next/link";
 import { connection } from "next/server";
 import { reconcileCashAction } from "@/app/actions/cash";
+import { MoreHeader } from "@/components/MoreHeader";
 import { detectLeaks, headlineSavings, type Insight, type Severity } from "@/lib/analytics/leakage";
 import { detectRecurring } from "@/lib/analytics/recurring";
 import { daysBetween, shiftDays, todayISO } from "@/lib/dates";
@@ -48,7 +49,7 @@ function InsightCard({ i, years, rate }: { i: Insight; years: number; rate: numb
           <p className="font-semibold">
             Could save ≈ {formatRM(i.monthlySaving)}/month · {formatRM(i.annualSaving)}/year
           </p>
-          <p className="text-xs opacity-90">
+          <p className="text-xs">
             Invested for {years} years at an assumed {rate}% that grows to roughly {formatRMWhole(i.investedValue)}.
           </p>
         </div>
@@ -99,10 +100,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h1 className="h-page">Insights</h1>
-        <p className="text-sm text-muted">Where your money leaks, found from your own entries. Estimates, not verdicts.</p>
-      </div>
+      <MoreHeader title="Insights" subtitle="Where your money leaks, found from your own entries. Estimates, not verdicts." />
 
       {insights.length > 0 ? (
         <section className="card border-accent/40 bg-accent-soft/40" aria-label="Summary">

@@ -129,4 +129,7 @@ export async function deleteTransaction(formData: FormData): Promise<void> {
   const db = await getDb();
   db.delete(transactions).where(eq(transactions.id, id)).run();
   refreshAll();
+  // Deleting from the entry's own page can't stay there: go to where `next` says (a same-site path only).
+  const next = String(formData.get("next") ?? "");
+  if (next.startsWith("/") && !next.startsWith("//")) redirect(next);
 }

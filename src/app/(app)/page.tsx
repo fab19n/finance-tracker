@@ -9,6 +9,19 @@ import { lastAccountId, listCategories, listItemHints } from "@/lib/queries/refe
 import { getPlan } from "@/lib/queries/plan";
 import { listTransactions, sumTransactions } from "@/lib/queries/transactions";
 
+function AccountChips({ accounts }: { accounts: { id: number; name: string; balance: number }[] }) {
+  return (
+    <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Account balances">
+      {accounts.map((a) => (
+        <li key={a.id} className="card min-w-32 shrink-0 !rounded-xl !p-3">
+          <p className="truncate text-[11px] font-medium text-muted">{a.name}</p>
+          <p className={`num text-sm font-bold ${a.balance < 0 ? "text-danger" : ""}`}>{formatRM(a.balance)}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default async function AddPage() {
   const [balances, categories, hints, lastAcc] = await Promise.all([
     getAccountBalances(),
@@ -28,61 +41,63 @@ export default async function AddPage() {
     (lastAcc && spendable.some((a) => a.id === lastAcc) ? lastAcc : spendable[0]?.id) ?? 0;
 
   return (
-    <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
-      <section className="space-y-4">
-        <h1 className="h-page">Add entry</h1>
-        <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
-        <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Account balances">
-          {spendable.map((a) => (
-            <li key={a.id} className="card min-w-32 shrink-0 !p-3">
-              <p className="truncate text-xs text-muted">{a.name}</p>
-              <p className={`num text-base font-semibold ${a.balance < 0 ? "text-danger" : ""}`}>
-                {formatRM(a.balance)}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <AddEntry
-          accounts={balances.map((a) => ({ id: a.id, name: a.name, type: a.type }))}
-          categories={categories.map((c) => ({
-            id: c.id,
-            name: c.name,
-            type: c.type,
-            color: c.color,
-            icon: c.icon,
-          }))}
-          hints={hints}
-          defaultDate={today}
-          defaultAccountId={defaultAccountId}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <OutboxList />
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">Today</h2>
-          <p className="num text-sm text-muted">
-            Spent <span className="font-semibold text-foreground">{formatRM(totals.expense)}</span>
-            {totals.income > 0 && (
-              <>
-                {" "}
-                · In <span className="font-semibold text-income">{formatRM(totals.income)}</span>
-              </>
-            )}
-          </p>
-        </div>
-        {todays.length === 0 ? (
-          <div className="card text-center text-sm text-muted">
-            Nothing recorded today yet. Every ringgit counts - log your first one.
+    <div className="mx-auto max-w-5xl">
+      <h1 className="h-page mb-5">Add entry</h1>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] md:items-start">
+        {/* Phone, top to bottom: the compact card, balances, the form, then (next section) waiting entries and Today. The
+            form comes first so the amount is on screen without scrolling. Desktop: the form on the left, everything else
+            on the right (so the card and the balances are drawn once per size, never twice). */}
+        <section className="space-y-4">
+          <div className="space-y-4 md:hidden">
+            <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
+            <AccountChips accounts={spendable} />
           </div>
-        ) : (
-          <ul className="card divide-y divide-line !py-1">
-            {todays.map((t) => (
-              <TransactionRow key={t.id} tx={t} />
-            ))}
-          </ul>
-        )}
-      </section>
+          <AddEntry
+            accounts={balances.map((a) => ({ id: a.id, name: a.name, type: a.type }))}
+            categories={categories.map((c) => ({
+              id: c.id,
+              name: c.name,
+              type: c.type,
+              color: c.color,
+              icon: c.icon,
+            }))}
+            hints={hints}
+            defaultDate={today}
+            defaultAccountId={defaultAccountId}
+          />
+        </section>
+
+        <section className="space-y-4">
+          <div className="hidden space-y-4 md:block">
+            <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} />
+            <AccountChips accounts={spendable} />
+          </div>
+          <OutboxList />
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-bold">Today</h2>
+            <p className="num text-xs text-muted">
+              Spent <span className="font-bold text-foreground">{formatRM(totals.expense)}</span>
+              {totals.income > 0 && (
+                <>
+                  {" "}
+                  · In <span className="font-bold text-income">{formatRM(totals.income)}</span>
+                </>
+              )}
+            </p>
+          </div>
+          {todays.length === 0 ? (
+            <div className="card text-center text-sm text-muted">
+              Nothing recorded today yet. Every ringgit counts - log your first one.
+            </div>
+          ) : (
+            <ul className="card divide-y divide-line !py-1">
+              {todays.map((t) => (
+                <TransactionRow key={t.id} tx={t} />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

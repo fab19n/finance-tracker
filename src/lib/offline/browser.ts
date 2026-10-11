@@ -1,3 +1,4 @@
+import { settingsHref, SETTINGS_TABS } from "@/lib/settings-tabs";
 import { createNetwork } from "./network";
 import { createOfflineStore, failed, type OfflineStore } from "./offline-store";
 import { indexedDbStore } from "./outbox-store";
@@ -10,8 +11,22 @@ const LAST_SAVED_KEY = "money-tracker:pages-saved-at";
 const SAVE_PAGES_EVERY_MS = 10 * 60_000;
 const LOOK_EVERY_MS = 20_000;
 
-/** The pages kept on the phone to read when the PC can't be reached: the tabs, and the plan pages beneath them. */
-export const SAVED_PAGES = ["/", "/transactions", "/plan", "/plan/bills", "/plan/shared", "/dashboard", "/insights", "/invest", "/settings"];
+/**
+ * The pages kept on the phone to read when the PC can't be reached: the tabs, and the pages beneath them. Every Settings
+ * tab is its own address (/settings?tab=...), so each is kept: the Data tab holds the theme control, which works without
+ * the PC and so must be reachable without it.
+ */
+export const SAVED_PAGES = [
+  "/",
+  "/transactions",
+  "/plan",
+  "/plan/bills",
+  "/plan/shared",
+  "/dashboard",
+  "/insights",
+  "/invest",
+  ...SETTINGS_TABS.map((t) => settingsHref(t.id)),
+];
 
 function readNumber(key: string): number | null {
   try {

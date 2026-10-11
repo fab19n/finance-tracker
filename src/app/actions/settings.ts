@@ -8,10 +8,12 @@ import { getDb } from "@/db/client";
 import { accounts, categories } from "@/db/schema";
 import { parseSen } from "@/lib/money";
 import { setSetting } from "@/lib/settings";
+import { settingsHref, type SettingsTab } from "@/lib/settings-tabs";
 
-function done(error?: string): never {
+/** Back to the Settings tab the form was on (Accounts when no tab is named), showing `error` there if there is one. */
+function done(error?: string, tab: SettingsTab = "accounts"): never {
   revalidatePath("/", "layout");
-  redirect(error ? `/settings?error=${encodeURIComponent(error)}` : "/settings");
+  redirect(settingsHref(tab, error));
 }
 
 const AccountInput = z.object({
@@ -65,10 +67,10 @@ const CategoryInput = z.object({
 
 export async function saveCategory(formData: FormData): Promise<void> {
   const p = CategoryInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done(p.error.issues[0]?.message);
+  if (!p.success) done(p.error.issues[0]?.message, "categories");
   const v = p.data!;
   const budget = v.monthlyBudget?.trim() ? parseSen(v.monthlyBudget) : null;
-  if (v.monthlyBudget?.trim() && budget === null) done("Budget isn't a valid amount");
+  if (v.monthlyBudget?.trim() && budget === null) done("Budget isn't a valid amount", "categories");
   const row = {
     name: v.name,
     type: v.type,
@@ -83,7 +85,7 @@ export async function saveCategory(formData: FormData): Promise<void> {
   } else {
     db.insert(categories).values({ ...row, sortOrder: 99 }).run();
   }
-  done();
+  done(undefined, "categories");
 }
 
 export async function toggleCategoryArchived(formData: FormData): Promise<void> {
@@ -91,9 +93,9 @@ export async function toggleCategoryArchived(formData: FormData): Promise<void> 
   const archived = formData.get("archived") === "1";
   const db = await getDb();
   const cat = db.select().from(categories).where(eq(categories.id, id)).get();
-  if (cat?.isSystem) done("System categories can't be archived");
+  if (cat?.isSystem) done("System categories can't be archived", "categories");
   db.update(categories).set({ archived }).where(eq(categories.id, id)).run();
-  done();
+  done(undefined, "categories");
 }
 
 const AssumptionsInput = z.object({
@@ -106,11 +108,11 @@ const AssumptionsInput = z.object({
 
 export async function saveAssumptions(formData: FormData): Promise<void> {
   const p = AssumptionsInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done("Check the investing assumptions - one of the numbers is out of range");
+  if (!p.success) done("Check the investing assumptions - one of the numbers is out of range", "investing");
   for (const [k, v] of Object.entries(p.data!)) {
     await setSetting(k as keyof typeof p.data, v);
   }
-  done();
+  done(undefined, "investing");
 }
 
 const CycleSettingsInput = z.object({
@@ -129,16 +131,16 @@ function rmOrZero(v: string | undefined): number | null {
 
 export async function saveCycleSettings(formData: FormData): Promise<void> {
   const p = CycleSettingsInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done("Check the payday settings - one of the numbers is out of range");
+  if (!p.success) done("Check the payday settings - one of the numbers is out of range", "payday");
   const v = p.data!;
   const income = rmOrZero(v.expectedIncome);
   const allowance = rmOrZero(v.variableAllowance);
   const buffer = rmOrZero(v.cycleBuffer);
-  if (income === null || allowance === null || buffer === null) done("One of the RM amounts isn't valid");
+  if (income === null || allowance === null || buffer === null) done("One of the RM amounts isn't valid", "payday");
   await setSetting("paydayDay", v.paydayDay);
   await setSetting("expectedIncome", income!);
   await setSetting("variableAllowance", allowance!);
   await setSetting("cycleBuffer", buffer!);
   await setSetting("savingsRatePct", v.savingsRatePct);
-  done();
+  done(undefined, "payday");
 }

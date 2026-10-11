@@ -189,6 +189,10 @@ APP_PIN=482915
 Restart the app. Every page and action then needs the PIN (a 30-day cookie remembers your phone). Changing the PIN logs every device out.
 This is a convenience lock, **not** bank-grade security: it keeps a lost or borrowed phone, or a stranger on shared Wi-Fi, out. Don't expose the app to the internet (never use `tailscale funnel`).
 
+## Light or dark
+
+The app follows your device's light/dark setting. To force one, open Settings → **Data** → **Appearance** and pick *System*, *Light* or *Dark*. The choice applies at once and is kept **on that device only**, so your phone and your PC can differ. It needs no connection to the PC, so it also works when the PC is off.
+
 ## Backups
 
 - **In the app:** Settings → *Download full backup (.db)*. To restore, stop the app and replace `data/finance.db` with that file.

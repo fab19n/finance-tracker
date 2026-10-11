@@ -43,9 +43,9 @@ export function Kpi({
   }
   return (
     <div className="card !p-3.5">
-      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
       <p
-        className={`mt-1 text-2xl font-semibold tracking-tight ${
+        className={`num mt-1.5 text-[22px] font-extrabold tracking-[-0.02em] ${
           tone === "bad" ? "text-danger" : tone === "good" ? "text-income" : ""
         }`}
       >

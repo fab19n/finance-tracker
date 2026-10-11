@@ -13,6 +13,13 @@
       "runtimeArgs": ["dev"],
       "port": 3000,
       "env": { "DB_PATH": "data/demo.db" }
+    },
+    {
+      "name": "money-tracker-redesign",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "-p", "3300"],
+      "port": 3300,
+      "env": { "DB_PATH": "data/demo.db", "APP_PIN": "" }
     }
   ]
 }

@@ -1,7 +1,11 @@
 <!doctype html>
 <!--
   Shown by the service worker (public/sw.js) when the installed app can't reach your PC. Everything it needs is in this
-  one file, because by definition nothing else can be fetched right now. Changed it? Bump CACHE in sw.js too.
+  one file, because by definition nothing else can be fetched right now. Changed it? Bump VERSION in sw.js too.
+
+  Colours are the design tokens (src/app/globals.css), written out because no stylesheet can be fetched here. It follows
+  the OS theme, and a theme forced in Settings > Data > Appearance (kept in localStorage on this device) by the small
+  script below; the page still works with scripts off, it just follows the OS.
 -->
 <html lang="en">
   <head>
@@ -10,18 +14,42 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="robots" content="noindex" />
     <title>Can't reach your PC - Money Tracker</title>
+    <script>
+      try {
+        var t = localStorage.getItem("mt-theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
     <style>
       :root {
-        --background: #f5f7f6;
+        color-scheme: light;
+        --background: #f0faf5;
         --foreground: #0f1f1a;
         --card: #ffffff;
-        --muted: #64748b;
-        --line: #e2e8e5;
+        --muted: #4d6c62;
+        --line: #c6e8d7;
         --accent: #047857;
         --accent-fg: #ffffff;
+        --accent-soft: #d1fae5;
+        --warn: #92400e;
+        --warn-soft: #fdecc8;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --background: #0b1210;
+        --foreground: #e6efeb;
+        --card: #121c18;
+        --muted: #8fa39b;
+        --line: #22312b;
+        --accent: #34d399;
+        --accent-fg: #052e1f;
+        --accent-soft: #10392b;
+        --warn: #fbbf24;
+        --warn-soft: #3a2c0c;
       }
       @media (prefers-color-scheme: dark) {
-        :root {
+        :root:not([data-theme="light"]) {
+          color-scheme: dark;
           --background: #0b1210;
           --foreground: #e6efeb;
           --card: #121c18;
@@ -29,6 +57,9 @@
           --line: #22312b;
           --accent: #34d399;
           --accent-fg: #052e1f;
+          --accent-soft: #10392b;
+          --warn: #fbbf24;
+          --warn-soft: #3a2c0c;
         }
       }
       * {
@@ -45,6 +76,7 @@
         color: var(--foreground);
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         line-height: 1.5;
+        -webkit-tap-highlight-color: transparent;
       }
       main {
         width: 100%;
@@ -54,20 +86,49 @@
         border-radius: 1rem;
         padding: 1.5rem;
       }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        margin-bottom: 1.25rem;
+        font-size: 0.9375rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 0.625rem;
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
       h1 {
         margin: 0 0 0.5rem;
-        font-size: 1.25rem;
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
       }
       p {
         margin: 0.5rem 0;
         color: var(--muted);
       }
       ol {
-        margin: 0.75rem 0 1.25rem;
+        margin: 0.75rem 0 1rem;
         padding-left: 1.25rem;
+        color: var(--foreground);
       }
       li {
         margin: 0.4rem 0;
+      }
+      .note {
+        margin: 0 0 1.25rem;
+        padding: 0.625rem 0.875rem;
+        border-radius: 0.75rem;
+        background: var(--warn-soft);
+        color: var(--warn);
+        font-size: 0.875rem;
       }
       button {
         width: 100%;
@@ -76,7 +137,7 @@
         border-radius: 0.75rem;
         padding: 0.75rem 1rem;
         font: inherit;
-        font-weight: 600;
+        font-weight: 700;
         background: var(--accent);
         color: var(--accent-fg);
         cursor: pointer;
@@ -89,17 +150,32 @@
         color: var(--foreground);
         border: 1px solid var(--line);
       }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
     </style>
   </head>
   <body>
     <main>
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12V7H5a2 2 0 010-4h14" />
+            <path d="M3 5v14a2 2 0 002 2h16v-5" />
+            <path d="M18 12a2 2 0 000 4h2v-4z" />
+          </svg>
+        </span>
+        Money Tracker
+      </div>
       <h1>Can't reach your PC</h1>
-      <p>Money Tracker keeps your data on your computer, and this page hasn't been saved on your phone yet. Pages you've opened before still open, and entries you add are kept on the phone and sent when your PC is back.</p>
+      <p>Money Tracker keeps your data on your computer, and this page hasn't been saved on your phone yet.</p>
       <ol>
         <li>Is your PC on and awake?</li>
         <li>Is Tailscale connected on this phone?</li>
         <li>Is the app running on the PC?</li>
       </ol>
+      <p class="note">Pages you've opened before still open, and entries you add are kept on the phone and sent when your PC is back.</p>
       <button type="button" onclick="location.reload()">Try again</button>
       <button type="button" class="second" onclick="location.assign('/')">Add an entry</button>
     </main>

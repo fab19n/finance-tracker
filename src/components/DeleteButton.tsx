@@ -1,20 +1,18 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { ConfirmSubmit } from "./ConfirmSubmit";
 
-/** Submit button that asks for confirmation before the surrounding <form action> runs. */
+/** The bin button on an entry: asks first, then submits the surrounding <form action>. */
 export function DeleteButton({ label = "Delete this entry?" }: { label?: string }) {
   return (
-    <button
-      type="submit"
-      aria-label="Delete"
-      title="Delete"
-      className="rounded-lg p-1.5 text-muted transition hover:bg-danger-soft hover:text-danger"
-      onClick={(e) => {
-        if (!window.confirm(label)) e.preventDefault();
-      }}
-    >
-      <Trash2 size={16} />
-    </button>
+    <ConfirmSubmit
+      trigger={<Trash2 size={16} />}
+      triggerLabel="Delete"
+      triggerClassName="grid size-9 place-items-center rounded-lg text-muted transition hover:bg-danger-soft hover:text-danger"
+      title={label}
+      body="It will be removed from your books. This can't be undone."
+      confirmLabel="Delete"
+    />
   );
 }

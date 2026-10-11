@@ -276,7 +276,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     <span>{r.label}</span>
                     <span className="num ml-auto font-semibold">{formatRM(r.v)}</span>
                     <span className="num w-24 text-right text-xs text-muted">
-                      {formatPct(r.p)} <span className="opacity-70">(guide {r.guide})</span>
+                      {formatPct(r.p)} <span>(guide {r.guide})</span>
                     </span>
                   </li>
                 ))}

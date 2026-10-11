@@ -1,3 +1,4 @@
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { ImportWizard } from "@/components/import/ImportWizard";
@@ -13,9 +14,9 @@ export default async function ImportPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <div>
-        <Link href="/plan" className="text-sm font-medium text-accent">
-          ← Plan
+      <div className="space-y-1">
+        <Link href="/plan" className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent">
+          <ChevronLeft size={16} aria-hidden /> Plan
         </Link>
         <h1 className="h-page">Import a bank statement</h1>
         <p className="text-sm text-muted">

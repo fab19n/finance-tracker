@@ -1,4 +1,8 @@
+import { ChevronLeft, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { deleteTransaction } from "@/app/actions/transactions";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { TransactionForm } from "@/components/TransactionForm";
 import { listAccounts, listCategories, listItemHints } from "@/lib/queries/reference";
 import { getTransaction } from "@/lib/queries/transactions";
@@ -17,7 +21,12 @@ export default async function EditTransactionPage({ params }: { params: Promise<
 
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <h1 className="h-page">Edit entry</h1>
+      <div className="space-y-1">
+        <Link href="/transactions" className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent">
+          <ChevronLeft size={16} aria-hidden /> Activity
+        </Link>
+        <h1 className="h-page">Edit entry</h1>
+      </div>
       <TransactionForm
         accounts={accounts.filter((a) => !a.archived || a.id === tx.accountId || a.id === tx.toAccountId)}
         categories={categories
@@ -38,6 +47,21 @@ export default async function EditTransactionPage({ params }: { params: Promise<
           note: tx.note,
         }}
       />
+      <form action={deleteTransaction} className="flex justify-center">
+        <input type="hidden" name="id" value={tx.id} />
+        <input type="hidden" name="next" value="/transactions" />
+        <ConfirmSubmit
+          trigger={
+            <>
+              <Trash2 size={16} aria-hidden /> Delete this entry
+            </>
+          }
+          triggerClassName="btn-danger"
+          title="Delete this entry?"
+          body="It will be removed from your books. This can't be undone."
+          confirmLabel="Delete"
+        />
+      </form>
     </div>
   );
 }

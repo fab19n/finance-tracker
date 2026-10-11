@@ -18,7 +18,7 @@ export function Meter({ used, pace, status }: { used: number; pace?: number; sta
       <div className={`h-full rounded-full ${FILL[status]}`} style={{ width: `${pct}%` }} />
       {pace !== undefined && pace < 1 && (
         <span
-          className="absolute -top-1 h-4 w-0.5 rounded bg-foreground/60"
+          className="absolute -bottom-[3px] -top-[3px] w-0.5 rounded bg-foreground"
           style={{ left: `${Math.min(pace, 1) * 100}%` }}
           title="Where you'd be at an even pace"
         />
