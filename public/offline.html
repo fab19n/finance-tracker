@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  Shown by the service worker (public/sw.js) when the installed app can't reach your PC. Everything it needs is in this
+  one file, because by definition nothing else can be fetched right now. Changed it? Bump CACHE in sw.js too.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <title>Can't reach your PC - Money Tracker</title>
+    <style>
+      :root {
+        --background: #f5f7f6;
+        --foreground: #0f1f1a;
+        --card: #ffffff;
+        --muted: #64748b;
+        --line: #e2e8e5;
+        --accent: #047857;
+        --accent-fg: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #0b1210;
+          --foreground: #e6efeb;
+          --card: #121c18;
+          --muted: #8fa39b;
+          --line: #22312b;
+          --accent: #34d399;
+          --accent-fg: #052e1f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.5;
+      }
+      main {
+        width: 100%;
+        max-width: 26rem;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        padding: 1.5rem;
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+      }
+      p {
+        margin: 0.5rem 0;
+        color: var(--muted);
+      }
+      ol {
+        margin: 0.75rem 0 1.25rem;
+        padding-left: 1.25rem;
+      }
+      li {
+        margin: 0.4rem 0;
+      }
+      button {
+        width: 100%;
+        min-height: 3rem;
+        border: 0;
+        border-radius: 0.75rem;
+        padding: 0.75rem 1rem;
+        font: inherit;
+        font-weight: 600;
+        background: var(--accent);
+        color: var(--accent-fg);
+        cursor: pointer;
+      }
+      button + button {
+        margin-top: 0.5rem;
+      }
+      button.second {
+        background: transparent;
+        color: var(--foreground);
+        border: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Can't reach your PC</h1>
+      <p>Money Tracker keeps your data on your computer, and this page hasn't been saved on your phone yet. Pages you've opened before still open, and entries you add are kept on the phone and sent when your PC is back.</p>
+      <ol>
+        <li>Is your PC on and awake?</li>
+        <li>Is Tailscale connected on this phone?</li>
+        <li>Is the app running on the PC?</li>
+      </ol>
+      <button type="button" onclick="location.reload()">Try again</button>
+      <button type="button" class="second" onclick="location.assign('/')">Add an entry</button>
+    </main>
+  </body>
+</html>

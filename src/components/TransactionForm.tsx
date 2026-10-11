@@ -2,10 +2,14 @@
 
 import { Check, Loader2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { adoptLookalike, saveTransaction, type FormState } from "@/app/actions/transactions";
-import { isISODate, shortDate } from "@/lib/dates";
+import { isISODate, shortDate, todayISO } from "@/lib/dates";
+import { entryShapeError, type WireEntry } from "@/lib/entry-shape";
 import { parseSen } from "@/lib/money";
+import { offlineStore } from "@/lib/offline/browser";
+import { newClientId } from "@/lib/offline/ids";
+import type { EntryLabels } from "@/lib/offline/types";
 import type { Lookalike } from "@/lib/queries/lookalikes";
 
 type TxType = "income" | "expense" | "transfer";
@@ -31,14 +35,26 @@ export type TxInitial = {
   note: string | null;
 };
 
+/** An entry waiting in the phone's outbox, loaded back into the form to be corrected and sent again. */
+export type EntryDraft = Omit<TxInitial, "id"> & {
+  /** The outbox entry this replaces: the same entry, so correcting it can never make a second one. */
+  clientId: string;
+  /** Why the PC refused it, if it did. */
+  error: string | null;
+};
+
 type Props = {
   accounts: Acc[];
   categories: Cat[];
   hints: Hint[];
   defaultDate: string;
   defaultAccountId: number;
+  /** An existing entry on the PC being edited (this form then saves straight to the PC, and needs it). */
   initial?: TxInitial;
+  /** An outbox entry being corrected. Never together with `initial`. */
+  draft?: EntryDraft;
 };
+export type TransactionFormProps = Props;
 
 const TYPE_LABEL: Record<TxType, string> = {
   expense: "Expense",
@@ -48,6 +64,15 @@ const TYPE_LABEL: Record<TxType, string> = {
 
 const VISIBLE_CHIPS = 9;
 
+const subscribeNever = () => () => {};
+
+/** What to say about an entry that is safe on the phone but hasn't reached the PC. */
+function queuedMessage(why: "offline" | "unreachable" | "login" | "error"): string {
+  if (why === "login") return "Saved on this phone. Sign in again and it will go to your PC.";
+  if (why === "error") return "Saved on this phone. Your PC had a problem, so it will keep trying.";
+  return "Saved on this phone. It will go to your PC as soon as it can be reached.";
+}
+
 export function TransactionForm({
   accounts,
   categories,
@@ -55,15 +80,21 @@ export function TransactionForm({
   defaultDate,
   defaultAccountId,
   initial,
+  draft,
 }: Props) {
-  const [type, setType] = useState<TxType>(initial?.type ?? "expense");
-  const [amount, setAmount] = useState(initial ? (initial.amount / 100).toFixed(2) : "");
-  const [categoryId, setCategoryId] = useState<number | null>(initial?.categoryId ?? null);
-  const [item, setItem] = useState(initial?.item ?? "");
-  const [note, setNote] = useState(initial?.note ?? "");
-  const [accountId, setAccountId] = useState<number>(initial?.accountId ?? defaultAccountId);
-  const [toAccountId, setToAccountId] = useState<number | null>(initial?.toAccountId ?? null);
-  const [date, setDate] = useState(initial?.date ?? defaultDate);
+  const seed = initial ?? draft;
+  const [type, setType] = useState<TxType>(seed?.type ?? "expense");
+  const [amount, setAmount] = useState(seed ? (seed.amount / 100).toFixed(2) : "");
+  const [categoryId, setCategoryId] = useState<number | null>(seed?.categoryId ?? null);
+  const [item, setItem] = useState(seed?.item ?? "");
+  const [note, setNote] = useState(seed?.note ?? "");
+  const [accountId, setAccountId] = useState<number>(seed?.accountId ?? defaultAccountId);
+  const [toAccountId, setToAccountId] = useState<number | null>(seed?.toAccountId ?? null);
+  // The date you picked, if you picked one; otherwise today, read from THIS device's clock. A page the phone saved
+  // yesterday says yesterday in `defaultDate`, and an entry made today must not be dated then.
+  const [pickedDate, setPickedDate] = useState<string | null>(seed?.date ?? null);
+  const today = useSyncExternalStore(subscribeNever, todayISO, () => defaultDate);
+  const date = pickedDate ?? today;
   const [showAll, setShowAll] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -100,12 +131,75 @@ export function TransactionForm({
   }, [lookupKey]);
   const lookalikes = looked && looked.key === lookupKey ? looked.matches : [];
 
-  // Wrap the server actions so a successful *create* (or "use the bank's entry") clears the form for the next entry.
-  // One reducer for both, so they share one pending flag and one place for the result: a message from one can never
-  // linger beside the other's.
+  /**
+   * A NEW entry. It goes through the phone's outbox (src/lib/offline): kept on the phone first, then sent to the PC, and if
+   * the PC can't be reached it simply stays there and goes later. The PC still has the last word: it checks the entry
+   * exactly as it checks one from the old form, and its "no" comes straight back here, with the form still filled in.
+   */
+  async function addEntry(fd: FormData, prev: FormState): Promise<FormState> {
+    const kind = String(fd.get("type")) as TxType;
+    const entry: WireEntry = {
+      clientId: draft?.clientId ?? newClientId(),
+      type: kind,
+      amount: parseSen(String(fd.get("amount") ?? "")) ?? 0,
+      date: String(fd.get("date") ?? ""),
+      accountId: Number(fd.get("accountId")) || 0,
+      toAccountId: kind === "transfer" ? Number(fd.get("toAccountId")) || null : null,
+      categoryId: kind === "transfer" ? null : Number(fd.get("categoryId")) || null,
+      item: kind === "transfer" ? null : String(fd.get("item") ?? "").trim().slice(0, 120) || null,
+      note: String(fd.get("note") ?? "").trim().slice(0, 500) || null,
+    };
+    const problem = entryShapeError(entry);
+    if (problem) return { ok: false, error: problem };
+
+    const accountName = (id: number | null) => accounts.find((a) => a.id === id)?.name ?? "an account";
+    const category = categories.find((c) => c.id === entry.categoryId);
+    const labels: EntryLabels = {
+      account: accountName(entry.accountId),
+      toAccount: entry.toAccountId ? accountName(entry.toAccountId) : null,
+      category: category?.name ?? null,
+      icon: category?.icon ?? null,
+    };
+    const store = offlineStore();
+    const outcome = draft ? await store.update(draft.clientId, entry, labels) : await store.submit(entry, labels);
+    switch (outcome.kind) {
+      case "saved":
+        return { ok: true, message: "Saved", nonce: Date.now() };
+      case "queued":
+        return { ok: true, message: queuedMessage(outcome.why), nonce: Date.now() };
+      case "rejected":
+        return { ok: false, error: outcome.error };
+      case "unavailable":
+        return saveTransaction(prev, fd); // this browser can't keep an outbox: save straight to the PC, as before
+    }
+  }
+
+  // Wrap the actions so a successful *create* (or "use the bank's entry") clears the form for the next entry.
+  // One reducer for all of them, so they share one pending flag and one place for the result: a message from one can
+  // never linger beside the other's.
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     async (prev, fd) => {
-      const result = fd.has("adopt") ? await adoptLookalike(prev, fd) : await saveTransaction(prev, fd);
+      const adopting = fd.has("adopt");
+      let result: FormState;
+      try {
+        if (adopting) result = await adoptLookalike(prev, fd);
+        else if (initial) result = await saveTransaction(prev, fd);
+        else result = await addEntry(fd, prev);
+      } catch (error) {
+        // A failed fetch is a TypeError in every browser. That is the PC being unreachable (asleep, or Tailscale off on this
+        // phone), not a bug: say so, and keep what was typed so trying again is one tap. Anything else (and the redirect that
+        // finishes an edit, which Next handles itself) behaves exactly as before.
+        if (!(error instanceof TypeError)) throw error;
+        const retry = "Check that it's on and Tailscale is connected, then try again.";
+        return {
+          ok: false,
+          error: adopting
+            ? `Couldn't reach your PC, so nothing was changed. ${retry}`
+            : initial
+              ? `Couldn't reach your PC. A saved entry can only be changed while it can be reached, so nothing was changed. ${retry}`
+              : `Couldn't reach your PC, so nothing was saved. ${retry}`,
+        };
+      }
       if (result.ok && !initial) {
         setAmount("");
         setItem("");
@@ -164,7 +258,7 @@ export function TransactionForm({
     }
   }
 
-  const verb = initial ? "Save changes" : type === "expense" ? "Add expense" : type === "income" ? "Add income" : "Add transfer";
+  const verb = initial ? "Save changes" : draft ? "Save and send" : type === "expense" ? "Add expense" : type === "income" ? "Add income" : "Add transfer";
   // While the warning is up, the button says what pressing it means.
   const buttonLabel = lookalikes.length > 0 ? `${verb} anyway` : verb;
 
@@ -173,6 +267,16 @@ export function TransactionForm({
       {initial && <input type="hidden" name="id" value={initial.id} />}
       <input type="hidden" name="type" value={type} />
       <input type="hidden" name="categoryId" value={categoryId ?? ""} />
+
+      {draft && (
+        <div className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
+          <p className="font-semibold">{draft.error ? "Correcting an entry your PC didn't accept" : "Editing an entry waiting to be sent"}</p>
+          {draft.error && <p className="mt-0.5">{draft.error}</p>}
+          <button type="button" className="mt-1 text-xs font-semibold underline" onClick={() => offlineStore().cancelEdit()}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1" role="tablist">
         {(Object.keys(TYPE_LABEL) as TxType[]).map((t) => (
@@ -326,7 +430,7 @@ export function TransactionForm({
               name="date"
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => setPickedDate(e.target.value)}
               className="input"
               required
             />
@@ -344,7 +448,7 @@ export function TransactionForm({
             name="date"
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => setPickedDate(e.target.value)}
             className="input"
             required
           />
@@ -354,7 +458,7 @@ export function TransactionForm({
         </div>
       )}
 
-      <details className="text-sm" open={!!initial?.note}>
+      <details className="text-sm" open={!!seed?.note}>
         <summary className="cursor-pointer text-muted">Add a note</summary>
         <input
           name="note"

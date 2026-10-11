@@ -68,6 +68,8 @@ export function lastMonths(month: string, n: number): string[] {
 
 export const isMonth = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}$/.test(s);
 export const isISODate = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+/** A day that exists, written "YYYY-MM-DD" ("2026-02-31" has the right shape and is not one). */
+export const isRealDate = (s: string | undefined): s is string => isISODate(s) && !Number.isNaN(parseISO(s).getTime());
 
 /** "9 Oct" */
 export function shortDate(iso: string): string {

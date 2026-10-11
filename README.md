@@ -104,7 +104,62 @@ The demo script refuses to touch any database whose file name doesn't contain "d
 
 Limits: each person has one fixed share (if the price changes, edit it and it applies to every month), and these payments still count as money in on the Dashboard rather than reducing the Netflix spending.
 
-## Use it from your phone (home Wi-Fi)
+## Use it from your phone
+
+Two ways. **Tailscale** is the one to use: it works from anywhere (mobile data, a café), the phone can install the app properly, and nothing is exposed to the internet. **Home Wi-Fi only** needs no account, but it is a shortcut, not an installed app.
+
+### Anywhere, as an installed app (Tailscale)
+
+[Tailscale](https://tailscale.com) is a private network between your own devices (free for personal use). `tailscale serve` then gives this app a real `https://` address that only those devices can open, and that address is what lets a phone install it as an app.
+
+**One-time setup**
+
+1. **Install Tailscale on the PC and on the phone** and sign in to the same account on both. On the PC: `winget install --id Tailscale.Tailscale -e`.
+2. **Rename the PC** in the Tailscale admin console (*Machines*) to something neutral, such as `money-pc`. Setting up HTTPS publishes `<machine-name>.<your-tailnet>.ts.net` in public certificate logs, so the name shouldn't be your own. Do this before step 3.
+3. In the admin console's *DNS* page, make sure **MagicDNS** is on, then **Enable HTTPS**.
+4. **Lock the app** with a PIN (see *PIN lock* below). Only your own devices can reach it anyway; the PIN covers a lost or borrowed phone.
+5. On the PC, build the app and start the phone server. It listens on this PC only (127.0.0.1, port 3100), so nothing else on your Wi-Fi can reach it directly:
+   ```bash
+   pnpm run build
+   pnpm run start:phone
+   ```
+6. In a second terminal, publish it to your tailnet. Once is enough: it survives restarts.
+   ```powershell
+   tailscale serve --bg 3100
+   ```
+   It prints your address, like `https://money-pc.<your-tailnet>.ts.net`.
+7. **On the phone**, with Tailscale connected, open that address and install it. Android (Chrome): menu → **Install app**. iPhone (Safari): Share → **Add to Home Screen**.
+
+**Every day:** nothing to do, as long as the PC is on and awake, `start:phone` is running, and Tailscale is connected on the phone. When any of that isn't true, the app keeps working as described next.
+
+**When the PC can't be reached (offline)**
+
+The phone keeps working. A banner says *Can't reach your PC*, and every tab opens with what the phone last saw:
+- **Reading:** each tab (Add, Activity, Plan, Dashboard, Insights, Invest, Settings) opens as the copy saved the last time the phone was connected, and the banner says when that was. Open the app once while the PC is reachable, and it keeps all the tabs for you (and refreshes them about every ten minutes). A page you have never opened shows a short "can't reach your PC" screen instead.
+- **Adding entries:** the Add form works as normal, for expenses, income and transfers. The entry is kept safely on the phone (it survives closing the app, a restart, or a flat battery) and listed under *Waiting to send*. The balances and totals on screen don't include waiting entries yet.
+- **Sending:** the moment the PC can be reached again, whatever is waiting is sent, in order, and the screen refreshes. Nothing to press. The header badge shows *Offline · 2 waiting* and then clears, and a short *Sent 2 entries to your PC* notice confirms it. Sending the same entry twice (a reply lost on the way back, say) can never make two: each entry carries an id the PC recognises.
+- **When the PC says no:** the PC checks each entry exactly as it checks one typed at the desk. Say you deleted a category on the PC after the phone last saw it: that entry is **not** lost, and it doesn't hold up the others. It stays in *Waiting to send*, marked in red with the PC's reason, the badge shows *1 failed*, and a red banner at the top of every page points you to it. For each one you can **Retry** (as it is, once the cause is fixed), **Edit and retry** (the form opens with its values; correct it, and *Save and send*), or **Discard**. Nothing is retried behind your back once the PC has said no.
+- **The PIN again:** if the PC asks for the PIN again when the phone reconnects, entries wait and the banner says *Sign in again*; sign in, and they go.
+- **What needs the PC:** changing or deleting an entry that is already saved, importing a statement, and every setting (bills, shared bills, investments, the cash count). They say so, and change nothing, if the PC can't be reached.
+
+Good to know: the waiting entries live in the phone's browser storage, so **don't clear the browser's site data or uninstall the app while entries are waiting**, and keep the phone itself locked, because it now holds copies of your pages. *Settings → Lock now* signs out and also forgets the saved copies (entries still waiting are kept and go once you sign in again). If you only use the app over plain `http://` on home Wi-Fi, none of the saved pages apply (they need HTTPS), though an entry added while the app is already open is still kept and sent later.
+
+**Keeping it running**
+- *After a restart:* Tailscale starts by itself and **remembers `tailscale serve`**, so you never run that again. What does **not** come back by itself is the app server (`start:phone`): start it yourself, or use the Startup shortcut below. Until it is running, Tailscale answers the phone with a "bad gateway" error; the app recognises that as the PC being away, so the saved pages still open, entries still wait, and everything is sent once the app server is up.
+- *Start with Windows:* press Win+R, type `shell:startup`, and put a shortcut to `scripts\start-phone.cmd` there (set it to run minimised).
+- *Don't let the PC sleep* while you want phone access: Settings → System → Power & battery → Screen, sleep & hibernate timeouts → when plugged in, put my device to sleep after: **Never**.
+- *After updating the app:* `pnpm run build`, then restart `start:phone`. It runs beside `pnpm dev` without trouble (dev uses port 3000).
+
+**Safety**
+- **Never run `tailscale funnel`**: that is the command that puts a service on the public internet. `serve` stays private to your devices.
+- See what is shared with `tailscale serve status`; switch it off with `tailscale serve reset`.
+- Only share the PC through Tailscale with people you would show your bank balance to.
+- The PIN stops a stranger opening the app on a **new** device; it does not hide the saved copies on a phone that is already signed in. The phone's own lock screen is what protects those, so keep it on.
+- Take a backup from the phone any time: Settings → *Download full backup (.db)*.
+
+`start:phone` and not `start:lan`: `start:lan` listens on your whole network, while `start:phone` listens on this PC only and `tailscale serve` is the single door in.
+
+### Home Wi-Fi only (no account)
 
 1. On the PC, build and start it so it listens on your network:
    ```bash
@@ -120,7 +175,7 @@ Limits: each person has one fixed share (if the price changes, edit it and it ap
 
 Notes:
 - The PC must be on and the app running for your phone to reach it. Entries save straight to the PC's database.
-- Over plain `http://` on your LAN, "Add to Home screen" creates a shortcut that opens full-screen. A fully installed PWA needs HTTPS (e.g. via [Tailscale](https://tailscale.com)); there is deliberately no offline mode, because the data lives on the PC.
+- Over plain `http://` your phone only makes a shortcut that opens full-screen. Installing it as a real app, and opening pages with the PC off, needs HTTPS, which the Tailscale route above gives you.
 - **Turn on the PIN lock** (below) before using it on Wi-Fi others share.
 
 ### PIN lock (optional)
@@ -132,7 +187,7 @@ APP_PIN=482915
 ```
 
 Restart the app. Every page and action then needs the PIN (a 30-day cookie remembers your phone). Changing the PIN logs every device out.
-This is a convenience lock for a home network, **not** bank-grade security: don't expose the app to the internet.
+This is a convenience lock, **not** bank-grade security: it keeps a lost or borrowed phone, or a stranger on shared Wi-Fi, out. Don't expose the app to the internet (never use `tailscale funnel`).
 
 ## Backups
 

@@ -1,4 +1,4 @@
-import { logout } from "@/app/actions/auth";
+import { LockNowForm } from "@/components/offline/LockNowForm";
 import {
   saveAccount,
   saveAssumptions,
@@ -315,9 +315,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div className="border-t border-line pt-4">
             <p className="font-medium">PIN lock: {pinEnabled() ? "on" : "off"}</p>
             {pinEnabled() ? (
-              <form action={logout} className="mt-2">
-                <button className="btn">Lock now</button>
-              </form>
+              <LockNowForm />
             ) : (
               <p className="text-muted">
                 Anyone on your Wi-Fi who opens this address can see your data. To require a PIN, add a line like{" "}

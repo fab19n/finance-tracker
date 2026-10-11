@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { accounts, categories, transactions } from "@/db/schema";
+import { categories, transactions } from "@/db/schema";
 import { shortDate } from "@/lib/dates";
+import { checkEntry } from "@/lib/entries";
 import { formatRM, parseSen } from "@/lib/money";
 import { findLookalikes } from "@/lib/queries/lookalikes";
 
@@ -37,34 +38,19 @@ export async function saveTransaction(_prev: FormState, formData: FormData): Pro
   if (amount === null || amount <= 0) return { ok: false, error: "Enter an amount greater than 0" };
 
   const db = await getDb();
-  const accountId = Number(v.accountId);
-  if (!db.select().from(accounts).where(eq(accounts.id, accountId)).get()) {
-    return { ok: false, error: "That account no longer exists" };
-  }
-
-  let toAccountId: number | null = null;
-  let categoryId: number | null = null;
-  if (v.type === "transfer") {
-    toAccountId = Number(v.toAccountId);
-    if (!toAccountId) return { ok: false, error: "Pick the account the money goes to" };
-    if (toAccountId === accountId) return { ok: false, error: "From and To accounts must differ" };
-  } else {
-    categoryId = Number(v.categoryId);
-    if (!categoryId) return { ok: false, error: "Pick a category" };
-    const cat = db.select().from(categories).where(eq(categories.id, categoryId)).get();
-    if (!cat || cat.type !== v.type) return { ok: false, error: "Category doesn't match the entry type" };
-  }
-
-  const row = {
-    date: v.date,
+  // The same rule book the phone's sync uses (src/lib/entries.ts), so an entry is judged identically either way in.
+  const checked = checkEntry(db, {
     type: v.type,
     amount,
-    accountId,
-    toAccountId,
-    categoryId,
-    item: v.item?.trim() || null,
-    note: v.note?.trim() || null,
-  };
+    date: v.date,
+    accountId: Number(v.accountId),
+    toAccountId: Number(v.toAccountId) || null,
+    categoryId: Number(v.categoryId) || null,
+    item: v.item ?? null,
+    note: v.note ?? null,
+  });
+  if (!checked.ok) return { ok: false, error: checked.error };
+  const row = checked.row;
 
   if (v.id) {
     db.update(transactions).set(row).where(eq(transactions.id, Number(v.id))).run();

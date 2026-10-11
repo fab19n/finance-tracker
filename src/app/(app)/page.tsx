@@ -1,4 +1,5 @@
-import { TransactionForm } from "@/components/TransactionForm";
+import { AddEntry } from "@/components/offline/AddEntry";
+import { OutboxList } from "@/components/offline/OutboxList";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
 import { TransactionRow } from "@/components/TransactionRow";
 import { todayISO } from "@/lib/dates";
@@ -41,7 +42,7 @@ export default async function AddPage() {
             </li>
           ))}
         </ul>
-        <TransactionForm
+        <AddEntry
           accounts={balances.map((a) => ({ id: a.id, name: a.name, type: a.type }))}
           categories={categories.map((c) => ({
             id: c.id,
@@ -57,6 +58,7 @@ export default async function AddPage() {
       </section>
 
       <section className="space-y-3">
+        <OutboxList />
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">Today</h2>
           <p className="num text-sm text-muted">

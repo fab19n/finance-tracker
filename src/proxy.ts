@@ -23,6 +23,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except static assets, the manifest and the generated app icons.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|pwa/).*)"],
+  // Everything except static assets, the manifest, the generated app icons, and the service worker with its offline page.
+  // A phone fetches those before (or without) logging in, and a redirect to /login would be cached as "the offline page".
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|pwa/).*)"],
 };

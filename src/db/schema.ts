@@ -65,10 +65,15 @@ export const transactions = sqliteTable(
     shareId: integer("share_id").references(() => billShares.id),
     // Fingerprint of the bank-statement row this came from; lets a re-import skip what is already here.
     importKey: text("import_key"),
+    // Made up on the phone when an entry is typed in, and sent with it. Whatever happens to the connection, sending the same
+    // entry twice can never make two rows: the second finds its id already here. Null for everything not typed on a phone.
+    clientId: text("client_id"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [
     index("tx_date_idx").on(t.date),
+    // SQLite treats every NULL as different, so the many entries with no clientId never clash.
+    uniqueIndex("tx_client_id_idx").on(t.clientId),
     index("tx_import_key_idx").on(t.accountId, t.importKey),
     index("tx_category_date_idx").on(t.categoryId, t.date),
     index("tx_account_idx").on(t.accountId),
