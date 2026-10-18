@@ -17,7 +17,16 @@ export const metadata: Metadata = {
   title: "Koopang",
   description: "Track every ringgit, find the leaks, grow the surplus.",
   // The manifest link is added automatically from src/app/manifest.ts.
-  icons: { icon: "/pwa/icon-192.png", apple: "/pwa/icon-180.png" },
+  // The tab icon: the K. An SVG for browsers that take one (sharp at any size), the PNG as a fallback, and src/app/favicon.ico
+  // (Next adds that one itself) for everything else. All three are under /pwa/ or the PIN lock's exemptions, so the login page
+  // shows the icon too. The home-screen icon is the apple one.
+  icons: {
+    icon: [
+      { url: "/pwa/icon.svg", type: "image/svg+xml", sizes: "any" },
+      { url: "/pwa/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    apple: "/pwa/icon-180.png",
+  },
   appleWebApp: { capable: true, title: "Koopang", statusBarStyle: "default" },
 };
 

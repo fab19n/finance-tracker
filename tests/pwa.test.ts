@@ -31,7 +31,7 @@ describe("the web app manifest", () => {
 
 describe("the PIN lock and the phone app", () => {
   it("never stands in front of the files a phone needs to install the app and to say it can't reach the PC", () => {
-    for (const p of ["/manifest.webmanifest", "/pwa/icon-180.png", "/pwa/icon-192.png", "/pwa/icon-512.png", "/sw.js", "/offline.html"]) {
+    for (const p of ["/manifest.webmanifest", "/pwa/icon-180.png", "/pwa/icon-192.png", "/pwa/icon-512.png", "/pwa/icon.svg", "/favicon.ico", "/sw.js", "/offline.html"]) {
       expect(gated(p), p).toBe(false);
     }
   });
