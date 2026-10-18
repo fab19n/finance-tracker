@@ -3,12 +3,13 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { monthLabel, shiftMonth } from "@/lib/dates";
 
-const BTN = "grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-card transition";
+const BTN = "grid size-8 shrink-0 place-items-center rounded-full transition";
 
 /**
- * Prev / label / next. Cannot navigate past `maxMonth` (or before `minMonth`); the end it can't go to is drawn disabled.
- * `sublabel` goes under the label: it says what the "month" really is when it is a pay cycle ("26 Sep - 25 Oct"), or is a
- * link such as "Show all time". `query` keeps other settings (such as the view or a search) in the links.
+ * The period navigator: a pill with prev / label / next. Cannot navigate past `maxMonth` (or before `minMonth`); the end it
+ * can't go to is drawn plain and unclickable. `sublabel` goes under the pill: it says what the "month" really is when it is
+ * a pay cycle ("26 Sep - 25 Oct"), or is a link such as "Show all time". `query` keeps other settings (such as the view or
+ * a search) in the links.
  */
 export function MonthNav({
   month,
@@ -33,29 +34,29 @@ export function MonthNav({
   const canPrev = minMonth === undefined || before >= minMonth;
   const href = (m: string) => `${path}?month=${m}${query ? `&${query}` : ""}`;
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      {canPrev ? (
-        <Link href={href(before)} aria-label="Previous month" className={`${BTN} hover:bg-background`}>
-          <ChevronLeft size={18} />
-        </Link>
-      ) : (
-        <span aria-hidden className={`${BTN} pointer-events-none opacity-30`}>
-          <ChevronLeft size={18} />
-        </span>
-      )}
-      <span className="min-w-36 flex-1 text-center">
-        <span className="block text-[15px] font-bold">{monthLabel(month)}</span>
-        {sublabel && <span className="block text-xs text-muted">{sublabel}</span>}
-      </span>
-      {canNext ? (
-        <Link href={href(next)} aria-label="Next month" className={`${BTN} hover:bg-background`}>
-          <ChevronRight size={18} />
-        </Link>
-      ) : (
-        <span aria-hidden className={`${BTN} pointer-events-none opacity-30`}>
-          <ChevronRight size={18} />
-        </span>
-      )}
+    <div className={className}>
+      <div className="flex items-center justify-between gap-2 rounded-full border-[1.5px] border-line bg-card p-1">
+        {canPrev ? (
+          <Link href={href(before)} aria-label="Previous month" className={`${BTN} bg-card-subtle hover:bg-nav-active`}>
+            <ChevronLeft size={16} strokeWidth={2.5} />
+          </Link>
+        ) : (
+          <span aria-hidden className={`${BTN} pointer-events-none text-ink-muted`}>
+            <ChevronLeft size={16} strokeWidth={2.5} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-center text-xs font-extrabold">{monthLabel(month)}</span>
+        {canNext ? (
+          <Link href={href(next)} aria-label="Next month" className={`${BTN} bg-card-subtle hover:bg-nav-active`}>
+            <ChevronRight size={16} strokeWidth={2.5} />
+          </Link>
+        ) : (
+          <span aria-hidden className={`${BTN} pointer-events-none text-ink-muted`}>
+            <ChevronRight size={16} strokeWidth={2.5} />
+          </span>
+        )}
+      </div>
+      {sublabel && <p className="mt-1.5 text-center text-[11px] font-bold text-muted">{sublabel}</p>}
     </div>
   );
 }

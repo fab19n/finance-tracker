@@ -4,9 +4,10 @@ import { connection } from "next/server";
 import { ActivitySearch } from "@/components/activity/ActivitySearch";
 import { FilterSheet } from "@/components/activity/FilterSheet";
 import { MonthNav } from "@/components/MonthNav";
+import { PageHeader } from "@/components/PageHeader";
 import { TransactionRow } from "@/components/TransactionRow";
-import { currentMonth, dayLabel } from "@/lib/dates";
-import { formatRM } from "@/lib/money";
+import { currentMonth, dayLabel, monthLabel } from "@/lib/dates";
+import { formatRM, formatRMWhole } from "@/lib/money";
 import { parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
 import { listAccounts, listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, type TxRow } from "@/lib/queries/transactions";
@@ -60,15 +61,21 @@ export default async function TransactionsPage({
   const categoryChoice = categories.find((c) => String(c.id) === category);
   const accountChoice = accounts.find((a) => String(a.id) === account);
   const filtered = Boolean(category || account || q.trim());
+  const net = totals.income - totals.expense;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 max-md:justify-end">
-        <h1 className="h-page">Activity</h1>
-        <Link href={`/transactions/export${qs(base)}`} className="btn !px-3.5 !py-2" prefetch={false}>
-          <Download size={16} aria-hidden /> Export CSV
-        </Link>
-      </div>
+    <div className="space-y-3">
+      <PageHeader
+        title="Activity"
+        subtitle={`${monthNav ? monthLabel(view.month) : "All time"} · ${totals.count} ${totals.count === 1 ? "entry" : "entries"}`}
+        actions={
+          <Link href={`/transactions/export${qs(base)}`} className="btn" prefetch={false}>
+            <Download size={14} strokeWidth={2.5} aria-hidden />
+            <span className="md:hidden">CSV</span>
+            <span className="hidden md:inline">Export CSV</span>
+          </Link>
+        }
+      />
 
       {monthNav ? (
         <MonthNav
@@ -77,65 +84,61 @@ export default async function TransactionsPage({
           path="/transactions"
           query={new URLSearchParams(present({ q: base.q, category, account, type })).toString()}
           sublabel={
-            <Link href={qs({ ...base, month: "all" })} className="font-semibold text-accent hover:underline">
+            <Link href={qs({ ...base, month: "all" })} className="font-extrabold text-accent-strong hover:underline">
               Show all time
             </Link>
           }
-          className="mx-auto max-w-sm"
+          className="max-w-sm"
         />
       ) : (
-        <div className="text-center">
-          <p className="text-[15px] font-bold">All time</p>
-          <Link href={qs({ ...base, month: undefined })} className="text-xs font-semibold text-accent hover:underline">
+        <div className="max-w-sm rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-center">
+          <p className="text-xs font-extrabold">All time</p>
+          <Link href={qs({ ...base, month: undefined })} className="text-[11px] font-extrabold text-accent-strong hover:underline">
             Back to monthly
           </Link>
         </div>
       )}
 
-      <ActivitySearch q={q} others={present({ month: view.month, type, category, account })} />
-
-      <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0" role="group" aria-label="Type">
-        {TYPES.map(([value, label]) => (
-          <Link
-            key={label}
-            href={qs({ ...base, type: value })}
-            aria-current={type === value ? "true" : undefined}
-            className={`shrink-0 rounded-full border px-3.5 py-2 text-sm transition ${
-              type === value ? "border-accent bg-accent-soft font-bold text-accent" : "border-line bg-card font-medium text-muted hover:text-foreground"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-        <FilterSheet
-          categories={categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
-          category={category}
-          account={account}
-          others={present({ month: view.month, type, q: base.q })}
-          clearHref={qs({ ...base, category: undefined, account: undefined })}
-        />
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="md:w-80 md:shrink-0">
+          <ActivitySearch q={q} others={present({ month: view.month, type, category, account })} />
+        </div>
+        <div className="no-scrollbar -mx-5 flex items-center gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Type">
+          {TYPES.map(([value, label]) => (
+            <Link key={label} href={qs({ ...base, type: value })} aria-current={type === value ? "true" : undefined} className="chip">
+              {label}
+            </Link>
+          ))}
+          <FilterSheet
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+            accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+            category={category}
+            account={account}
+            others={present({ month: view.month, type, q: base.q })}
+            clearHref={qs({ ...base, category: undefined, account: undefined })}
+          />
+        </div>
       </div>
 
       {filtered && (
         <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
           {q.trim() && (
             <li>
-              <Link href={qs({ ...base, q: undefined })} className="pill gap-1 bg-accent-soft text-accent">
+              <Link href={qs({ ...base, q: undefined })} className="pill bg-accent-soft text-accent-strong">
                 Search: {q.trim()} <X size={12} aria-label="Remove" />
               </Link>
             </li>
           )}
           {categoryChoice && (
             <li>
-              <Link href={qs({ ...base, category: undefined })} className="pill gap-1 bg-accent-soft text-accent">
-                {categoryChoice.icon} {categoryChoice.name} <X size={12} aria-label="Remove" />
+              <Link href={qs({ ...base, category: undefined })} className="pill bg-accent-soft text-accent-strong">
+                {categoryChoice.name} <X size={12} aria-label="Remove" />
               </Link>
             </li>
           )}
           {accountChoice && (
             <li>
-              <Link href={qs({ ...base, account: undefined })} className="pill gap-1 bg-accent-soft text-accent">
+              <Link href={qs({ ...base, account: undefined })} className="pill bg-accent-soft text-accent-strong">
                 {accountChoice.name} <X size={12} aria-label="Remove" />
               </Link>
             </li>
@@ -143,38 +146,39 @@ export default async function TransactionsPage({
         </ul>
       )}
 
-      <div className="grid grid-cols-3 gap-2">
-        <div className="card !rounded-xl !p-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Income</p>
-          <p className="num text-[15px] font-extrabold text-income">{formatRM(totals.income)}</p>
+      <div className="grid grid-cols-3 gap-2.5">
+        <div className="rounded-[20px] bg-card px-3 py-3.5 md:p-[22px]">
+          <p className="text-[11px] font-extrabold text-muted md:text-xs">Income</p>
+          <p className="num text-sm font-black text-good md:mt-1 md:text-[22px]">{formatRMWhole(totals.income)}</p>
         </div>
-        <div className="card !rounded-xl !p-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Spent</p>
-          <p className="num text-[15px] font-extrabold">{formatRM(totals.expense)}</p>
+        <div className="rounded-[20px] bg-card px-3 py-3.5 md:p-[22px]">
+          <p className="text-[11px] font-extrabold text-muted md:text-xs">Spent</p>
+          <p className="num text-sm font-black md:mt-1 md:text-[22px]">{formatRMWhole(totals.expense)}</p>
         </div>
-        <div className="card !rounded-xl !p-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">Net</p>
-          <p className={`num text-[15px] font-extrabold ${totals.income - totals.expense < 0 ? "text-danger" : "text-income"}`}>
-            {totals.income - totals.expense < 0 ? "−" : "+"}
-            {formatRM(Math.abs(totals.income - totals.expense))}
+        <div className="rounded-[20px] bg-card px-3 py-3.5 md:p-[22px]">
+          <p className="text-[11px] font-extrabold text-muted md:text-xs">Net</p>
+          <p className={`num text-sm font-black md:mt-1 md:text-[22px] ${net < 0 ? "text-danger" : "text-good"}`}>
+            {net < 0 ? "−" : "+"}
+            {formatRMWhole(Math.abs(net))}
           </p>
         </div>
       </div>
 
       {groups.length === 0 ? (
-        <div className="card text-center text-sm text-muted">
-          No entries match.{filtered ? " Try clearing the filters or searching all time." : ""}
+        <div className="card py-10 text-center">
+          <p className="text-sm font-black">No entries match.</p>
+          <p className="sub mt-1">{filtered ? "Try clearing the filters or searching all time." : "Nothing has been recorded for this period yet."}</p>
         </div>
       ) : (
         groups.map((g) => {
           const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);
           return (
             <section key={g.date}>
-              <div className="mb-1.5 flex items-baseline justify-between px-1">
-                <h2 className="text-[13px] font-bold">{dayLabel(g.date)}</h2>
-                {spent > 0 && <span className="num text-xs text-muted">Spent {formatRM(spent)}</span>}
+              <div className="flex items-baseline justify-between px-1 pb-2 pt-1">
+                <h2 className="text-[13px] font-black">{dayLabel(g.date)}</h2>
+                {spent > 0 && <span className="num sub !text-[11px]">Spent {formatRM(spent)}</span>}
               </div>
-              <ul className="card divide-y divide-line !py-1">
+              <ul className="space-y-1.5">
                 {g.items.map((t) => (
                   <TransactionRow key={t.id} tx={t} />
                 ))}
@@ -185,17 +189,17 @@ export default async function TransactionsPage({
       )}
 
       {(view.page > 1 || hasNext) && (
-        <div className="flex justify-between">
+        <div className="flex items-center justify-between">
           {view.page > 1 ? (
             <Link href={qs({ ...base, page: view.page - 1 })} className="btn">
-              ← Newer
+              ‹ Newer
             </Link>
           ) : (
             <span />
           )}
           {hasNext && (
             <Link href={qs({ ...base, page: view.page + 1 })} className="btn">
-              Older →
+              Older ›
             </Link>
           )}
         </div>

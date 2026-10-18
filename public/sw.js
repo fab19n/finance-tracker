@@ -1,5 +1,5 @@
 /*
- * Money Tracker's service worker. Its job is to keep the app usable when your PC can't be reached (asleep, off, or
+ * Koopang's service worker. Its job is to keep the app usable when your PC can't be reached (asleep, off, or
  * Tailscale not connected on this phone).
  *
  *  - PAGES: every page you open is kept as it was last seen. When the PC doesn't answer, the phone shows that copy, marked
@@ -10,7 +10,7 @@
  *
  * Changed offline.html, or these caching rules? Bump VERSION, so every phone starts afresh.
  */
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL = `money-tracker-shell-${VERSION}`;
 const PAGES = `money-tracker-pages-${VERSION}`;
 const STATIC = `money-tracker-static-${VERSION}`;

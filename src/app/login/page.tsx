@@ -6,7 +6,7 @@ type Params = Promise<Record<string, string | string[] | undefined>>;
 /** The static shell (centering + skeleton) prerenders; only the redirect target is read at request time. */
 export default function LoginPage({ searchParams }: { searchParams: Params }) {
   return (
-    <main className="grid min-h-dvh place-items-center px-4">
+    <main className="grid min-h-dvh place-items-center bg-background px-5 md:bg-card-subtle">
       <Suspense fallback={<div className="card h-64 w-full max-w-xs animate-pulse" aria-busy="true" />}>
         <Form searchParams={searchParams} />
       </Suspense>

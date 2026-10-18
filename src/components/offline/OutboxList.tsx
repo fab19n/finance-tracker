@@ -3,6 +3,7 @@
 import { Pencil, RotateCw, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { shortDate } from "@/lib/dates";
+import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { offlineStore } from "@/lib/offline/browser";
 import { failed } from "@/lib/offline/offline-store";
@@ -20,32 +21,32 @@ function Item({ item, busy, editing }: { item: OutboxEntry; busy: boolean; editi
   const sign = entry.type === "income" ? "+" : entry.type === "expense" ? "-" : "";
 
   return (
-    <li className="space-y-2 py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-background text-lg">
-          {labels.icon ?? (entry.type === "transfer" ? "↔" : "•")}
+    <li className="space-y-2 rounded-2xl bg-card-subtle p-3">
+      <div className="flex items-start gap-2.5">
+        <span aria-hidden className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card text-xs font-black">
+          {entry.type === "transfer" ? "⇄" : initials(labels.category)}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{title}</p>
-          <p className="truncate text-xs text-muted">
+          <p className="truncate text-[13px] font-extrabold">{title}</p>
+          <p className="truncate text-[11px] font-bold text-muted">
             {where} · {shortDate(entry.date)}
           </p>
         </div>
-        <p className={`num shrink-0 font-semibold ${entry.type === "income" ? "text-income" : ""}`}>
+        <p className={`num shrink-0 text-[13px] font-black ${entry.type === "income" ? "text-good" : ""}`}>
           {sign}
           {formatRM(entry.amount)}
         </p>
       </div>
 
       {isFailed ? (
-        <p role="alert" className="flex items-start gap-1.5 text-xs font-medium text-danger">
+        <p role="alert" className="flex items-start gap-1.5 text-xs font-extrabold text-danger">
           <TriangleAlert size={14} aria-hidden className="mt-px shrink-0" />
           Your PC didn&apos;t accept this: {item.error}
         </p>
       ) : (
-        <p className="text-xs text-muted">Saved on this phone. Waiting for your PC.</p>
+        <p className="text-xs font-bold text-muted">Saved on this phone. Waiting for your PC.</p>
       )}
-      {editing && <p className="text-xs font-medium text-accent">Being corrected in the form above.</p>}
+      {editing && <p className="text-xs font-extrabold text-accent-strong">Being corrected in the form above.</p>}
 
       <div className="flex flex-wrap gap-2">
         {isFailed && (
@@ -87,19 +88,19 @@ export function OutboxList() {
   if (s.entries.length === 0) return null;
   const bad = failed(s).length;
   return (
-    <section id="waiting" className="card scroll-mt-20 space-y-3" aria-labelledby="waiting-h">
+    <section id="waiting" className="card scroll-mt-6 space-y-3" aria-labelledby="waiting-h">
       <div className="flex items-center justify-between gap-3">
-        <h2 id="waiting-h" className="font-semibold">
+        <h2 id="waiting-h" className="h2">
           Waiting to send
         </h2>
         {bad > 1 && (
-          <button type="button" className="btn !px-3 !py-1.5 text-xs" disabled={s.syncing} onClick={() => void offlineStore().retryAll()}>
+          <button type="button" className="btn !px-3 !py-1.5" disabled={s.syncing} onClick={() => void offlineStore().retryAll()}>
             <RotateCw size={14} aria-hidden /> Retry all
           </button>
         )}
       </div>
-      <p className="text-xs text-muted">Kept safely on this phone. The balances and totals on screen don&apos;t include them yet.</p>
-      <ul className="divide-y divide-line">
+      <p className="sub">Kept safely on this phone. The balances and totals on screen don&apos;t include them yet.</p>
+      <ul className="space-y-2">
         {s.entries.map((item) => (
           <Item key={item.entry.clientId} item={item} busy={s.syncing} editing={s.editingId === item.entry.clientId} />
         ))}

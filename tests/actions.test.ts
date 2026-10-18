@@ -175,6 +175,18 @@ describe("settings actions", () => {
     expect(h.db.select().from(categories).where(eq(categories.id, pets.id)).get()!.archived).toBe(true);
   });
 
+  it("keeps a category's icon when it is saved without one (the form no longer has an emoji field), and gives a new one a bullet", async () => {
+    const { saveCategory } = await import("@/app/actions/settings");
+    await redirected(saveCategory(fd({ name: "Pets", type: "expense", nature: "want", icon: "🐶" })));
+    const pets = () => h.db.select().from(categories).all().find((x) => x.name.startsWith("Pet"))!;
+    const id = String(pets().id);
+    await redirected(saveCategory(fd({ id, name: "Pets and vet", type: "expense", nature: "need", monthlyBudget: "80" })));
+    expect(pets()).toMatchObject({ name: "Pets and vet", nature: "need", icon: "🐶", monthlyBudget: 8_000 });
+
+    await redirected(saveCategory(fd({ name: "Plants", type: "expense", nature: "want" })));
+    expect(h.db.select().from(categories).all().find((x) => x.name === "Plants")!.icon).toBe("•");
+  });
+
   it("sends each form back to the Settings tab it was on, with any error shown there", async () => {
     const { saveCategory, toggleCategoryArchived, saveAssumptions, saveCycleSettings } = await import("@/app/actions/settings");
     expect(await redirected(saveCategory(fd({ name: "Hobbies", type: "expense", nature: "want" })))).toBe("/settings?tab=categories");

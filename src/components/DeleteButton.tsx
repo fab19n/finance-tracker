@@ -7,9 +7,9 @@ import { ConfirmSubmit } from "./ConfirmSubmit";
 export function DeleteButton({ label = "Delete this entry?" }: { label?: string }) {
   return (
     <ConfirmSubmit
-      trigger={<Trash2 size={16} />}
+      trigger={<Trash2 size={15} />}
       triggerLabel="Delete"
-      triggerClassName="grid size-9 place-items-center rounded-lg text-muted transition hover:bg-danger-soft hover:text-danger"
+      triggerClassName="grid size-9 place-items-center rounded-full text-muted transition hover:bg-danger-soft hover:text-danger"
       title={label}
       body="It will be removed from your books. This can't be undone."
       confirmLabel="Delete"

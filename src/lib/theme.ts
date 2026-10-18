@@ -14,7 +14,7 @@ export const THEME_KEY = "mt-theme";
 export const THEME_EVENT = "mt-theme-change";
 
 /** The page background of each theme: the browser's theme colour (the phone's status bar) follows the active theme. */
-export const THEME_COLORS = { light: "#f0faf5", dark: "#0b1210" } as const;
+export const THEME_COLORS = { light: "#f4f2ee", dark: "#141311" } as const;
 
 /** Runs in <head>, before paint. Must stay tiny, dependency-free and silent when storage is unavailable. */
 export const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("${THEME_KEY}");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;

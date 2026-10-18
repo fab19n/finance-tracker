@@ -26,7 +26,7 @@ export function AddInvestmentForm({
   const isEtf = product === "sp500_etf";
 
   return (
-    <form action={addInvestment} className="space-y-3">
+    <form action={addInvestment} className="@container space-y-3.5">
       <div>
         <label className="label" htmlFor="product">
           What kind of investment?
@@ -38,10 +38,10 @@ export function AddInvestmentForm({
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs text-muted">{PRODUCTS.find((p) => p.value === product)?.hint}</p>
+        <p className="sub mt-1.5">{PRODUCTS.find((p) => p.value === product)?.hint}</p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 @sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="name">
             Name
@@ -75,7 +75,7 @@ export function AddInvestmentForm({
       </div>
 
       {isFd && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 @lg:grid-cols-3">
           <div>
             <label className="label" htmlFor="annualRatePct">
               Interest rate (% p.a.)
@@ -103,7 +103,7 @@ export function AddInvestmentForm({
       )}
 
       {isEtf && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 @lg:grid-cols-3">
           <div>
             <label className="label" htmlFor="ticker">
               Ticker (optional)
@@ -131,8 +131,8 @@ export function AddInvestmentForm({
         </div>
       )}
 
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="recordTransfer" defaultChecked className="mt-1 size-4 accent-[var(--accent)]" />
+      <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
+        <input type="checkbox" name="recordTransfer" defaultChecked className="mt-0.5 size-4 shrink-0 accent-accent" />
         <span>
           Also record the transfer out of that account <span className="text-muted">(keeps your bank balance accurate - it&apos;s not counted as spending)</span>
         </span>

@@ -1,5 +1,6 @@
 import { AddEntry } from "@/components/offline/AddEntry";
 import { OutboxList } from "@/components/offline/OutboxList";
+import { PageHeader } from "@/components/PageHeader";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
 import { TransactionRow } from "@/components/TransactionRow";
 import { todayISO } from "@/lib/dates";
@@ -9,13 +10,14 @@ import { lastAccountId, listCategories, listItemHints } from "@/lib/queries/refe
 import { getPlan } from "@/lib/queries/plan";
 import { listTransactions, sumTransactions } from "@/lib/queries/transactions";
 
+/** Balances as small pills (name over amount), scrolling sideways on a phone. */
 function AccountChips({ accounts }: { accounts: { id: number; name: string; balance: number }[] }) {
   return (
-    <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Account balances">
+    <ul className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" aria-label="Account balances">
       {accounts.map((a) => (
-        <li key={a.id} className="card min-w-32 shrink-0 !rounded-xl !p-3">
-          <p className="truncate text-[11px] font-medium text-muted">{a.name}</p>
-          <p className={`num text-sm font-bold ${a.balance < 0 ? "text-danger" : ""}`}>{formatRM(a.balance)}</p>
+        <li key={a.id} className="flex shrink-0 flex-col items-start rounded-full border-[1.5px] border-line bg-card px-3.5 py-1.5">
+          <p className="text-[11px] font-extrabold">{a.name}</p>
+          <p className={`num text-[11px] font-bold ${a.balance < 0 ? "text-danger" : "text-muted"}`}>{formatRM(a.balance)}</p>
         </li>
       ))}
     </ul>
@@ -39,16 +41,28 @@ export default async function AddPage() {
   const spendable = balances.filter((a) => a.type !== "investment");
   const defaultAccountId =
     (lastAcc && spendable.some((a) => a.id === lastAcc) ? lastAcc : spendable[0]?.id) ?? 0;
+  const { cycle } = plan;
+  const toPayday = cycle.paydayOverdue ? "Payday due" : `${cycle.daysLeft} day${cycle.daysLeft === 1 ? "" : "s"} to payday`;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="h-page mb-5">Add entry</h1>
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] md:items-start">
-        {/* Phone, top to bottom: the compact card, balances, the form, then (next section) waiting entries and Today. The
-            form comes first so the amount is on screen without scrolling. Desktop: the form on the left, everything else
-            on the right (so the card and the balances are drawn once per size, never twice). */}
-        <section className="space-y-4">
-          <div className="space-y-4 md:hidden">
+    <div className="mx-auto max-w-5xl space-y-4 md:space-y-5">
+      <PageHeader
+        title="Add entry"
+        subtitle={
+          <>
+            <span className="md:hidden">
+              Day {cycle.dayNumber} of {cycle.daysTotal} · {toPayday}
+            </span>
+            <span className="hidden md:inline">Record spending, income or a transfer</span>
+          </>
+        }
+      />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,27.5rem)_minmax(0,1fr)] md:items-start md:gap-4">
+        {/* Phone, top to bottom: the card, balances, the form, then (next section) waiting entries and Today. The card and
+            the balances are drawn once per size, never twice: here on a phone, in the right-hand column on a desktop,
+            where the form comes first on the left. */}
+        <section className="space-y-3">
+          <div className="space-y-3 md:hidden">
             <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
             <AccountChips accounts={spendable} />
           </div>
@@ -67,30 +81,31 @@ export default async function AddPage() {
           />
         </section>
 
-        <section className="space-y-4">
-          <div className="hidden space-y-4 md:block">
-            <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} />
+        <section className="space-y-3">
+          <div className="hidden space-y-3 md:block">
+            <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
             <AccountChips accounts={spendable} />
           </div>
           <OutboxList />
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-bold">Today</h2>
-            <p className="num text-xs text-muted">
-              Spent <span className="font-bold text-foreground">{formatRM(totals.expense)}</span>
+          <div className="flex items-baseline justify-between gap-3 px-1 pt-1">
+            <h2 className="h2">Today</h2>
+            <p className="num sub">
+              Spent <span className="font-extrabold text-foreground">{formatRM(totals.expense)}</span>
               {totals.income > 0 && (
                 <>
                   {" "}
-                  · In <span className="font-bold text-income">{formatRM(totals.income)}</span>
+                  · In <span className="font-extrabold text-good">{formatRM(totals.income)}</span>
                 </>
               )}
             </p>
           </div>
           {todays.length === 0 ? (
-            <div className="card text-center text-sm text-muted">
-              Nothing recorded today yet. Every ringgit counts - log your first one.
+            <div className="card text-center">
+              <p className="text-sm font-black">Nothing recorded today yet.</p>
+              <p className="sub mt-1">Every ringgit counts - log your first one.</p>
             </div>
           ) : (
-            <ul className="card divide-y divide-line !py-1">
+            <ul className="space-y-2">
               {todays.map((t) => (
                 <TransactionRow key={t.id} tx={t} />
               ))}

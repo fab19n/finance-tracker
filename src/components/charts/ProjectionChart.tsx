@@ -4,7 +4,10 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import type { ProjectionPoint } from "@/lib/investing/advisor";
 import { ChartTooltip, compactRM } from "./ChartTooltip";
 
-/** Same cash, three ways: all FD, all S&P 500, or your mix - at the *expected* rates. One axis. */
+/**
+ * Same cash, three ways: all FD (the text colour), all S&P 500 (the accent), or your mix (good), at the *expected* rates.
+ * One axis. The money you put in is the dotted gray line.
+ */
 export function ProjectionChart({ data }: { data: ProjectionPoint[] }) {
   const common = { strokeWidth: 2, dot: false, isAnimationActive: false, strokeLinecap: "round" as const };
   return (
@@ -20,8 +23,8 @@ export function ProjectionChart({ data }: { data: ProjectionPoint[] }) {
           />
           <Line {...common} className="viz-line-contributed" dataKey="contributed" name="Money you put in" stroke="var(--series-gray)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-gray)", stroke: "var(--card)" } }} />
           <Line {...common} className="viz-line-fd" dataKey="fd" name="All fixed deposit" stroke="var(--series-1)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-1)", stroke: "var(--card)" } }} />
-          <Line {...common} className="viz-line-sp" dataKey="sp" name="All S&P 500" stroke="var(--series-3)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-3)", stroke: "var(--card)" } }} />
-          <Line {...common} className="viz-line-mix" dataKey="mix" name="Your mix" stroke="var(--series-2)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-2)", stroke: "var(--card)" } }} />
+          <Line {...common} className="viz-line-sp" dataKey="sp" name="All S&P 500" stroke="var(--series-2)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-2)", stroke: "var(--card)" } }} />
+          <Line {...common} className="viz-line-mix" dataKey="mix" name="Your mix" stroke="var(--series-3)" activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-3)", stroke: "var(--card)" } }} />
         </LineChart>
       </ResponsiveContainer>
     </div>

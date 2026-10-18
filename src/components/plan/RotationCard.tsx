@@ -1,6 +1,7 @@
-import { Check, Circle, X } from "lucide-react";
+import { Check, ChevronDown, Circle, X } from "lucide-react";
 import { coverMonth, saveTurns } from "@/app/actions/shares";
 import { dayLabel, shiftMonth, shortMonthLabel } from "@/lib/dates";
+import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { monthRange, rotationWindow, type TurnCell, type TurnPerson } from "@/lib/plan/shares";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
@@ -37,30 +38,30 @@ function turnLine(c: TurnCell): string {
 }
 
 function Mark({ cell, name, month }: { cell: TurnCell | undefined; name: string; month: string }) {
-  if (!cell) return <td className="px-1 py-1 text-center text-muted/40" aria-label={`${name}, ${shortMonthLabel(month)}: not their turn`}>·</td>;
+  if (!cell) return <td className="px-1 py-1.5 text-center text-muted/40" aria-label={`${name}, ${shortMonthLabel(month)}: not their turn`}>·</td>;
   // Never colour alone: each state has its own mark and a text label.
   const label = `${name}, ${shortMonthLabel(month)}: ${turnLine(cell)}`;
   if (cell.state === "paid")
     return (
-      <td className="px-1 py-1 text-center text-accent" title={label}>
-        <Check size={14} className="inline" aria-label={label} />
+      <td className="px-1 py-1.5 text-center text-good" title={label}>
+        <Check size={14} strokeWidth={3} className="inline" aria-label={label} />
       </td>
     );
   if (cell.state === "part")
     return (
-      <td className="px-1 py-1 text-center font-semibold text-warn" title={label}>
+      <td className="px-1 py-1.5 text-center font-black text-warn" title={label}>
         <span aria-label={label}>½</span>
       </td>
     );
   if (cell.state === "due")
     return (
-      <td className="px-1 py-1 text-center text-danger" title={label}>
-        <X size={14} className="inline" aria-label={label} />
+      <td className="px-1 py-1.5 text-center text-danger" title={label}>
+        <X size={14} strokeWidth={3} className="inline" aria-label={label} />
       </td>
     );
   return (
-    <td className="px-1 py-1 text-center text-muted" title={label}>
-      <Circle size={12} className="inline" aria-label={label} />
+    <td className="px-1 py-1.5 text-center text-muted" title={label}>
+      <Circle size={12} strokeWidth={2.5} className="inline" aria-label={label} />
     </td>
   );
 }
@@ -89,82 +90,94 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
   const editorMonths = monthRange(editorFrom, shiftMonth(columns[columns.length - 1], 6));
 
   return (
-    <section className="card space-y-4" aria-label={`${view.bill.name}, paid in turns`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-lg font-semibold">{view.bill.name}</h2>
-        <p className="num text-sm text-muted">
+    <section className="card space-y-3.5" aria-label={`${view.bill.name}, paid in turns`}>
+      <div>
+        <h2 className="h2">{view.bill.name}</h2>
+        <p className="sub num mt-0.5">
           {formatRM(view.bill.amount)} a month · <strong className="text-foreground">one person pays the whole month</strong>, in turn
         </p>
       </div>
 
       <div className="space-y-2">
-        <p className={`rounded-xl px-3 py-2 text-sm font-medium ${r.owedToYou > 0 ? "bg-warn-soft text-warn" : "bg-accent-soft text-accent"}`}>
-          {r.owedToYou > 0 ? (
-            <>
-              Owed to you: {formatRM(r.owedToYou)}
-              <span className="font-normal"> · {r.dueNow.map((d) => `${shortMonthLabel(d.month)} ${nameOf(d.shareId)}${d.amount < view.bill.amount ? ` (${formatRM(d.amount)})` : ""}`).join(", ")}</span>
-            </>
-          ) : (
-            "Nobody owes you for a month they covered."
-          )}
+        <p className={`banner font-extrabold ${r.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
+          <span className="min-w-0">
+            {r.owedToYou > 0 ? (
+              <>
+                Owed to you: {formatRM(r.owedToYou)}
+                <span className="font-bold"> · {r.dueNow.map((d) => `${shortMonthLabel(d.month)} ${nameOf(d.shareId)}${d.amount < view.bill.amount ? ` (${formatRM(d.amount)})` : ""}`).join(", ")}</span>
+              </>
+            ) : (
+              "Nobody owes you for a month they covered."
+            )}
+          </span>
         </p>
         {openPast.length > 0 && (
-          <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
-            <strong>{monthSpan(openPast)}</strong> {openPast.length === 1 ? "is" : "are"} still open: nobody has said they&apos;ll cover {openPast.length === 1 ? "it" : "them"} yet.
-            {openLater.length > 0 && <span className="text-muted"> {monthSpan(openLater)} stay open too: whoever covers a month gets it.</span>}
+          <p className="banner banner-warn">
+            <span className="min-w-0">
+              <strong>{monthSpan(openPast)}</strong> {openPast.length === 1 ? "is" : "are"} still open: nobody has said they&apos;ll cover {openPast.length === 1 ? "it" : "them"} yet.
+              {openLater.length > 0 && <span className="text-muted"> {monthSpan(openLater)} stay open too: whoever covers a month gets it.</span>}
+            </span>
           </p>
         )}
         {openPast.length === 0 && openLater.length > 0 && (
-          <p className="rounded-xl bg-background px-3 py-2 text-sm text-muted">
-            Open: {monthSpan(openLater)}. Whoever says they&apos;ll cover a month gets it.
+          <p className="banner bg-card-subtle text-muted">
+            <span className="min-w-0">
+              Open: {monthSpan(openLater)}. Whoever says they&apos;ll cover a month gets it.
+            </span>
           </p>
         )}
         {claims.map((c) => (
-          <form key={c.txId} action={coverMonth} className="flex flex-wrap items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm">
+          <form key={c.txId} action={coverMonth} className="flex flex-wrap items-center gap-2 rounded-2xl bg-card-subtle p-3">
             <input type="hidden" name="billId" value={view.bill.id} />
             <input type="hidden" name="shareId" value={c.person.share.id} />
-            <span className="min-w-0 flex-1">
+            <span className="basis-full text-[13px] font-semibold leading-snug">
               <strong>{c.person.share.name}</strong> sent {formatRM(c.amount)} on {dayLabel(c.date)}. <span className="text-muted">Which month did they cover?</span>
             </span>
             {open.length > 0 ? (
               <>
-                <select name="month" defaultValue={open[0]} className="input !py-1.5 text-sm" aria-label={`Month ${c.person.share.name} covered`}>
+                <select name="month" defaultValue={open[0]} className="input min-w-0 flex-1" aria-label={`Month ${c.person.share.name} covered`}>
                   {open.map((m) => (
                     <option key={m} value={m}>
                       {shortMonthLabel(m)}
                     </option>
                   ))}
                 </select>
-                <button className="btn !py-1.5 text-sm">Count it</button>
+                <button className="btn">Count it</button>
               </>
             ) : (
-              <span className="text-xs text-muted">No month is open this cycle: set it in the planner below.</span>
+              <span className="sub basis-full">No month is open this cycle: set it in the planner below.</span>
             )}
           </form>
         ))}
       </div>
 
-      <ul className="divide-y divide-line">
+      <ul className="space-y-1.5">
         {r.people.map((p) => {
           const s = standing(p, thisMonth, cycle);
           const person = mine.find((m) => m.id === p.share.id);
           return (
-            <li key={p.share.id} className="py-2">
-              <details>
-                <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                  <span className="font-medium">
-                    {p.share.name}
-                    {!p.share.active && <span className="pill ml-1.5 bg-background text-muted">left</span>}
-                    <span className="ml-2 text-xs font-normal text-muted">{formatRM(p.share.share)} per turn</span>
+            <li key={p.share.id} className="rounded-2xl bg-card-subtle px-3 py-2.5">
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+                  <span className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card text-xs font-black" aria-hidden>
+                    {initials(p.share.name)}
                   </span>
-                  <span className={`text-sm font-medium ${s.tone === "owes" ? "text-warn" : s.tone === "ok" ? "text-muted" : "text-foreground"}`}>{s.text}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <span className="truncate text-[13px] font-extrabold">{p.share.name}</span>
+                      {!p.share.active && <span className="pill bg-card text-muted">left</span>}
+                    </span>
+                    <span className={`block text-[11px] font-extrabold leading-snug ${s.tone === "owes" ? "text-warn" : s.tone === "ok" ? "text-muted" : "text-foreground"}`}>{s.text}</span>
+                  </span>
+                  <span className="num shrink-0 text-right text-[11px] font-bold text-muted">{formatRM(p.share.share)} per turn</span>
+                  <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
-                <div className="mt-2 space-y-3 text-sm">
+                <div className="mt-3 space-y-3 text-[13px] font-semibold">
                   {p.turns.length > 0 ? (
-                    <ul className="space-y-0.5 text-muted">
+                    <ul className="space-y-1 text-muted">
                       {p.turns.map((c) => (
                         <li key={c.month}>
-                          <span className="font-medium text-foreground">{shortMonthLabel(c.month)}</span> · {turnLine(c)}
+                          <span className="font-extrabold text-foreground">{shortMonthLabel(c.month)}</span> · {turnLine(c)}
                         </li>
                       ))}
                     </ul>
@@ -181,68 +194,73 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
         })}
       </ul>
 
-      <div className="overflow-x-auto" tabIndex={0} aria-label="Who covered which month, for your two latest cycles">
-        <table className="w-full min-w-[28rem] border-collapse text-xs">
-          <caption className="sr-only">Who covers each month, for your two latest cycles</caption>
-          <thead className="text-muted">
-            <tr>
-              <th className="py-1 pr-2 text-left font-medium">Month</th>
-              {columns.map((m) => (
-                <th key={m} scope="col" className="px-1 py-1 text-center font-medium">
-                  {shortMonthLabel(m).split(" ")[0]}
-                  <span className="block text-[11px] font-normal">{m.slice(2, 4)}</span>
-                  {whoIn(m) === undefined && <span className="block text-[11px] font-semibold text-warn" title="Open: nobody has covered it yet">?</span>}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-t border-line">
-              <th scope="row" className="whitespace-nowrap py-1 pr-2 text-left font-medium text-muted">You</th>
-              {columns.map((m) =>
-                whoIn(m) === "you" ? (
-                  <td key={m} className="px-1 py-1 text-center text-[11px] font-medium text-accent" aria-label={`${shortMonthLabel(m)}: your month${r.charged.includes(m) ? ", paid" : ""}`}>
-                    you{r.charged.includes(m) && <Check size={11} className="ml-0.5 inline" aria-hidden />}
-                  </td>
-                ) : (
-                  <td key={m} className="px-1 py-1 text-center text-muted/40">·</td>
-                ),
-              )}
-            </tr>
-            {r.people.map((p) => (
-              <tr key={p.share.id} className="border-t border-line">
-                <th scope="row" className="whitespace-nowrap py-1 pr-2 text-left font-medium">
-                  {p.share.name}
-                </th>
+      <div>
+        <div className="overflow-x-auto" tabIndex={0} aria-label="Who covered which month, for your two latest cycles">
+          <table className="w-full min-w-[28rem] border-collapse text-xs">
+            <caption className="sr-only">Who covers each month, for your two latest cycles</caption>
+            <thead className="text-muted">
+              <tr>
+                <th className="py-1.5 pr-2 text-left font-extrabold">Month</th>
                 {columns.map((m) => (
-                  <Mark key={m} cell={p.turns.find((c) => c.month === m)} name={p.share.name} month={m} />
+                  <th key={m} scope="col" className="px-1 py-1.5 text-center font-extrabold">
+                    {shortMonthLabel(m).split(" ")[0]}
+                    <span className="block text-[11px] font-bold">{m.slice(2, 4)}</span>
+                    {whoIn(m) === undefined && <span className="block text-[11px] font-black text-warn" title="Open: nobody has covered it yet">?</span>}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11px] text-muted">
-          <span className="inline-flex items-center gap-1"><Check size={12} className="text-accent" aria-hidden /> covered and paid</span>
-          <span><span className="font-semibold text-warn">½</span> part paid</span>
-          <span className="inline-flex items-center gap-1"><X size={12} className="text-danger" aria-hidden /> covered, month has come, not paid yet</span>
-          <span className="inline-flex items-center gap-1"><Circle size={10} aria-hidden /> covered, still to come</span>
+            </thead>
+            <tbody>
+              <tr className="border-t border-line">
+                <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold text-muted">You</th>
+                {columns.map((m) =>
+                  whoIn(m) === "you" ? (
+                    <td key={m} className="px-1 py-1.5 text-center text-[11px] font-extrabold text-accent-strong" aria-label={`${shortMonthLabel(m)}: your month${r.charged.includes(m) ? ", paid" : ""}`}>
+                      you{r.charged.includes(m) && <Check size={11} strokeWidth={3} className="ml-0.5 inline text-good" aria-hidden />}
+                    </td>
+                  ) : (
+                    <td key={m} className="px-1 py-1.5 text-center text-muted/40">·</td>
+                  ),
+                )}
+              </tr>
+              {r.people.map((p) => (
+                <tr key={p.share.id} className="border-t border-line">
+                  <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold">
+                    {p.share.name}
+                  </th>
+                  {columns.map((m) => (
+                    <Mark key={m} cell={p.turns.find((c) => c.month === m)} name={p.share.name} month={m} />
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-muted">
+          <span className="inline-flex items-center gap-1"><Check size={12} strokeWidth={3} className="text-good" aria-hidden /> covered and paid</span>
+          <span><span className="font-black text-warn">½</span> part paid</span>
+          <span className="inline-flex items-center gap-1"><X size={12} strokeWidth={3} className="text-danger" aria-hidden /> covered, month has come, not paid yet</span>
+          <span className="inline-flex items-center gap-1"><Circle size={10} strokeWidth={2.5} aria-hidden /> covered, still to come</span>
           <span>· not their month</span>
-          <span><span className="font-semibold text-warn">?</span> open: nobody has covered it yet</span>
+          <span><span className="font-black text-warn">?</span> open: nobody has covered it yet</span>
         </p>
       </div>
 
-      <details className="rounded-xl border border-line px-3 py-2 text-sm" open={openPast.length > 0}>
-        <summary className="cursor-pointer font-medium">Who covers which month</summary>
+      <details className="group rounded-2xl bg-card-subtle px-3.5 py-3" open={openPast.length > 0}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-extrabold [&::-webkit-details-marker]:hidden">
+          Who covers which month
+          <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
+        </summary>
         <form action={saveTurns} className="mt-3 space-y-3">
           <input type="hidden" name="billId" value={view.bill.id} />
-          <p className="text-xs text-muted">
-            The first month of each cycle is yours. The others go to whoever says they&apos;ll cover them: pick them here when they do (leave a month on &ldquo;nobody yet&rdquo; until then). A person&apos;s payment settles <strong>the month they covered</strong>.
+          <p className="sub leading-relaxed">
+            The first month of each cycle is yours. The others go to whoever says they&apos;ll cover them: pick them here when they do (leave a month on &ldquo;nobody yet&rdquo; until then). A person&apos;s payment settles <strong className="text-foreground">the month they covered</strong>.
           </p>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
             {editorMonths.map((m) => (
-              <label key={m} className="text-xs text-muted">
-                {shortMonthLabel(m)}
-                <select name={`turn:${m}`} defaultValue={String(whoIn(m) ?? "")} className="input mt-1 w-full !py-1.5 text-sm text-foreground">
+              <label key={m} className="min-w-0">
+                <span className="label">{shortMonthLabel(m)}</span>
+                <select name={`turn:${m}`} defaultValue={String(whoIn(m) ?? "")} className="input">
                   <option value="">Nobody yet</option>
                   <option value="you">You</option>
                   {r.people.map((p) => (
@@ -254,7 +272,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               </label>
             ))}
           </div>
-          <button className="btn-primary w-full !py-2.5 text-sm md:w-auto">Save</button>
+          <button className="btn-primary w-full md:w-auto">Save</button>
         </form>
       </details>
 

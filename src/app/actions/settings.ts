@@ -71,11 +71,13 @@ export async function saveCategory(formData: FormData): Promise<void> {
   const v = p.data!;
   const budget = v.monthlyBudget?.trim() ? parseSen(v.monthlyBudget) : null;
   if (v.monthlyBudget?.trim() && budget === null) done("Budget isn't a valid amount", "categories");
+  // The emoji is no longer shown anywhere (the design has no emoji), so the form has no field for it. A category saved
+  // without one KEEPS the icon it has (an update leaves it out), and a new one gets a bullet.
   const row = {
     name: v.name,
     type: v.type,
     nature: v.nature,
-    icon: v.icon || "•",
+    ...(v.icon ? { icon: v.icon } : {}),
     color: v.color ?? "#64748b",
     monthlyBudget: v.type === "expense" ? budget : null,
   };
@@ -83,7 +85,7 @@ export async function saveCategory(formData: FormData): Promise<void> {
   if (v.id) {
     db.update(categories).set(row).where(eq(categories.id, Number(v.id))).run();
   } else {
-    db.insert(categories).values({ ...row, sortOrder: 99 }).run();
+    db.insert(categories).values({ icon: "•", ...row, sortOrder: 99 }).run();
   }
   done(undefined, "categories");
 }

@@ -34,14 +34,12 @@ export function FilterSheet({
       <button
         type="button"
         onClick={() => ref.current?.showModal()}
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition ${
-          applied ? "border-accent bg-accent-soft text-accent" : "border-line bg-card text-foreground hover:bg-background"
-        }`}
+        className="chip"
       >
-        <ListFilter size={16} aria-hidden />
+        <ListFilter size={14} strokeWidth={2.5} aria-hidden />
         Filter
         {applied > 0 && (
-          <span className="grid size-5 place-items-center rounded-full bg-accent text-[11px] font-bold text-accent-fg" aria-label={`${applied} applied`}>
+          <span className="grid min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-extrabold text-accent-fg" aria-label={`${applied} applied`}>
             {applied}
           </span>
         )}
@@ -52,14 +50,14 @@ export function FilterSheet({
         onClick={(e) => {
           if (e.target === ref.current) ref.current?.close();
         }}
-        className="m-auto w-[min(26rem,calc(100%-2rem))] rounded-2xl border border-line bg-card p-0 text-foreground shadow-card backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none"
+        className="m-auto w-[min(26rem,calc(100%-2rem))] rounded-3xl bg-card p-0 text-foreground backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none"
       >
         <form action="/transactions" method="get" className="space-y-4 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5">
           <div className="flex items-center justify-between">
-            <h2 id={titleId} className="text-base font-bold">
+            <h2 id={titleId} className="h2">
               Filter entries
             </h2>
-            <button type="button" aria-label="Close" onClick={() => ref.current?.close()} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-background">
+            <button type="button" aria-label="Close" onClick={() => ref.current?.close()} className="grid size-9 place-items-center rounded-full text-muted hover:bg-card-subtle">
               <X size={18} />
             </button>
           </div>
@@ -74,7 +72,7 @@ export function FilterSheet({
               <option value="">All categories</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.icon} {c.name}
+                  {c.name}
                 </option>
               ))}
             </select>
@@ -96,7 +94,7 @@ export function FilterSheet({
             <Link href={clearHref} onClick={() => ref.current?.close()} className="btn">
               Clear
             </Link>
-            <button type="submit" className="btn-primary !py-3 !text-sm">
+            <button type="submit" className="btn-primary">
               Apply
             </button>
           </div>

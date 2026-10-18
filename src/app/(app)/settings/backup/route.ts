@@ -8,7 +8,7 @@ export async function GET() {
   return new Response(new Uint8Array(snapshot), {
     headers: {
       "content-type": "application/vnd.sqlite3",
-      "content-disposition": `attachment; filename="money-tracker-backup-${todayISO()}.db"`,
+      "content-disposition": `attachment; filename="koopang-backup-${todayISO()}.db"`,
       "cache-control": "no-store",
     },
   });

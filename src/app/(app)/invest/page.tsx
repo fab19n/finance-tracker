@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
 import { connection } from "next/server";
 import { refreshPrices } from "@/app/actions/investments";
 import { ChartTable } from "@/components/ChartTable";
@@ -9,7 +9,7 @@ import { HoldingCard } from "@/components/invest/HoldingCard";
 import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
 import { Kpi } from "@/components/Kpi";
 import { MoreHeader } from "@/components/MoreHeader";
-import { todayISO } from "@/lib/dates";
+import { shortDate, todayISO } from "@/lib/dates";
 import { buildAdvice } from "@/lib/investing/advisor";
 import { savingsOpportunity } from "@/lib/investing/idle";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
@@ -56,20 +56,27 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
       })
     : null;
   const canRefresh = investments.some((r) => r.holding?.ticker && r.holding.units && r.holding.product !== "fixed_deposit");
+  // The newest value you or a price refresh recorded; a fixed deposit is worked out from its terms, so it has none.
+  const pricesAsOf = investments.map((r) => r.lastValuedOn).filter((d): d is string => !!d).sort().pop() ?? null;
 
   const error = first(sp.error);
   const priced = first(sp.priced);
   const oneYearOn = `${Number(today.slice(0, 4)) + 1}${today.slice(4)}`;
+  const count = investments.length;
+  const sign = gain >= 0 ? "+" : "−";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="space-y-3 md:space-y-4">
       <MoreHeader
         title="Invest"
+        subtitle={count === 0 ? "Nothing invested yet" : `${count} investment${count === 1 ? "" : "s"}`}
         actions={
           canRefresh && (
             <form action={refreshPrices}>
-              <button className="btn !px-3.5 !py-2">
-                <RefreshCw size={16} aria-hidden /> Refresh prices
+              <button className="btn">
+                <RefreshCw size={14} strokeWidth={2.5} aria-hidden />
+                <span className="md:hidden">Refresh</span>
+                <span className="hidden md:inline">Refresh prices</span>
               </button>
             </form>
           )
@@ -77,78 +84,105 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
       />
 
       {priced && !error && (
-        <p role="status" className="banner banner-good font-medium">
+        <p role="status" className="banner banner-good">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
           Updated {priced} price{priced === "1" ? "" : "s"} from the market.
         </p>
       )}
       {error && (
-        <p role="alert" className="banner banner-danger font-medium">
+        <p role="alert" className="banner banner-danger">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
           {error}
         </p>
       )}
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Portfolio summary">
-        <Kpi label="Net worth" value={formatRMWhole(liquid + value)} hint="cash + investments" />
-        <Kpi label="You put in" value={formatRMWhole(invested)} hint={`${investments.length} investment${investments.length === 1 ? "" : "s"}`} />
-        <Kpi label="Worth today" value={formatRMWhole(value)} hint="current value" />
-        <Kpi
-          label="Growth"
-          value={`${gain >= 0 ? "+" : "−"}${formatRMWhole(Math.abs(gain))}`}
-          tone={gain > 0 ? "good" : gain < 0 ? "bad" : "default"}
-          hint={invested > 0 ? `${gain >= 0 ? "+" : "−"}${formatPct(Math.abs(gain) / invested, 1)} on money in` : "nothing invested yet"}
-        />
-      </section>
+      {/* Phone: one column in the order summary, savings, advisor, investments. From lg: the summary and your investments on the
+          left, the savings cushion and the advisor on the right. The wrappers are `contents` on a phone so `order` can interleave them. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+          <section className="order-1 grid grid-cols-2 gap-2.5 md:gap-3" aria-label="Portfolio summary">
+            <div className="hero col-span-2">
+              <p className="text-xs font-extrabold">Portfolio worth</p>
+              <p className="num mt-1.5 whitespace-nowrap text-[40px] font-black leading-none tracking-[-0.03em] md:text-[44px]">{formatRMWhole(value)}</p>
+              <p className="mt-2 text-xs font-extrabold">
+                {invested > 0
+                  ? `${sign}${formatRMWhole(Math.abs(gain))} · ${sign}${formatPct(Math.abs(gain) / invested, 1)} since you started`
+                  : "nothing invested yet"}
+              </p>
+              <p className="mt-2.5 text-[11px] font-bold">Net worth, with your cash: {formatRMWhole(liquid + value)}</p>
+            </div>
+            <Kpi label="You put in" value={formatRMWhole(invested)} hint={`${count} investment${count === 1 ? "" : "s"}`} />
+            <Kpi label="Prices as of" value={pricesAsOf ? shortDate(pricesAsOf) : "No values yet"} hint="latest value recorded" />
+          </section>
 
-      {idle && savingsAccount && (
-        <IdleSavingsCard op={idle} accountName={savingsAccount.name} savingsRatePct={settings.savingsRatePct} fdRatePct={settings.fdRatePct} />
-      )}
+          <section className="order-4 space-y-3 md:space-y-4" aria-labelledby="portfolio-h">
+            <h2 id="portfolio-h" className="h2 px-1">
+              Your investments
+            </h2>
 
-      <AdvisorSection advice={advice} settings={settings} />
-
-      <section className="space-y-4" aria-labelledby="portfolio-h">
-        <h2 id="portfolio-h" className="text-lg font-semibold">
-          Your investments
-        </h2>
-
-        {investments.length === 0 ? (
-          <div className="card text-sm text-muted">
-            Nothing here yet. Once you invest - an S&amp;P 500 fund, a fixed deposit - add it below and this page tracks how your money grows.
-          </div>
-        ) : (
-          <>
-            {series.length > 1 && (
-              <div className="card">
-                <h3 className="font-semibold">How your money is growing</h3>
-                <p className="mb-2 text-xs text-muted">The gap between the lines is growth, not deposits</p>
-                <ul className="mb-1 flex gap-4 text-xs" aria-label="Legend">
-                  <li className="flex items-center gap-1.5">
-                    <span className="h-0.5 w-4 rounded bg-series-1" /> Worth today
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <span className="h-0.5 w-4 rounded" style={{ backgroundColor: "var(--series-gray)" }} /> Money you put in
-                  </li>
-                </ul>
-                <GrowthChart data={series} />
-                <ChartTable
-                  caption="Portfolio value and contributions over time"
-                  columns={["Date", "Worth", "Put in", "Growth"]}
-                  rows={series.slice(-24).map((p) => [p.date, formatRM(p.value), formatRM(p.contributed), formatRM(p.value - p.contributed)])}
-                />
+            {investments.length === 0 ? (
+              <div className="card sub leading-relaxed">
+                Nothing here yet. Once you invest - an S&amp;P 500 fund, a fixed deposit - add it below and this page tracks how your money grows.
               </div>
+            ) : (
+              <>
+                {series.length > 1 && (
+                  <div className="card">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <h3 className="h2">How your money is growing</h3>
+                      {invested > 0 && (
+                        <span className={`pill num ${gain > 0 ? "bg-good-soft text-good" : gain < 0 ? "bg-danger-soft text-danger" : "bg-card-subtle text-muted"}`}>
+                          {gain > 0 ? "+" : gain < 0 ? "−" : ""}
+                          {formatPct(Math.abs(gain) / invested, 1)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="sub mb-2 mt-0.5">The gap between the lines is growth, not deposits</p>
+                    <ul className="mb-1 flex gap-4 text-xs font-bold" aria-label="Legend">
+                      <li className="flex items-center gap-1.5">
+                        <span className="h-[3px] w-4 rounded bg-series-2" aria-hidden /> Worth today
+                      </li>
+                      <li className="flex items-center gap-1.5 text-muted">
+                        <span className="w-4 border-t-2 border-dotted border-ink-muted" aria-hidden /> Money you put in
+                      </li>
+                    </ul>
+                    <GrowthChart data={series} />
+                    <ChartTable
+                      caption="Portfolio value and contributions over time"
+                      columns={["Date", "Worth", "Put in", "Growth"]}
+                      rows={series.slice(-24).map((p) => [p.date, formatRM(p.value), formatRM(p.contributed), formatRM(p.value - p.contributed)])}
+                    />
+                  </div>
+                )}
+                {investments.map((r) => (
+                  <HoldingCard key={r.account.id} row={r} funding={funding} today={today} />
+                ))}
+              </>
             )}
-            {investments.map((r) => (
-              <HoldingCard key={r.account.id} row={r} funding={funding} today={today} />
-            ))}
-          </>
-        )}
 
-        <details className="card" open={investments.length === 0}>
-          <summary className="cursor-pointer font-semibold">Add an investment</summary>
-          <div className="mt-4">
-            <AddInvestmentForm fundingAccounts={funding} today={today} oneYearOn={oneYearOn} />
+            {/* Closed: the design's dashed "+ Add an investment" row. Open (always, when there is nothing yet): a card holding the form. */}
+            <details className="group rounded-3xl border-[1.5px] border-dashed border-line open:border-transparent open:bg-card" open={investments.length === 0}>
+              <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 p-3.5 text-[13px] font-extrabold text-accent-strong [&::-webkit-details-marker]:hidden">
+                <Plus size={14} strokeWidth={3} className="transition group-open:rotate-45" aria-hidden /> Add an investment
+              </summary>
+              <div className="px-[18px] pb-[18px] md:px-5 md:pb-5">
+                <AddInvestmentForm fundingAccounts={funding} today={today} oneYearOn={oneYearOn} />
+              </div>
+            </details>
+          </section>
+        </div>
+
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+          {idle && savingsAccount && (
+            <div className="order-2">
+              <IdleSavingsCard op={idle} accountName={savingsAccount.name} savingsRatePct={settings.savingsRatePct} fdRatePct={settings.fdRatePct} />
+            </div>
+          )}
+          <div className="order-3">
+            <AdvisorSection advice={advice} settings={settings} />
           </div>
-        </details>
-      </section>
+        </div>
+      </div>
     </div>
   );
 }

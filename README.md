@@ -1,6 +1,6 @@
-# Money Tracker
+# Koopang
 
-A private, local-first personal finance tracker (Malaysian ringgit). Log every ringgit in and out,
+*Koopang* (after *kupang*, an old Malay coin) is a private, local-first personal finance tracker (Malaysian ringgit). Log every ringgit in and out,
 see where it leaks, get a steer on what to do with the surplus, and track how your investments grow.
 
 Your data lives in **one SQLite file on your own computer** (`data/finance.db`). Nothing goes to the cloud.
@@ -169,7 +169,7 @@ Good to know: the waiting entries live in the phone's browser storage, so **don'
 2. Find the PC's address with `ipconfig` (the IPv4 address, e.g. `192.168.1.20`).
 3. Allow it through Windows Firewall **once** (PowerShell as Administrator):
    ```powershell
-   New-NetFirewallRule -DisplayName "Money Tracker" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
+   New-NetFirewallRule -DisplayName "Koopang" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Private
    ```
 4. On your phone (same Wi-Fi) open `http://192.168.1.20:3000`, then use the browser menu → **Add to Home screen**.
 
@@ -191,7 +191,7 @@ This is a convenience lock, **not** bank-grade security: it keeps a lost or borr
 
 ## Light or dark
 
-The app follows your device's light/dark setting. To force one, open Settings → **Data** → **Appearance** and pick *System*, *Light* or *Dark*. The choice applies at once and is kept **on that device only**, so your phone and your PC can differ. It needs no connection to the PC, so it also works when the PC is off.
+The app follows your device's light/dark setting. To force one, open Settings → **Appearance & data** and pick *System*, *Light* or *Dark*. The choice applies at once and is kept **on that device only**, so your phone and your PC can differ. It needs no connection to the PC, so it also works when the PC is off.
 
 ## Backups
 

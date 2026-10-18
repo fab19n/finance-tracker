@@ -10,41 +10,41 @@ export function BillForm({ bill, categories, accounts }: { bill?: BillRow; categ
   const fixed = bill ? bill.amountMin === bill.amountMax : true;
   return (
     <div className="space-y-2">
-      <form action={saveBill} className="grid grid-cols-2 gap-2 md:grid-cols-6">
+      <form action={saveBill} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
         {bill && <input type="hidden" name="id" value={bill.id} />}
-        <input name="name" defaultValue={bill?.name} placeholder="Bill name" required className="input col-span-2 md:col-span-2" aria-label="Name" />
-        <select name="categoryId" defaultValue={bill?.categoryId ?? ""} required className="input col-span-2 md:col-span-2" aria-label="Category">
+        <input name="name" defaultValue={bill?.name} placeholder="Bill name" required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Name" />
+        <select name="categoryId" defaultValue={bill?.categoryId ?? ""} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Category">
           <option value="" disabled>
             Category…
           </option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.icon} {c.name}
+              {c.name}
             </option>
           ))}
         </select>
-        <select name="accountId" defaultValue={bill?.accountId} required className="input col-span-2 md:col-span-2" aria-label="Paid from">
+        <select name="accountId" defaultValue={bill?.accountId} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Paid from">
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               Paid from {a.name}
             </option>
           ))}
         </select>
-        <input name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : ""} placeholder="Amount RM" inputMode="decimal" required className="input" aria-label="Amount" />
+        <input name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : ""} placeholder="Amount RM" inputMode="decimal" required className="input min-w-0" aria-label="Amount" />
         <input
           name="amountMax"
           defaultValue={bill && !fixed ? senToInput(bill.amountMax) : ""}
           placeholder="…up to (if it varies)"
           inputMode="decimal"
-          className="input"
+          className="input min-w-0"
           aria-label="Up to"
         />
-        <input name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="Due day" className="input" aria-label="Due day of month" />
-        <input name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="Words on the bank statement (netflix, tnb)" className="input col-span-2 md:col-span-2" aria-label="Statement keywords" />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-[var(--accent)]" /> Active
+        <input name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="Due day" className="input min-w-0" aria-label="Due day of month" />
+        <input name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="Words on the bank statement (netflix, tnb)" className="input col-span-2 min-w-0 md:col-span-2" aria-label="Statement keywords" />
+        <label className="col-span-2 flex min-h-10 items-center gap-2 text-[13px] font-extrabold md:col-span-1">
+          <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-accent" /> Active
         </label>
-        <button className="btn-primary col-span-2 !py-2.5 text-sm md:col-span-6">{bill ? "Save bill" : "Add bill"}</button>
+        <button className="btn-primary col-span-2 w-full md:col-span-6">{bill ? "Save bill" : "Add bill"}</button>
       </form>
       {bill && (
         <form action={deleteBill}>

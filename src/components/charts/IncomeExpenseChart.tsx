@@ -31,7 +31,7 @@ export function IncomeExpenseChart({ data }: { data: Point[] }) {
             cursor={{ className: "viz-cursor-bar" }}
           />
           <Bar className="viz-bar-income" dataKey="income" name="Income" fill="var(--series-3)" maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false} />
-          <Bar className="viz-bar-spent" dataKey="expense" name="Spent" fill="var(--series-1)" maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar className="viz-bar-spent" dataKey="expense" name="Spent" fill="var(--series-2)" maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -9,9 +9,9 @@ type Bill = { id: number; name: string };
 export function ShareForm({ share, bills, defaultBillId, defaultStart }: { share?: ShareRow; bills: Bill[]; defaultBillId?: number; defaultStart: string }) {
   return (
     <div className="space-y-2">
-      <form action={saveShare} className="grid grid-cols-2 gap-2 md:grid-cols-6">
+      <form action={saveShare} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
         {share && <input type="hidden" name="id" value={share.id} />}
-        <select name="billId" defaultValue={share?.billId ?? defaultBillId ?? ""} required className="input col-span-2 md:col-span-2" aria-label="Shared bill">
+        <select name="billId" defaultValue={share?.billId ?? defaultBillId ?? ""} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Shared bill">
           <option value="" disabled>
             Which bill…
           </option>
@@ -21,27 +21,27 @@ export function ShareForm({ share, bills, defaultBillId, defaultStart }: { share
             </option>
           ))}
         </select>
-        <input name="name" defaultValue={share?.name} placeholder="Person's name" required className="input col-span-2 md:col-span-2" aria-label="Person" />
-        <input name="share" defaultValue={share ? senToInput(share.share) : ""} placeholder="Their share per month, RM" inputMode="decimal" required className="input col-span-2 md:col-span-2" aria-label="Share per month" />
-        <label className="col-span-1 text-xs text-muted md:col-span-2">
-          Sharing since
-          <input name="startMonth" type="month" defaultValue={share?.startMonth ?? defaultStart} required className="input mt-1 w-full" />
+        <input name="name" defaultValue={share?.name} placeholder="Person's name" required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Person" />
+        <input name="share" defaultValue={share ? senToInput(share.share) : ""} placeholder="Their share per month, RM" inputMode="decimal" required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Share per month" />
+        <label className="col-span-1 min-w-0 md:col-span-2">
+          <span className="label">Sharing since</span>
+          <input name="startMonth" type="month" defaultValue={share?.startMonth ?? defaultStart} required className="input" />
         </label>
-        <label className="col-span-1 text-xs text-muted md:col-span-2">
-          Until (if they left)
-          <input name="endMonth" type="month" defaultValue={share?.endMonth ?? ""} className="input mt-1 w-full" />
+        <label className="col-span-1 min-w-0 md:col-span-2">
+          <span className="label">Until (if they left)</span>
+          <input name="endMonth" type="month" defaultValue={share?.endMonth ?? ""} className="input" />
         </label>
         <input
           name="matchKeywords"
           defaultValue={share?.matchKeywords ?? ""}
-          placeholder="Words on your bank statement when they pay you (e.g. kuganesh)"
-          className="input col-span-2 md:col-span-4"
+          placeholder="Words on your bank statement when they pay you (e.g. a surname)"
+          className="input col-span-2 min-w-0 md:col-span-4"
           aria-label="Words on the bank statement"
         />
-        <label className="flex items-center gap-2 text-sm md:col-span-2">
-          <input type="checkbox" name="active" defaultChecked={share?.active ?? true} className="size-4 accent-[var(--accent)]" /> Still sharing
+        <label className="col-span-2 flex min-h-10 items-center gap-2 text-[13px] font-extrabold md:col-span-2">
+          <input type="checkbox" name="active" defaultChecked={share?.active ?? true} className="size-4 accent-accent" /> Still sharing
         </label>
-        <button className="btn-primary col-span-2 !py-2.5 text-sm md:col-span-6">{share ? "Save" : "Add person"}</button>
+        <button className="btn-primary col-span-2 w-full md:col-span-6">{share ? "Save" : "Add person"}</button>
       </form>
       {share && (
         <form action={deleteShare}>

@@ -56,13 +56,13 @@ export function ConfirmSubmit({
         onClick={(e) => {
           if (e.target === ref.current) ref.current?.close();
         }}
-        className="m-auto w-[min(26rem,calc(100%-2rem))] rounded-2xl border border-line bg-card p-0 text-foreground shadow-card backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none"
+        className="m-auto w-[min(26rem,calc(100%-2rem))] rounded-3xl bg-card p-0 text-foreground backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none"
       >
         <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5">
-          <h2 id={titleId} className="text-base font-bold">
+          <h2 id={titleId} className="h2">
             {title}
           </h2>
-          {body && <p className="mt-1.5 text-sm text-muted">{body}</p>}
+          {body && <p className="sub mt-1.5 leading-relaxed">{body}</p>}
           <div className="mt-5 flex flex-col-reverse gap-2 md:flex-row md:justify-end">
             <button type="button" className="btn" onClick={() => ref.current?.close()}>
               {cancelLabel}
@@ -71,8 +71,8 @@ export function ConfirmSubmit({
               type="submit"
               className={
                 tone === "danger"
-                  ? "inline-flex items-center justify-center rounded-xl bg-danger px-4 py-3 text-sm font-bold text-background transition hover:opacity-90"
-                  : "btn-primary !py-3 !text-sm"
+                  ? "inline-flex min-h-11 items-center justify-center rounded-full bg-danger px-[18px] py-3 text-sm font-extrabold text-danger-fg transition hover:opacity-90"
+                  : "btn-primary"
               }
             >
               {confirmLabel}

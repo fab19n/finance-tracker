@@ -1,26 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Nunito } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ThemeSync } from "@/components/ThemeSync";
 import { THEME_COLORS, THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Self-hosted at build time (next/font), so it is part of the saved pages and works without the PC. The design is
+// bold-leaning: body 600-700, labels 800, titles and amounts 900.
+const nunito = Nunito({
+  variable: "--font-nunito",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
-  title: "Money Tracker",
+  title: "Koopang",
   description: "Track every ringgit, find the leaks, grow the surplus.",
   // The manifest link is added automatically from src/app/manifest.ts.
   icons: { icon: "/pwa/icon-192.png", apple: "/pwa/icon-180.png" },
-  appleWebApp: { capable: true, title: "Money", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Koopang", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -40,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // element only; a real mismatch anywhere inside the page is still reported.
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${nunito.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

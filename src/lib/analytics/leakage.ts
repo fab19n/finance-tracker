@@ -155,7 +155,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
           id: `oneoff-${c.name}`,
           kind: "category_creep",
           severity: excess >= 20_000 ? "medium" : "low",
-          title: `${c.icon} One big ${c.name} purchase: ${biggest.item ?? c.name} ${formatRM(biggest.amount)}`,
+          title: `One big ${c.name} purchase: ${biggest.item ?? c.name} ${formatRM(biggest.amount)}`,
           evidence: [
             `${formatRM(soFar)} in ${c.name} so far this month; you usually spend ${formatRM(Math.round(usualFull))} in a whole month`,
             "A single large purchase, not a repeating habit",
@@ -172,10 +172,10 @@ export function detectLeaks(input: LeakInput): Insight[] {
         severity: excess >= 20_000 ? "high" : excess >= 10_000 ? "medium" : "low",
         title:
           ratio === Infinity
-            ? `${c.icon} ${c.name} is well above your usual`
+            ? `${c.name} is well above your usual`
             : ratio >= 3
-              ? `${c.icon} ${c.name} is ${ratio.toFixed(0)}× your usual pace`
-              : `${c.icon} ${c.name} is ${formatPct(ratio - 1)} above your usual pace`,
+              ? `${c.name} is ${ratio.toFixed(0)}× your usual pace`
+              : `${c.name} is ${formatPct(ratio - 1)} above your usual pace`,
         evidence: [
           `${formatRM(soFar)} spent in the first ${day} days of the month`,
           `You usually spend ${formatRM(Math.round(usualByNow))} by this point (last ${monthsWithData.length} months)`,
@@ -267,8 +267,8 @@ export function detectLeaks(input: LeakInput): Insight[] {
       kind: "over_budget",
       severity: over ? "high" : "medium",
       title: over
-        ? `${b.icon} ${b.name} is over budget`
-        : `${b.icon} ${b.name} is on pace to go over budget`,
+        ? `${b.name} is over budget`
+        : `${b.name} is on pace to go over budget`,
       evidence: [
         `${formatRM(b.spent)} spent of a ${formatRM(b.budget)} budget (${formatPct(b.used)})`,
         over ? `Over by ${formatRM(b.spent - b.budget)} with ${dim - day} days left` : `Projected to finish at ${formatRM(b.projected)}`,

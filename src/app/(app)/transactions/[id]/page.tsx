@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteTransaction } from "@/app/actions/transactions";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { PageHeader } from "@/components/PageHeader";
 import { TransactionForm } from "@/components/TransactionForm";
 import { listAccounts, listCategories, listItemHints } from "@/lib/queries/reference";
 import { getTransaction } from "@/lib/queries/transactions";
@@ -21,12 +22,14 @@ export default async function EditTransactionPage({ params }: { params: Promise<
 
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <div className="space-y-1">
-        <Link href="/transactions" className="inline-flex items-center gap-0.5 text-sm font-semibold text-accent">
-          <ChevronLeft size={16} aria-hidden /> Activity
-        </Link>
-        <h1 className="h-page">Edit entry</h1>
-      </div>
+      <PageHeader
+        title="Edit entry"
+        actions={
+          <Link href="/transactions" className="btn">
+            <ChevronLeft size={14} strokeWidth={2.5} aria-hidden /> Activity
+          </Link>
+        }
+      />
       <TransactionForm
         accounts={accounts.filter((a) => !a.archived || a.id === tx.accountId || a.id === tx.toAccountId)}
         categories={categories

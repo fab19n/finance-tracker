@@ -263,39 +263,24 @@ export function TransactionForm({
   const buttonLabel = lookalikes.length > 0 ? `${verb} anyway` : verb;
 
   return (
-    <form ref={formRef} action={formAction} className="card space-y-4">
+    <form ref={formRef} action={formAction} className="card space-y-3.5">
       {initial && <input type="hidden" name="id" value={initial.id} />}
       <input type="hidden" name="type" value={type} />
       <input type="hidden" name="categoryId" value={categoryId ?? ""} />
 
       {draft && (
-        <div className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
-          <p className="font-semibold">{draft.error ? "Correcting an entry your PC didn't accept" : "Editing an entry waiting to be sent"}</p>
-          {draft.error && <p className="mt-0.5">{draft.error}</p>}
-          <button type="button" className="mt-1 text-xs font-semibold underline" onClick={() => offlineStore().cancelEdit()}>
+        <div className="banner banner-warn flex-col gap-0.5 !items-start">
+          <p className="font-extrabold">{draft.error ? "Correcting an entry your PC didn't accept" : "Editing an entry waiting to be sent"}</p>
+          {draft.error && <p>{draft.error}</p>}
+          <button type="button" className="mt-1 text-xs font-extrabold underline" onClick={() => offlineStore().cancelEdit()}>
             Cancel
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1" role="tablist">
+      <div className="seg" role="tablist">
         {(Object.keys(TYPE_LABEL) as TxType[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={type === t}
-            onClick={() => changeType(t)}
-            className={`rounded-lg py-2 text-sm font-semibold transition ${
-              type === t
-                ? t === "income"
-                  ? "bg-income text-accent-fg shadow-sm"
-                  : t === "expense"
-                    ? "bg-foreground text-background shadow-sm"
-                    : "bg-card text-foreground shadow-sm ring-1 ring-line"
-                : "text-muted"
-            }`}
-          >
+          <button key={t} type="button" role="tab" aria-selected={type === t} onClick={() => changeType(t)} className="seg-item">
             {TYPE_LABEL[t]}
           </button>
         ))}
@@ -305,8 +290,8 @@ export function TransactionForm({
         <label htmlFor="amount" className="label">
           Amount
         </label>
-        <div className="flex items-baseline gap-2 rounded-[18px] border border-line bg-background px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
-          <span className="text-xl font-bold text-muted">RM</span>
+        <div className="flex items-baseline gap-2 rounded-[18px] border-[1.5px] border-line bg-background px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
+          <span className="text-base font-extrabold text-muted">RM</span>
           <input
             ref={amountRef}
             id="amount"
@@ -316,7 +301,7 @@ export function TransactionForm({
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="num w-full bg-transparent text-[32px] font-extrabold tracking-[-0.03em] outline-none placeholder:text-line"
+            className="num w-full bg-transparent text-4xl font-black tracking-[-0.03em] outline-none"
             required
           />
         </div>
@@ -325,7 +310,7 @@ export function TransactionForm({
       {type !== "transfer" && (
         <div>
           <span className="label">Category</span>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 md:grid-cols-4">
             {shownChips.map((c) => {
               const selected = categoryId === c.id;
               return (
@@ -334,18 +319,18 @@ export function TransactionForm({
                   type="button"
                   onClick={() => setCategoryId(c.id)}
                   aria-pressed={selected}
-                  style={selected ? { borderColor: c.color, backgroundColor: `${c.color}1f` } : undefined}
-                  className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-[14px] border px-1 py-2 text-center text-xs font-semibold leading-tight transition active:scale-95 ${
-                    selected ? "border-2" : "border-line bg-background"
+                  className={`relative flex min-h-[60px] flex-col items-center justify-center gap-[5px] rounded-2xl border-[1.5px] px-2 py-2.5 text-center text-[11px] font-extrabold leading-tight transition active:scale-95 ${
+                    selected ? "border-foreground bg-nav-active" : "border-transparent bg-card-subtle"
                   }`}
                 >
-                  {/* Selected = the category's own colour (tinted fill and border) AND a check, so it never relies on colour alone. */}
+                  {/* Selected = a filled tile with a dark border AND a check, so it never relies on colour alone. The
+                      category's own colour is only the dot. */}
                   {selected && (
-                    <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-foreground text-background" aria-hidden>
+                    <span className="absolute right-1.5 top-1.5 grid size-4 place-items-center rounded-full bg-foreground text-background" aria-hidden>
                       <Check size={11} strokeWidth={3} />
                     </span>
                   )}
-                  <span className="text-lg leading-none">{c.icon}</span>
+                  <span className="size-2.5 rounded-full" style={{ backgroundColor: c.color }} aria-hidden />
                   {c.name}
                 </button>
               );
@@ -355,9 +340,9 @@ export function TransactionForm({
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="mt-2 text-sm font-semibold text-accent"
+              className="mt-2 text-xs font-extrabold text-accent-strong"
             >
-              {showAll ? "Show fewer" : `Show all ${chips.length} categories`}
+              {showAll ? "Show fewer" : `Show all ${chips.length} categories →`}
             </button>
           )}
         </div>
@@ -366,7 +351,7 @@ export function TransactionForm({
       {type !== "transfer" && (
         <div>
           <label htmlFor="item" className="label">
-            What exactly? <span className="normal-case text-muted">(item - helps find leaks)</span>
+            What exactly? <span className="font-semibold">(item - helps find leaks)</span>
           </label>
           <input
             id="item"
@@ -386,7 +371,7 @@ export function TransactionForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         <div>
           <label htmlFor="accountId" className="label">
             {type === "transfer" ? "From" : type === "income" ? "Into" : "Paid from"}
@@ -458,14 +443,12 @@ export function TransactionForm({
             className="input"
             required
           />
-          <p className="mt-2 text-xs text-muted">
-            Moving money between your own accounts (ATM withdrawal, top-up, investing) is not spending.
-          </p>
+          <p className="sub mt-2">Moving money between your own accounts (ATM withdrawal, top-up, investing) is not spending.</p>
         </div>
       )}
 
-      <details className="text-sm" open={!!seed?.note}>
-        <summary className="cursor-pointer text-muted">Add a note</summary>
+      <details className="text-[13px]" open={!!seed?.note}>
+        <summary className="cursor-pointer list-none font-bold text-muted [&::-webkit-details-marker]:hidden">+ Add a note</summary>
         <input
           name="note"
           value={note}
@@ -476,43 +459,43 @@ export function TransactionForm({
       </details>
 
       {lookalikes.length > 0 && (
-        <div role="status" className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
-          <p className="flex items-center gap-2 font-semibold">
+        <div role="status" className="rounded-[18px] bg-warn-soft p-3.5 text-warn">
+          <p className="flex items-center gap-2 text-[13px] font-black">
             <TriangleAlert size={16} aria-hidden /> Already in your books?
           </p>
-          <p className="mt-1">
+          <p className="mt-1 text-xs font-semibold leading-snug">
             Your bank import already has {lookalikes.length === 1 ? "an entry" : "entries"} for exactly this amount around this date.{" "}
             {offerUse
               ? "If it's the same purchase, use the bank's entry instead of adding it twice."
               : "If it's the same one, open it instead of adding it twice."}
           </p>
-          <ul className="mt-1 divide-y divide-warn/25">
+          <ul className="mt-2.5 space-y-1.5">
             {lookalikes.map((l) => (
-              <li key={l.id} className="py-2">
-                <span className="block truncate font-medium">{l.label}</span>
-                <span className="block truncate text-xs">
+              <li key={l.id} className="rounded-2xl bg-card px-3 py-2.5 text-foreground">
+                <span className="block truncate text-xs font-extrabold">{l.label}</span>
+                <span className="sub block truncate !text-[11px]">
                   {l.where} · {shortDate(l.date)}
                   {l.bankText ? ` · ${l.bankText}` : ""}
                 </span>
-                <span className="mt-1 flex items-center gap-4">
+                <span className="mt-1.5 flex items-center gap-4">
                   {type !== "transfer" && l.adoptable && (
                     <button
                       type="button"
                       onClick={() => adopt(l.id)}
                       disabled={pending || !canAdopt}
-                      className="inline-flex min-h-9 items-center rounded-lg bg-warn px-3 text-xs font-semibold text-background disabled:opacity-50"
+                      className="pill min-h-8 bg-warn px-3.5 text-card disabled:opacity-50"
                     >
                       Use this one
                     </button>
                   )}
-                  <Link href={`/transactions/${l.id}`} className="inline-flex min-h-9 items-center text-xs font-semibold underline">
+                  <Link href={`/transactions/${l.id}`} className="inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong underline">
                     Open
                   </Link>
                 </span>
               </li>
             ))}
           </ul>
-          <p className="text-xs">
+          <p className="mt-2 text-xs font-semibold">
             {offerUse && !canAdopt
               ? `Pick a category, or say what it was, and "Use this one" puts it on the bank's entry.`
               : "A separate purchase for the same amount? Add it as normal."}
@@ -521,18 +504,18 @@ export function TransactionForm({
       )}
 
       {state.error && (
-        <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+        <p role="alert" className="banner banner-danger leading-snug">
           {state.error}
         </p>
       )}
       {state.ok && !initial && (
-        <p role="status" className="flex items-start gap-2 rounded-xl bg-accent-soft px-3 py-2 text-sm font-medium text-accent">
+        <p role="status" className="banner banner-good font-extrabold">
           <Check size={16} className="mt-0.5 shrink-0" /> {state.message ?? "Saved"}
         </p>
       )}
 
-      <button type="submit" disabled={pending} className="btn-primary w-full">
-        {pending ? <Loader2 size={18} className="animate-spin" /> : null}
+      <button type="submit" disabled={pending} className="btn-primary w-full !py-3.5">
+        {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" /> : null}
         {buttonLabel}
       </button>
     </form>

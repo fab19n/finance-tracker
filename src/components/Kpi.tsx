@@ -18,7 +18,7 @@ export function Kpi({
 }: {
   label: string;
   value: string;
-  hint?: string;
+  hint?: React.ReactNode;
   delta?: Delta;
   tone?: "default" | "good" | "bad";
 }) {
@@ -33,25 +33,28 @@ export function Kpi({
       const bad = (up && !delta.upIsGood) || (down && delta.upIsGood);
       const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Minus;
       deltaEl = (
-        <span className={`inline-flex items-center gap-0.5 font-medium ${good ? "text-income" : bad ? "text-danger" : "text-muted"}`}>
-          <Icon size={14} aria-hidden />
-          {up ? "+" : ""}
-          {(delta.ratio * 100).toFixed(0)}% <span className="font-normal text-muted">{delta.vs}</span>
-        </span>
+        <>
+          <span className={`flex items-center gap-0.5 font-extrabold ${good ? "text-good" : bad ? "text-danger" : "text-muted"}`}>
+            <Icon size={14} aria-hidden className="shrink-0" />
+            {up ? "+" : ""}
+            {(delta.ratio * 100).toFixed(0)}%
+          </span>
+          <span className="block font-bold text-muted">{delta.vs}</span>
+        </>
       );
     }
   }
   return (
-    <div className="card !p-3.5">
-      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
+    <div className="rounded-[20px] bg-card px-3.5 py-3.5 md:p-[22px]">
+      <p className="text-[11px] font-extrabold text-muted md:text-xs">{label}</p>
       <p
-        className={`num mt-1.5 text-[22px] font-extrabold tracking-[-0.02em] ${
-          tone === "bad" ? "text-danger" : tone === "good" ? "text-income" : ""
+        className={`num mt-0.5 text-base font-black tracking-[-0.02em] md:mt-1 md:text-2xl ${
+          tone === "bad" ? "text-danger" : tone === "good" ? "text-good" : ""
         }`}
       >
         {value}
       </p>
-      <p className="mt-1 min-h-4 text-xs">{deltaEl ?? <span className="text-muted">{hint}</span>}</p>
+      <p className="mt-0.5 min-h-4 text-[11px] font-bold md:mt-1 md:text-xs">{deltaEl ?? <span className="text-muted">{hint}</span>}</p>
     </div>
   );
 }

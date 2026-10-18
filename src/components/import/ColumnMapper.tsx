@@ -37,7 +37,7 @@ export function ColumnMapper({
   const [dateFormat, setDateFormat] = useState<"dmy" | "mdy" | "ymd">(initial?.dateFormat ?? "dmy");
 
   const pick = (value: number | "", set: (v: number | "") => void, name: string, optional = false) => (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="label">{name}</span>
       <select className="input" value={value} onChange={(e) => set(e.target.value === "" ? "" : Number(e.target.value))}>
         <option value="">{optional ? "(none)" : "Choose…"}</option>
@@ -53,14 +53,15 @@ export function ColumnMapper({
   const ready = date !== "" && description !== "" && (shape === "amount" ? amount !== "" : debit !== "" || credit !== "");
 
   return (
-    <div className="space-y-3 text-sm">
-      <div className="overflow-x-auto rounded-xl border border-line">
+    <div className="space-y-3.5 text-[13px] font-bold">
+      {/* The sample rows sit in a grey box that scrolls sideways inside the card when there are many columns. */}
+      <div className="overflow-x-auto rounded-2xl bg-card-subtle">
         <table className="w-full text-left text-xs">
           <tbody className="divide-y divide-line">
             {sample.slice(0, 6).map((r, ri) => (
-              <tr key={ri} className={ri === 0 && hasHeader ? "bg-background font-semibold" : ""}>
+              <tr key={ri} className={ri === 0 && hasHeader ? "bg-card font-extrabold" : "font-semibold"}>
                 {cols.map((c) => (
-                  <td key={c} className="max-w-40 truncate px-2 py-1.5">
+                  <td key={c} className="max-w-40 truncate px-2.5 py-2">
                     {r[c] ?? ""}
                   </td>
                 ))}
@@ -70,15 +71,15 @@ export function ColumnMapper({
         </table>
       </div>
 
-      <label className="flex items-center gap-2">
-        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 accent-[var(--accent)]" />
+      <label className="flex min-h-8 items-center gap-2">
+        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 shrink-0 accent-accent" />
         The first row holds column names
       </label>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-3">
         {pick(date, setDate, "Date")}
         {pick(description, setDescription, "Description")}
-        <label className="block">
+        <label className="block min-w-0">
           <span className="label">Date order</span>
           <select className="input" value={dateFormat} onChange={(e) => setDateFormat(e.target.value as "dmy" | "mdy" | "ymd")}>
             <option value="dmy">Day / Month / Year</option>
@@ -88,16 +89,16 @@ export function ColumnMapper({
         </label>
       </div>
 
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2">
-          <input type="radio" checked={shape === "amount"} onChange={() => setShape("amount")} className="accent-[var(--accent)]" /> One amount column (+ / −)
+      <div className="flex flex-wrap gap-x-5 gap-y-1">
+        <label className="flex min-h-8 items-center gap-2">
+          <input type="radio" checked={shape === "amount"} onChange={() => setShape("amount")} className="size-4 shrink-0 accent-accent" /> One amount column (+ / −)
         </label>
-        <label className="flex items-center gap-2">
-          <input type="radio" checked={shape === "split"} onChange={() => setShape("split")} className="accent-[var(--accent)]" /> Separate money out / in columns
+        <label className="flex min-h-8 items-center gap-2">
+          <input type="radio" checked={shape === "split"} onChange={() => setShape("split")} className="size-4 shrink-0 accent-accent" /> Separate money out / in columns
         </label>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-3">
         {shape === "amount" ? (
           pick(amount, setAmount, "Amount")
         ) : (
@@ -111,7 +112,7 @@ export function ColumnMapper({
 
       <button
         type="button"
-        className="btn-primary !py-2.5 text-sm"
+        className="btn-primary w-full md:w-auto"
         disabled={!ready || busy}
         onClick={() =>
           onApply({

@@ -4,7 +4,7 @@ export const SETTINGS_TABS = [
   { id: "categories", label: "Categories" },
   { id: "payday", label: "Payday" },
   { id: "investing", label: "Investing" },
-  { id: "data", label: "Data" },
+  { id: "data", label: "Appearance & data" },
 ] as const;
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];

@@ -7,11 +7,11 @@ import { offlineStore } from "@/lib/offline/browser";
 import { failed, pending } from "@/lib/offline/offline-store";
 import { useOfflineState, when } from "./hooks";
 
-const TONES = { warn: "bg-warn-soft text-warn", danger: "bg-danger-soft text-danger", good: "bg-accent-soft text-accent" } as const;
+const TONES = { warn: "bg-warn-soft text-warn", danger: "bg-danger-soft text-danger", good: "bg-good-soft text-good" } as const;
 
 function Row({ tone, icon: Icon, children }: { tone: keyof typeof TONES; icon: ComponentType<{ size?: number; className?: string }>; children: ReactNode }) {
   return (
-    <div className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm ${TONES[tone]}`}>
+    <div className={`flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-bold ${TONES[tone]}`}>
       <Icon size={16} className="mt-0.5 shrink-0" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

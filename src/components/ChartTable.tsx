@@ -10,14 +10,14 @@ export function ChartTable({
 }) {
   return (
     <details className="mt-3 text-sm">
-      <summary className="cursor-pointer text-xs font-medium text-muted hover:text-foreground">View as table</summary>
-      <div className="mt-2 max-h-72 overflow-auto rounded-xl border border-line">
+      <summary className="cursor-pointer text-xs font-extrabold text-muted hover:text-foreground">View as table</summary>
+      <div className="mt-2 max-h-72 overflow-auto rounded-2xl bg-card-subtle">
         <table className="w-full text-left text-xs">
           <caption className="sr-only">{caption}</caption>
-          <thead className="sticky top-0 bg-card">
+          <thead className="sticky top-0 bg-card-subtle">
             <tr>
               {columns.map((c, i) => (
-                <th key={c} scope="col" className={`px-3 py-2 font-medium text-muted ${i > 0 ? "text-right" : ""}`}>
+                <th key={c} scope="col" className={`px-3 py-2 font-extrabold text-muted ${i > 0 ? "text-right" : ""}`}>
                   {c}
                 </th>
               ))}
@@ -27,7 +27,7 @@ export function ChartTable({
             {rows.map((r, ri) => (
               <tr key={ri}>
                 {r.map((cell, ci) => (
-                  <td key={ci} className={`num px-3 py-1.5 ${ci > 0 ? "text-right" : ""}`}>
+                  <td key={ci} className={`num px-3 py-1.5 font-bold ${ci > 0 ? "text-right" : ""}`}>
                     {cell}
                   </td>
                 ))}

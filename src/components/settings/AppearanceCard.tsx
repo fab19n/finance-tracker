@@ -24,10 +24,10 @@ function subscribe(onChange: () => void) {
 }
 
 /**
- * Settings > Data > Appearance: System (follow this device's light/dark setting), Light, or Dark. The choice is kept on
- * THIS device (see src/lib/theme.ts) and applies at once with no Save button; it needs no connection to the PC, so unlike
- * the rest of Settings it works offline. The server render and first paint say "System" (it can't know), then the real
- * choice replaces it.
+ * Settings > Appearance & data > Appearance: System (follow this device's light/dark setting), Light, or Dark. The choice is
+ * kept on THIS device (see src/lib/theme.ts) and applies at once with no Save button; it needs no connection to the PC, so
+ * unlike the rest of Settings it works offline. The server render and first paint say "System" (it can't know), then the
+ * real choice replaces it.
  */
 export function AppearanceCard() {
   const choice = useSyncExternalStore(subscribe, readTheme, (): ThemeChoice => "system");
@@ -35,31 +35,22 @@ export function AppearanceCard() {
 
   return (
     <section className="card space-y-3" aria-labelledby="appearance-h">
-      <h2 id="appearance-h" className="text-[15px] font-bold">
-        Appearance
-      </h2>
-      <div role="radiogroup" aria-labelledby="appearance-h" className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1">
-        {OPTIONS.map(({ id, label, icon: Icon }) => {
-          const on = choice === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => setTheme(id)}
-              className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg text-sm transition ${
-                on ? "bg-card font-bold text-foreground shadow-card ring-1 ring-line" : "font-medium text-muted hover:text-foreground"
-              }`}
-            >
-              <Icon size={15} aria-hidden />
-              {label}
-            </button>
-          );
-        })}
+      <div>
+        <h2 id="appearance-h" className="h2">
+          Appearance
+        </h2>
+        <p className="sub mt-1">Applies instantly. Works without your PC.</p>
       </div>
-      <p className="text-sm text-muted">This device only. Your phone and your PC each keep their own choice.</p>
-      <p className="text-sm font-semibold text-accent" aria-live="polite">
+      <div role="radiogroup" aria-labelledby="appearance-h" className="seg">
+        {OPTIONS.map(({ id, label, icon: Icon }) => (
+          <button key={id} type="button" role="radio" aria-checked={choice === id} onClick={() => setTheme(id)} className="seg-item inline-flex min-h-9 items-center justify-center gap-1.5">
+            <Icon size={14} strokeWidth={2.5} aria-hidden />
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="sub">This device only. Your phone and your PC each keep their own choice.</p>
+      <p className="text-xs font-extrabold text-accent-strong" aria-live="polite">
         {choice === "system" ? `System (currently ${dark ? "dark" : "light"})` : `Always ${choice} on this device`}
       </p>
     </section>

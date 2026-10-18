@@ -5,7 +5,7 @@ import { formatRM } from "@/lib/money";
 type Entry = { name?: string | number; value?: number | string; color?: string; dataKey?: string | number };
 
 /**
- * Shared Recharts tooltip: a swatch + series name + RM value per row.
+ * Shared Recharts tooltip: a dark pill with a swatch + series name + RM value per row (the design's "today" bubble).
  * Colours come from the mark (a swatch), never from tinting the text.
  */
 export function ChartTooltip({
@@ -23,16 +23,14 @@ export function ChartTooltip({
   const rows = payload.filter((p) => p.value !== null && p.value !== undefined);
   if (!rows.length) return null;
   return (
-    <div className="rounded-xl border border-line bg-card px-3 py-2 text-xs shadow-lg">
-      {label !== undefined && (
-        <p className="mb-1 font-semibold">{labelFormatter ? labelFormatter(label) : String(label)}</p>
-      )}
+    <div className="rounded-2xl bg-foreground px-3.5 py-2.5 text-xs font-bold text-background">
+      {label !== undefined && <p className="mb-1 font-extrabold">{labelFormatter ? labelFormatter(label) : String(label)}</p>}
       <ul className="space-y-0.5">
         {rows.map((p) => (
           <li key={String(p.dataKey ?? p.name)} className="flex items-center gap-2">
             <span className="size-2 rounded-full" style={{ backgroundColor: p.color }} />
-            <span className="text-muted">{p.name}</span>
-            <span className="ml-auto pl-3 font-semibold">{formatRM(Number(p.value))}</span>
+            <span className="text-background/80">{p.name}</span>
+            <span className="num ml-auto pl-3 font-black">{formatRM(Number(p.value))}</span>
           </li>
         ))}
       </ul>
