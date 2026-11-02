@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ScrollChosenIntoView } from "@/components/ScrollChosenIntoView";
 import { formatRM } from "@/lib/money";
 
 type Chip = { id: number; name: string; balance: number; href: string };
@@ -25,6 +26,8 @@ export function AccountChips({
   const chosen = "border-foreground bg-foreground text-background";
   return (
     <nav aria-label={label} className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0">
+      {/* The row scrolls sideways on a phone: bring the chosen account into view if it is off-screen. */}
+      <ScrollChosenIntoView selected={selectedId} />
       {allHref !== undefined && (
         <Link href={allHref} aria-current={selectedId === null ? "true" : undefined} className={`${base} justify-center ${selectedId === null ? chosen : idle}`}>
           <span className="text-[11px] font-extrabold">All accounts</span>
