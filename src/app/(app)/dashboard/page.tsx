@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { AccountChips } from "@/components/AccountChips";
+import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ChartTable } from "@/components/ChartTable";
 import { BudgetRing } from "@/components/charts/BudgetRing";
 import { CumulativeSpendChart } from "@/components/charts/CumulativeSpendChart";
@@ -10,6 +12,7 @@ import { Meter } from "@/components/Meter";
 import { MonthNav } from "@/components/MonthNav";
 import { PageHeader } from "@/components/PageHeader";
 import { PeriodToggle } from "@/components/PeriodToggle";
+import { balanceHistory } from "@/lib/analytics/ledger";
 import { payCyclePeriods, periodDay, rekeyRows } from "@/lib/analytics/periods";
 import {
   accountBreakdown,
@@ -38,11 +41,13 @@ import {
 } from "@/lib/dates";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { currentCycle, cycleLabel } from "@/lib/plan/cycle";
+import { getAccountBalances } from "@/lib/queries/accounts";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getNetWorth } from "@/lib/queries/investments";
+import { getAccountLedger } from "@/lib/queries/ledger";
 import { listSalaries } from "@/lib/queries/plan";
-import { listAccounts, listCategories } from "@/lib/queries/reference";
+import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -87,9 +92,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       : listFlowRows(monthStart(shiftMonth(month, -6)), monthEnd(month)),
     listCategories(),
     getNetWorth(today),
-    listAccounts(true),
+    getAccountBalances(true),
   ]);
-  const rows = periods ? rekeyRows(raw, periods) : raw;
+  // One account on its own (?account=): the same page over just the money that came into / went out of it. The pay cycles
+  // above were cut from ALL salaries first, so a cycle means the same thing whichever account you look at.
+  const accountId = Number(first(sp.account)) || null;
+  const accountChoice = accounts.find((a) => a.id === accountId) ?? null;
+  const allRows = periods ? rekeyRows(raw, periods) : raw;
+  const rows = accountChoice ? allRows.filter((r) => r.accountId === accountChoice.id) : allRows;
 
   const totals = monthTotals(rows, month);
   // Mid-month, compare against the same days of last month - 9 days vs a full month would flatter you.
@@ -102,12 +112,30 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
   // Every figure here opens the entries behind it, for THIS period: a pay cycle (26 Sep - 25 Oct) is not a calendar month,
   // so it goes as a date range; a calendar month goes as the month.
-  const entries = (extra: Record<string, string | number | undefined>) =>
-    `/transactions${qs(period ? { month: "all", from: period.start, to: period.end, ...extra } : { month, ...extra })}`;
+  // With one account on screen they open that account's entries.
+  const entryQuery = (extra: Record<string, string | number | undefined>) =>
+    qs(period ? { month: "all", from: period.start, to: period.end, account: accountChoice?.id, ...extra } : { month, account: accountChoice?.id, ...extra });
+  const entries = (extra: Record<string, string | number | undefined>) => `/transactions${entryQuery(extra)}`;
+  // The account chips and the toggles keep what you were looking at (the view, the period) and change only the account.
+  const accountHref = (id: number | null) => `/dashboard${qs({ view, month, account: id ?? undefined })}`;
+  const accountQuery = accountChoice ? `&account=${accountChoice.id}` : "";
+  const chips = accounts
+    .filter((a) => !a.archived || a.id === accountChoice?.id)
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: accountHref(a.id) }));
+  // The balance through the period (never past today), from the account's whole history.
+  const ledger = accountChoice ? await getAccountLedger(accountChoice.id) : null;
+  const historyFrom = period ? period.start : monthStart(month);
+  const historyTo = period ? period.end : monthEnd(month);
+  const history =
+    accountChoice && ledger
+      ? balanceHistory(ledger.opening, ledger.entries, accountChoice.id, { from: historyFrom, to: historyTo < today ? historyTo : today })
+      : null;
   const series = monthlySeries(rows, months6);
   const cumulative = cumulativeSpend(rows, month, prev, dayNow);
   const split = needWantSplit(rows, month);
-  const budgets = budgetProgress(rows, categories, month, dayNow);
+  // Budgets are for the whole book: a category's limit measured against one account's share of it would say "on track" about
+  // money that is simply paid from somewhere else. So they sit out an account view.
+  const budgets = accountChoice ? [] : budgetProgress(rows, categories, month, dayNow);
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
@@ -116,9 +144,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // The lower row is three cards when there are budgets, else two that share the width.
   const third = budgets.length > 0 ? "lg:col-span-4" : "lg:col-span-6";
 
-  // The hero: what is left of this period's income (or, with no pay logged yet, the plain running net).
-  const overspent = hasPay && totals.net < 0;
-  const used = hasPay && totals.income > 0 ? totals.expense / totals.income : null;
+  // The hero: what is left of this period's income (or, with no pay logged yet, the plain running net). For one account it is
+  // plainly the money in minus the money out: never "overspent" (a cash wallet only ever has money going out), and with no
+  // "income used" bar, since the pay is not what lands in every account.
+  const overspent = !accountChoice && hasPay && totals.net < 0;
+  const used = !accountChoice && hasPay && totals.income > 0 ? totals.expense / totals.income : null;
+  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? "Net so far" : totals.net >= 0 ? "Left over" : "Overspent";
+  const heroSign = (accountChoice || !hasPay) && totals.net < 0 ? "−" : "";
 
   // "Slower than Sep": this period's running total against last period's at the same day.
   const latest = [...cumulative].reverse().find((p) => p.current !== null);
@@ -142,30 +174,44 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {monthLabel(month).split(" ")[0]}
           </>
         }
-        subtitle={`${view === "cycle" ? "Pay cycle" : "Calendar month"} · ${isCurrent ? `day ${dayNow} of ${daysTotal}` : rangeLabel}`}
+        subtitle={`${accountChoice ? `${accountChoice.name} · ` : ""}${view === "cycle" ? "Pay cycle" : "Calendar month"} · ${isCurrent ? `day ${dayNow} of ${daysTotal}` : rangeLabel}`}
       />
 
       <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
-        <PeriodToggle view={view} />
+        <PeriodToggle view={view} account={accountChoice?.id} />
         <MonthNav
           month={month}
           maxMonth={nowMonth}
           minMonth={oldestMonth}
           path="/dashboard"
           sublabel={period ? cycleLabel(period) : undefined}
-          query={`view=${view}`}
+          query={`view=${view}${accountQuery}`}
           className="md:w-72"
         />
       </div>
 
+      {/* Which account: the whole book, or one account on its own (each chip shows its real balance now). */}
+      <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={accountHref(null)} />
+      {accountChoice && (
+        <p className="sub px-1">
+          Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out, and budgets and net worth
+          cover every account, so they step aside.{" "}
+          <Link href={entries({})} className="font-extrabold text-accent-strong hover:underline">
+            See its entries
+          </Link>
+        </p>
+      )}
+
       <section className="grid grid-cols-3 gap-2.5 md:grid-cols-[1.5fr_1fr_1fr_1fr] md:gap-3" aria-label="Key figures">
         <div className={`col-span-3 md:col-span-1 ${overspent ? "hero-danger" : "hero"}`}>
-          <p className="mb-1.5 text-xs font-extrabold">{!hasPay ? "Net so far" : totals.net >= 0 ? "Left over" : "Overspent"}</p>
+          <p className="mb-1.5 text-xs font-extrabold">{heroLabel}</p>
           <p className="num text-[54px] font-black leading-[0.95] tracking-[-0.03em] md:text-[44px]">
-            {!hasPay && totals.net < 0 ? "−" : ""}
+            {heroSign}
             {formatRMWhole(Math.abs(totals.net))}
           </p>
-          {used !== null ? (
+          {accountChoice ? (
+            <p className="mt-3 text-xs font-extrabold">money in minus money out, {unit} so far</p>
+          ) : used !== null ? (
             <div className="mt-4 flex items-center gap-2.5">
               <div className="h-2 flex-1 rounded-full bg-hero-track">
                 <div className="h-2 rounded-full bg-current" style={{ width: `${Math.min(100, Math.round(used * 100))}%` }} />
@@ -186,23 +232,34 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           value={formatRMWhole(totals.expense)}
           delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel }}
         />
-        <Kpi
-          label="Net worth"
-          value={formatRMWhole(netWorth)}
-          hint={
-            <>
-              <span className="md:hidden">invested {formatRMWhole(worth.investments)}</span>
-              <span className="hidden md:inline">
-                cash {formatRMWhole(worth.liquid)} · invested {formatRMWhole(worth.investments)}
-              </span>
-            </>
-          }
-        />
+        {accountChoice ? (
+          <Kpi label={`${accountChoice.name} balance`} value={formatRMWhole(accountChoice.balance)} hint="right now" tone={accountChoice.balance < 0 ? "bad" : "default"} />
+        ) : (
+          <Kpi
+            label="Net worth"
+            value={formatRMWhole(netWorth)}
+            hint={
+              <>
+                <span className="md:hidden">invested {formatRMWhole(worth.investments)}</span>
+                <span className="hidden md:inline">
+                  cash {formatRMWhole(worth.liquid)} · invested {formatRMWhole(worth.investments)}
+                </span>
+              </>
+            }
+          />
+        )}
       </section>
+
+      {accountChoice && history && (
+        <BalanceHistory name={accountChoice.name} history={history} period={rangeLabel} statementHref={`/transactions/export${entryQuery({ format: "statement" })}`} />
+      )}
 
       {!hasData && (
         <div className="card py-10 text-center">
-          <p className="text-sm font-black">Nothing recorded for {rangeLabel} yet.</p>
+          <p className="text-sm font-black">
+            Nothing recorded for {rangeLabel}
+            {accountChoice ? ` in ${accountChoice.name}` : ""} yet.
+          </p>
           <p className="sub mt-1">Add entries on the Add tab and the charts fill in.</p>
         </div>
       )}
@@ -358,7 +415,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </>
             )}
 
-            {byAccount.length > 0 && (
+            {!accountChoice && byAccount.length > 0 && (
               <div className="mt-5 border-t-[1.5px] border-line pt-4">
                 <h3 className="h2">By account</h3>
                 <p className="sub mb-3">Where the spending was paid from · tap one to see its entries</p>

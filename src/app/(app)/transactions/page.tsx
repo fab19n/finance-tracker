@@ -2,15 +2,18 @@ import { Download, X } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
+import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ActivitySearch } from "@/components/activity/ActivitySearch";
 import { FilterSheet } from "@/components/activity/FilterSheet";
 import { MonthNav } from "@/components/MonthNav";
 import { PageHeader } from "@/components/PageHeader";
 import { TransactionRow } from "@/components/TransactionRow";
+import { balanceHistory } from "@/lib/analytics/ledger";
 import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWhole, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { datePresets, parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
+import { getAccountLedger } from "@/lib/queries/ledger";
 import { listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, sumTransferFlow, type TxRow } from "@/lib/queries/transactions";
 
@@ -66,13 +69,16 @@ export default async function TransactionsPage({
   await connection();
   const view = parseTxSearch(await searchParams);
   const viewing = view.filters.accountId ?? null;
-  const [accounts, categories, rows, totals, flow] = await Promise.all([
+  const today = todayISO();
+  const [accounts, categories, rows, totals, flow, ledger] = await Promise.all([
     getAccountBalances(true),
     listCategories(true),
     listTransactions({ ...view.filters, limit: PAGE_SIZE + 1, offset: (view.page - 1) * PAGE_SIZE }),
     sumTransactions(view.filters),
     // For one account: what left it and what arrived, by transfer, in the same period.
     viewing === null ? Promise.resolve(null) : sumTransferFlow(view.filters, viewing),
+    // ...and everything its balance is made of, for the balance history.
+    viewing === null ? Promise.resolve(null) : getAccountLedger(viewing),
   ]);
   const hasNext = rows.length > PAGE_SIZE;
   const pageRows = rows.slice(0, PAGE_SIZE);
@@ -104,7 +110,7 @@ export default async function TransactionsPage({
   const sortText = SORT_TEXT[view.raw.sort] ?? null;
   const byAmount = view.raw.sort === "largest" || view.raw.sort === "smallest";
   const applied = (view.raw.category ? 1 : 0) + (range ? 1 : 0) + (amount ? 1 : 0) + (sortText ? 1 : 0);
-  const presets = datePresets(todayISO()).map((p) => ({ label: p.label, href: `/transactions${qs({ ...base, month: "all", from: p.from, to: p.to, page: undefined })}` }));
+  const presets = datePresets(today).map((p) => ({ label: p.label, href: `/transactions${qs({ ...base, month: "all", from: p.from, to: p.to, page: undefined })}` }));
   // A date range from a link (the Dashboard's pay cycle) replaces the month navigator; otherwise a month, or all time.
   const monthNav = view.month !== "all" && !range;
   const { q, category, account, type } = view.raw;
@@ -113,6 +119,16 @@ export default async function TransactionsPage({
   const filtered = Boolean(category || account || q.trim() || amount || range);
   const net = totals.income - totals.expense;
   const periodText = range ? rangeText(range) : monthNav ? monthLabel(view.month) : "All time";
+  // The balance through the period on screen, never past today (the rest of this month hasn't happened). It ignores the list's
+  // other filters on purpose: a balance is the whole account's.
+  const history =
+    accountChoice && ledger
+      ? balanceHistory(ledger.opening, ledger.entries, accountChoice.id, {
+          from: view.filters.from ?? null,
+          to: view.filters.to && view.filters.to < today ? view.filters.to : today,
+        })
+      : null;
+  const narrowed = Boolean(q.trim() || category || amount || type);
   // Every account, plus the chosen one even if it has since been archived.
   const chips = accounts
     .filter((a) => !a.archived || String(a.id) === account)
@@ -236,6 +252,16 @@ export default async function TransactionsPage({
         <p className="sub px-1">
           Transfers in this period: {formatRM(flow.out)} out, {formatRM(flow.in)} in. Income and spending above leave them out; a transfer shows on this account with a − (out) or + (in).
         </p>
+      )}
+
+      {accountChoice && history && (
+        <BalanceHistory
+          name={accountChoice.name}
+          history={history}
+          period={periodText}
+          statementHref={`/transactions/export${qs({ ...base, format: "statement" })}`}
+          note={narrowed ? "This is the whole account's balance, not only the entries listed below." : undefined}
+        />
       )}
 
       {groups.length === 0 ? (

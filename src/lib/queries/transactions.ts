@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
 import { accounts, categories, transactions } from "@/db/schema";
+import { parseSen } from "@/lib/money";
 
 /** How a list is ordered. Newest first is the default; the amount orders break ties by date, newest first. */
 export const TX_SORTS = ["newest", "oldest", "largest", "smallest"] as const;
@@ -54,13 +55,23 @@ function buildWhere(f: TxFilters): SQL | undefined {
     parts.push(or(eq(transactions.accountId, f.accountId), eq(transactions.toAccountId, f.accountId)));
   }
   if (f.q?.trim()) {
-    const term = `%${f.q.trim()}%`;
+    const text = f.q.trim();
+    const term = `%${text}%`;
+    // The account on either side of an entry, by name. A subquery (not a join) so the totals, which join only the
+    // categories, can share this filter.
+    const accountNamed = sql`select ${accounts.id} from ${accounts} where ${accounts.name} like ${term}`;
+    // "68", "12.50" or "RM 1,200" is also an amount: the entries of exactly that much. (The text still matches too: an item
+    // called "Plan 68" is found by "68".)
+    const sen = parseSen(text);
     parts.push(
       or(
         like(transactions.item, term),
         like(transactions.merchant, term),
         like(transactions.note, term),
         like(categories.name, term),
+        sql`${transactions.accountId} in (${accountNamed})`,
+        sql`${transactions.toAccountId} in (${accountNamed})`,
+        sen === null ? undefined : eq(transactions.amount, sen),
       ),
     );
   }
