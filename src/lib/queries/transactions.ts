@@ -1,8 +1,12 @@
-import { and, desc, eq, gte, like, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
 import { accounts, categories, transactions } from "@/db/schema";
+
+/** How a list is ordered. Newest first is the default; the amount orders break ties by date, newest first. */
+export const TX_SORTS = ["newest", "oldest", "largest", "smallest"] as const;
+export type TxSort = (typeof TX_SORTS)[number];
 
 export type TxFilters = {
   from?: string;
@@ -11,6 +15,11 @@ export type TxFilters = {
   accountId?: number;
   type?: "income" | "expense" | "transfer";
   q?: string;
+  /** Amount bounds in sen, inclusive. They apply to every type (a transfer has an amount too). */
+  minAmount?: number;
+  maxAmount?: number;
+  /** Ordering only: totals ignore it. */
+  sort?: TxSort;
   limit?: number;
   offset?: number;
 };
@@ -39,6 +48,8 @@ function buildWhere(f: TxFilters): SQL | undefined {
   if (f.to) parts.push(lte(transactions.date, f.to));
   if (f.categoryId) parts.push(eq(transactions.categoryId, f.categoryId));
   if (f.type) parts.push(eq(transactions.type, f.type));
+  if (f.minAmount !== undefined) parts.push(gte(transactions.amount, f.minAmount));
+  if (f.maxAmount !== undefined) parts.push(lte(transactions.amount, f.maxAmount));
   if (f.accountId) {
     parts.push(or(eq(transactions.accountId, f.accountId), eq(transactions.toAccountId, f.accountId)));
   }
@@ -54,6 +65,20 @@ function buildWhere(f: TxFilters): SQL | undefined {
     );
   }
   return and(...parts);
+}
+
+/** The ORDER BY for a sort. Every order ends in the id so equal rows never swap places between pages. */
+function orderFor(sort: TxSort = "newest") {
+  switch (sort) {
+    case "oldest":
+      return [asc(transactions.date), asc(transactions.id)];
+    case "largest":
+      return [desc(transactions.amount), desc(transactions.date), desc(transactions.id)];
+    case "smallest":
+      return [asc(transactions.amount), desc(transactions.date), desc(transactions.id)];
+    default:
+      return [desc(transactions.date), desc(transactions.id)];
+  }
 }
 
 /** Sync on purpose: drizzle builders are thenable, so an async fn would execute the query early. */
@@ -87,7 +112,7 @@ export async function listTransactions(f: TxFilters = {}): Promise<TxRow[]> {
   const db = await getDb();
   return baseSelect(db)
     .where(buildWhere(f))
-    .orderBy(desc(transactions.date), desc(transactions.id))
+    .orderBy(...orderFor(f.sort))
     .limit(f.limit ?? 200)
     .offset(f.offset ?? 0)
     .all();

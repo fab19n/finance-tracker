@@ -7,10 +7,10 @@ import { FilterSheet } from "@/components/activity/FilterSheet";
 import { MonthNav } from "@/components/MonthNav";
 import { PageHeader } from "@/components/PageHeader";
 import { TransactionRow } from "@/components/TransactionRow";
-import { currentMonth, dayLabel, monthLabel, shortDate } from "@/lib/dates";
-import { formatRM, formatRMWhole } from "@/lib/money";
+import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
+import { formatRM, formatRMWhole, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
-import { parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
+import { datePresets, parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
 import { listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, sumTransferFlow, type TxRow } from "@/lib/queries/transactions";
 
@@ -34,6 +34,21 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: "go
       <p className={`num text-sm font-black md:mt-1 md:text-[22px] ${tone === "good" ? "text-good" : tone === "danger" ? "text-danger" : ""}`}>{value}</p>
     </div>
   );
+}
+
+const SORT_TEXT: Record<string, string> = {
+  oldest: "Oldest first",
+  largest: "Largest amount first",
+  smallest: "Smallest amount first",
+};
+
+/** "RM 100 - RM 500", "At least RM 100" or "At most RM 500" for the amount filter (null when there is none). */
+function amountText(min: string, max: string): string | null {
+  const [lo, hi] = [min ? parseSen(min) : null, max ? parseSen(max) : null];
+  if (lo !== null && hi !== null) return lo === hi ? `Exactly ${formatRM(lo)}` : `${formatRM(lo)} - ${formatRM(hi)}`;
+  if (lo !== null) return `At least ${formatRM(lo)}`;
+  if (hi !== null) return `At most ${formatRM(hi)}`;
+  return null;
 }
 
 /** "26 Sep - 25 Oct" for a date range given in the address (either end may be open). */
@@ -79,13 +94,23 @@ export default async function TransactionsPage({
     type: view.raw.type,
     from: view.raw.from,
     to: view.raw.to,
+    min: view.raw.min,
+    max: view.raw.max,
+    sort: view.raw.sort,
   };
+  // Settings the Filter sheet edits itself; "Clear" in it removes exactly these.
+  const sheetKeys = { category: undefined, from: undefined, to: undefined, min: undefined, max: undefined, sort: undefined, page: undefined };
+  const amount = amountText(view.raw.min, view.raw.max);
+  const sortText = SORT_TEXT[view.raw.sort] ?? null;
+  const byAmount = view.raw.sort === "largest" || view.raw.sort === "smallest";
+  const applied = (view.raw.category ? 1 : 0) + (range ? 1 : 0) + (amount ? 1 : 0) + (sortText ? 1 : 0);
+  const presets = datePresets(todayISO()).map((p) => ({ label: p.label, href: `/transactions${qs({ ...base, month: "all", from: p.from, to: p.to, page: undefined })}` }));
   // A date range from a link (the Dashboard's pay cycle) replaces the month navigator; otherwise a month, or all time.
   const monthNav = view.month !== "all" && !range;
   const { q, category, account, type } = view.raw;
   const categoryChoice = categories.find((c) => String(c.id) === category);
   const accountChoice = accounts.find((a) => String(a.id) === account);
-  const filtered = Boolean(category || account || q.trim());
+  const filtered = Boolean(category || account || q.trim() || amount || range);
   const net = totals.income - totals.expense;
   const periodText = range ? rangeText(range) : monthNav ? monthLabel(view.month) : "All time";
   // Every account, plus the chosen one even if it has since been archived.
@@ -112,7 +137,7 @@ export default async function TransactionsPage({
           month={view.month}
           maxMonth={currentMonth()}
           path="/transactions"
-          query={new URLSearchParams(present({ q: base.q, category, account, type })).toString()}
+          query={new URLSearchParams(present({ q: base.q, category, account, type, min: base.min, max: base.max, sort: base.sort })).toString()}
           sublabel={
             <Link href={qs({ ...base, month: "all" })} className="font-extrabold text-accent-strong hover:underline">
               Show all time
@@ -134,7 +159,7 @@ export default async function TransactionsPage({
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <div className="md:w-80 md:shrink-0">
-          <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to })} />
+          <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort })} />
         </div>
         <div className="no-scrollbar -mx-5 flex items-center gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Type">
           {TYPES.map(([value, label]) => (
@@ -144,14 +169,16 @@ export default async function TransactionsPage({
           ))}
           <FilterSheet
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            category={category}
-            others={present({ month: view.month, type, q: base.q, account, from: base.from, to: base.to })}
-            clearHref={qs({ ...base, category: undefined })}
+            values={{ category, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort }}
+            presets={presets}
+            others={present({ month: view.month, type, q: base.q, account })}
+            clearHref={qs({ ...base, ...sheetKeys })}
+            applied={applied}
           />
         </div>
       </div>
 
-      {(q.trim() || categoryChoice) && (
+      {(q.trim() || categoryChoice || amount || sortText) && (
         <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
           {q.trim() && (
             <li>
@@ -164,6 +191,20 @@ export default async function TransactionsPage({
             <li>
               <Link href={qs({ ...base, category: undefined })} className="pill bg-accent-soft text-accent-strong">
                 {categoryChoice.name} <X size={12} aria-label="Remove" />
+              </Link>
+            </li>
+          )}
+          {amount && (
+            <li>
+              <Link href={qs({ ...base, min: undefined, max: undefined, page: undefined })} className="pill bg-accent-soft text-accent-strong">
+                {amount} <X size={12} aria-label="Remove" />
+              </Link>
+            </li>
+          )}
+          {sortText && (
+            <li>
+              <Link href={qs({ ...base, sort: undefined, page: undefined })} className="pill bg-accent-soft text-accent-strong">
+                {sortText} <X size={12} aria-label="Remove" />
               </Link>
             </li>
           )}
@@ -202,6 +243,18 @@ export default async function TransactionsPage({
           <p className="text-sm font-black">No entries match.</p>
           <p className="sub mt-1">{filtered ? "Try clearing the filters or searching all time." : "Nothing has been recorded for this period yet."}</p>
         </div>
+      ) : byAmount ? (
+        // Ordered by amount, the days are all mixed up, so no day headings: one list, each row says its date.
+        <section>
+          <div className="px-1 pb-2 pt-1">
+            <h2 className="text-[13px] font-black">{sortText}</h2>
+          </div>
+          <ul className="space-y-1.5">
+            {pageRows.map((t) => (
+              <TransactionRow key={t.id} tx={t} showDate viewing={viewing} />
+            ))}
+          </ul>
+        </section>
       ) : (
         groups.map((g) => {
           const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);

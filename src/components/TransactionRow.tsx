@@ -2,6 +2,7 @@ import { ArrowRightLeft, Pencil } from "lucide-react";
 import Link from "next/link";
 import { deleteTransaction } from "@/app/actions/transactions";
 import type { TxRow } from "@/lib/queries/transactions";
+import { shortDate } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { transferView } from "@/lib/transfer-view";
@@ -17,11 +18,11 @@ export function TransactionRow({ tx, showDate = false, viewing = null }: { tx: T
   // In one account's list a transfer is money going out or coming in, so it says which and gets a sign.
   const transfer = transferView(tx, viewing);
   const title = isTransfer ? transfer.title : tx.item || tx.categoryName || "Entry";
+  // When the list isn't grouped by day (sorted by amount) the date comes FIRST: the end of the line is what gets cut off.
+  const when = showDate ? shortDate(tx.date) : null;
   const subtitle = isTransfer
-    ? `${tx.accountName} → ${tx.toAccountName}`
-    : [tx.item ? tx.categoryName : null, tx.accountName, showDate ? tx.date : null]
-        .filter(Boolean)
-        .join(" · ");
+    ? [when, `${tx.accountName} → ${tx.toAccountName}`].filter(Boolean).join(" · ")
+    : [when, tx.item ? tx.categoryName : null, tx.accountName].filter(Boolean).join(" · ");
   const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : transfer.sign === "-" ? "−" : transfer.sign;
   const color = tx.type === "income" ? "text-good" : isTransfer ? "text-muted" : "";
 

@@ -97,6 +97,29 @@ describe("transaction queries", () => {
     expect(await sumTransferFlow({ type: "expense" }, ids.bank)).toEqual({ out: 80_000, in: 0 });
   });
 
+  it("filters by an amount range (inclusive, any type), in the list and in the totals", async () => {
+    const { listTransactions, sumTransactions } = await import("@/lib/queries/transactions");
+    const amounts = async (f: Parameters<typeof listTransactions>[0]) => (await listTransactions({ ...f, sort: "smallest" })).map((t) => t.amount);
+    expect(await amounts({ minAmount: 5_000 })).toEqual([5_000, 20_000, 60_000, 500_000]);
+    expect(await amounts({ maxAmount: 1_450 })).toEqual([250, 1_450]);
+    expect(await amounts({ minAmount: 1_450, maxAmount: 20_000 })).toEqual([1_450, 5_000, 20_000]);
+    expect(await amounts({ minAmount: 250, maxAmount: 250 })).toEqual([250]); // the same number twice finds an exact amount
+    expect(await amounts({ minAmount: 600_000 })).toEqual([]);
+    // the totals use the same bounds: of the expenses only the 50.00 reconciliation is 50 or more
+    expect(await sumTransactions({ minAmount: 5_000 })).toMatchObject({ income: 500_000, expense: 5_000, transfer: 80_000 });
+  });
+
+  it("orders by amount or date, and ties never swap between pages", async () => {
+    const { listTransactions } = await import("@/lib/queries/transactions");
+    const col = async (sort: "newest" | "oldest" | "largest" | "smallest", pick: "amount" | "date") => (await listTransactions({ sort })).map((t) => t[pick]);
+    expect(await col("largest", "amount")).toEqual([500_000, 60_000, 20_000, 5_000, 1_450, 250]);
+    expect(await col("smallest", "amount")).toEqual([250, 1_450, 5_000, 20_000, 60_000, 500_000]);
+    expect(await col("oldest", "date")).toEqual(["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06"]);
+    expect(await col("newest", "date")).toEqual(["2026-10-06", "2026-10-05", "2026-10-04", "2026-10-03", "2026-10-02", "2026-10-01"]);
+    // a page of a sorted list is a slice of it
+    expect((await listTransactions({ sort: "largest", limit: 2, offset: 1 })).map((t) => t.amount)).toEqual([60_000, 20_000]);
+  });
+
   it("orders newest first and respects limit/offset", async () => {
     const { listTransactions } = await import("@/lib/queries/transactions");
     const rows = await listTransactions({ limit: 2, offset: 1 });
