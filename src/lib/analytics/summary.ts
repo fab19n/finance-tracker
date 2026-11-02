@@ -104,6 +104,34 @@ export function categoryBreakdown(rows: FlowRow[], month: string): CategorySpend
     .sort((a, b) => b.total - a.total);
 }
 
+export type AccountSpend = {
+  accountId: number;
+  total: number;
+  count: number;
+  /** share of total spending, 0..1 */
+  share: number;
+};
+
+/**
+ * Expense rows of one month grouped by the account they were paid from, biggest first. Transfers are not here (they are
+ * not spending), so putting money into savings does not make the spending account look like it spent it.
+ */
+export function accountBreakdown(rows: FlowRow[], month: string): AccountSpend[] {
+  const map = new Map<number, AccountSpend>();
+  let total = 0;
+  for (const r of rows) {
+    if (r.type !== "expense" || monthOf(r.date) !== month) continue;
+    total += r.amount;
+    const cur = map.get(r.accountId) ?? { accountId: r.accountId, total: 0, count: 0, share: 0 };
+    cur.total += r.amount;
+    cur.count += 1;
+    map.set(r.accountId, cur);
+  }
+  return [...map.values()]
+    .map((a) => ({ ...a, share: total > 0 ? a.total / total : 0 }))
+    .sort((a, b) => b.total - a.total);
+}
+
 export type MonthPoint = { month: string; income: number; expense: number; net: number };
 
 export function monthlySeries(rows: FlowRow[], months: string[]): MonthPoint[] {

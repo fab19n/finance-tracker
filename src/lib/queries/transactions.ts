@@ -98,6 +98,25 @@ export async function getTransaction(id: number): Promise<TxRow | undefined> {
   return baseSelect(db).where(eq(transactions.id, id)).get();
 }
 
+/**
+ * Money moved between accounts, from one account's point of view: how much LEFT it (it is the "from" account) and how much
+ * ARRIVED (it is the "to" account), over the same filters. Transfers are neither income nor spending, so this is the other
+ * half of an account's story: opening + income - spending + in - out = balance.
+ */
+export async function sumTransferFlow(f: TxFilters, accountId: number): Promise<{ out: number; in: number }> {
+  const db = await getDb();
+  const row = db
+    .select({
+      out: sql<number>`coalesce(sum(case when ${transactions.accountId} = ${accountId} then ${transactions.amount} else 0 end), 0)`,
+      into: sql<number>`coalesce(sum(case when ${transactions.toAccountId} = ${accountId} then ${transactions.amount} else 0 end), 0)`,
+    })
+    .from(transactions)
+    .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(buildWhere({ ...f, type: "transfer", accountId }))
+    .get();
+  return { out: row?.out ?? 0, in: row?.into ?? 0 };
+}
+
 export type TxTotals = { income: number; expense: number; transfer: number; count: number };
 
 /** Totals over the same filter set (ignores limit/offset). */

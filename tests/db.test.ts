@@ -84,6 +84,19 @@ describe("transaction queries", () => {
     expect(atm).toMatchObject({ accountName: "Bank Account", toAccountName: "Cash in Hand" });
   });
 
+  it("totals what left and what arrived on one account, which with income and spending explains its balance", async () => {
+    const { sumTransferFlow } = await import("@/lib/queries/transactions");
+    // bank sent 200 to cash and 600 to the investment; nothing came back
+    expect(await sumTransferFlow({}, ids.bank)).toEqual({ out: 80_000, in: 0 });
+    expect(await sumTransferFlow({}, ids.cash)).toEqual({ out: 0, in: 20_000 });
+    expect(await sumTransferFlow({}, ids.inv)).toEqual({ out: 0, in: 60_000 });
+    expect(await sumTransferFlow({}, ids.ewallet)).toEqual({ out: 0, in: 0 });
+    // it honours the period: only the ATM withdrawal (3 Oct) falls in 1-4 Oct
+    expect(await sumTransferFlow({ from: "2026-10-01", to: "2026-10-04" }, ids.bank)).toEqual({ out: 20_000, in: 0 });
+    // and a type filter on the page does not stop it counting transfers
+    expect(await sumTransferFlow({ type: "expense" }, ids.bank)).toEqual({ out: 80_000, in: 0 });
+  });
+
   it("orders newest first and respects limit/offset", async () => {
     const { listTransactions } = await import("@/lib/queries/transactions");
     const rows = await listTransactions({ limit: 2, offset: 1 });

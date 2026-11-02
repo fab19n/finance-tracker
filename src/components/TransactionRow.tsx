@@ -4,6 +4,7 @@ import { deleteTransaction } from "@/app/actions/transactions";
 import type { TxRow } from "@/lib/queries/transactions";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
+import { transferView } from "@/lib/transfer-view";
 import { DeleteButton } from "./DeleteButton";
 
 /**
@@ -11,15 +12,17 @@ import { DeleteButton } from "./DeleteButton";
  * the normal text colour, so they are readable on any colour. Tapping the row opens the entry; Edit and Delete are also
  * plain visible buttons (no hidden gestures).
  */
-export function TransactionRow({ tx, showDate = false }: { tx: TxRow; showDate?: boolean }) {
+export function TransactionRow({ tx, showDate = false, viewing = null }: { tx: TxRow; showDate?: boolean; viewing?: number | null }) {
   const isTransfer = tx.type === "transfer";
-  const title = isTransfer ? "Transfer" : tx.item || tx.categoryName || "Entry";
+  // In one account's list a transfer is money going out or coming in, so it says which and gets a sign.
+  const transfer = transferView(tx, viewing);
+  const title = isTransfer ? transfer.title : tx.item || tx.categoryName || "Entry";
   const subtitle = isTransfer
     ? `${tx.accountName} → ${tx.toAccountName}`
     : [tx.item ? tx.categoryName : null, tx.accountName, showDate ? tx.date : null]
         .filter(Boolean)
         .join(" · ");
-  const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : "";
+  const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : transfer.sign === "-" ? "−" : transfer.sign;
   const color = tx.type === "income" ? "text-good" : isTransfer ? "text-muted" : "";
 
   return (

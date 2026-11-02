@@ -10,7 +10,12 @@ export type TxView = {
   /** 'YYYY-MM', or 'all' when browsing every month. */
   month: string;
   page: number;
-  raw: { q: string; category: string; account: string; type: string };
+  raw: { q: string; category: string; account: string; type: string; from: string; to: string };
+  /**
+   * A date range asked for in the address (`from` / `to`), which beats the month. The Dashboard links here for a pay cycle
+   * (26 Sep - 25 Oct is not a calendar month). Null when the page is browsing by month or all time.
+   */
+  range: { from: string | null; to: string | null } | null;
 };
 
 /**
@@ -39,7 +44,8 @@ export function parseTxSearch(sp: SearchParams): TxView {
   if (account) filters.accountId = Number(account) || undefined;
   if (type === "income" || type === "expense" || type === "transfer") filters.type = type;
   if (q.trim()) filters.q = q.trim();
-  return { filters, month, page, raw: { q, category, account, type } };
+  const range = isISODate(from) || isISODate(to) ? { from: isISODate(from) ? from : null, to: isISODate(to) ? to : null } : null;
+  return { filters, month, page, raw: { q, category, account, type, from: range?.from ?? "", to: range?.to ?? "" }, range };
 }
 
 /** Rebuild a query string, dropping empty values. */

@@ -1,4 +1,5 @@
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, ListOrdered } from "lucide-react";
+import Link from "next/link";
 import {
   saveAccount,
   saveAssumptions,
@@ -105,6 +106,9 @@ function AccountsTab({ accounts }: { accounts: Account[] }) {
                   <span className="num shrink-0 text-[13px] font-black">{formatRM(a.balance)}</span>
                 </summary>
                 <div className="mt-3 space-y-2">
+                  <Link href={`/transactions?account=${a.id}`} className="btn w-full md:w-auto">
+                    <ListOrdered size={14} strokeWidth={2.5} aria-hidden /> See this account&apos;s entries
+                  </Link>
                   <form action={saveAccount} className="grid grid-cols-2 gap-2.5 md:grid-cols-5">
                     <input type="hidden" name="id" value={a.id} />
                     <input name="name" defaultValue={a.name} required className="input" aria-label="Name" />

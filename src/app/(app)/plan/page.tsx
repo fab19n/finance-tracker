@@ -28,7 +28,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       <PlanHeader
         subtitle={
           <>
-            Pay cycle {cycleLabel(cycle)} · day {cycle.dayNumber} of {cycle.daysTotal}
+            Pay cycle {cycleLabel(cycle)} · {cycle.paydayOverdue ? "payday is due" : `day ${cycle.dayNumber} of ${cycle.daysTotal}`}
             {cycle.source === "setting" && " (estimated - record your salary to make it exact)"}
           </>
         }

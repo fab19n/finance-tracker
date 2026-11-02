@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { ChartTable } from "@/components/ChartTable";
 import { BudgetRing } from "@/components/charts/BudgetRing";
@@ -11,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PeriodToggle } from "@/components/PeriodToggle";
 import { payCyclePeriods, periodDay, rekeyRows } from "@/lib/analytics/periods";
 import {
+  accountBreakdown,
   budgetProgress,
   categoryBreakdown,
   changeRatio,
@@ -37,10 +39,10 @@ import {
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { currentCycle, cycleLabel } from "@/lib/plan/cycle";
 import { listFlowRows } from "@/lib/queries/analytics";
-import type { SearchParams } from "@/lib/queries/filters";
+import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getNetWorth } from "@/lib/queries/investments";
 import { listSalaries } from "@/lib/queries/plan";
-import { listCategories } from "@/lib/queries/reference";
+import { listAccounts, listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -79,12 +81,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const nameOf = (m: string) => (period ? `${shortMonthLabel(m).split(" ")[0]} cycle` : shortMonthLabel(m));
 
   const months6 = lastMonths(month, 6);
-  const [raw, categories, worth] = await Promise.all([
+  const [raw, categories, worth, accounts] = await Promise.all([
     periods && period
       ? listFlowRows((periods.find((p) => p.key === shiftMonth(month, -6)) ?? periods[periods.length - 1]).start, period.end)
       : listFlowRows(monthStart(shiftMonth(month, -6)), monthEnd(month)),
     listCategories(),
     getNetWorth(today),
+    listAccounts(true),
   ]);
   const rows = periods ? rekeyRows(raw, periods) : raw;
 
@@ -95,6 +98,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Interest of a few sen, or a friend's payback, is not a paycheck: don't call the period "overspent" before pay lands.
   const hasPay = paycheckIn(totals.income, settings.expectedIncome);
   const byCategory = categoryBreakdown(rows, month);
+  const byAccount = accountBreakdown(rows, month);
+  const accountName = new Map(accounts.map((a) => [a.id, a.name]));
+  // Every figure here opens the entries behind it, for THIS period: a pay cycle (26 Sep - 25 Oct) is not a calendar month,
+  // so it goes as a date range; a calendar month goes as the month.
+  const entries = (extra: Record<string, string | number | undefined>) =>
+    `/transactions${qs(period ? { month: "all", from: period.start, to: period.end, ...extra } : { month, ...extra })}`;
   const series = monthlySeries(rows, months6);
   const cumulative = cumulativeSpend(rows, month, prev, dayNow);
   const split = needWantSplit(rows, month);
@@ -242,35 +251,39 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               {/* Phone: rings, three to a row. From md: bars. Same facts, once in the page for each size. */}
               <ul className="grid grid-cols-3 gap-2 md:hidden">
                 {budgets.map((b) => (
-                  <li key={b.categoryId} className="flex flex-col items-center gap-1.5 text-center">
-                    <BudgetRing used={b.used} status={b.status} />
-                    <p className="text-xs font-extrabold leading-tight">{b.name}</p>
-                    <p className="num text-[11px] font-bold text-muted">
-                      {formatRMWhole(b.spent).replace("RM ", "")} / {formatRMWhole(b.budget).replace("RM ", "")}
-                    </p>
-                    <span className={`pill !px-2 !py-0.5 ${BUDGET_PILL[b.status]}`}>
-                      {b.status === "over" ? `Over by ${formatRMWhole(b.spent - b.budget)}` : b.status === "watch" ? `Watch · ${formatRMWhole(b.projected).replace("RM ", "")}` : "On track"}
-                    </span>
+                  <li key={b.categoryId}>
+                    <Link href={entries({ category: b.categoryId })} className="flex flex-col items-center gap-1.5 text-center" aria-label={`${b.name}: see its entries`}>
+                      <BudgetRing used={b.used} status={b.status} />
+                      <p className="text-xs font-extrabold leading-tight">{b.name}</p>
+                      <p className="num text-[11px] font-bold text-muted">
+                        {formatRMWhole(b.spent).replace("RM ", "")} / {formatRMWhole(b.budget).replace("RM ", "")}
+                      </p>
+                      <span className={`pill !px-2 !py-0.5 ${BUDGET_PILL[b.status]}`}>
+                        {b.status === "over" ? `Over by ${formatRMWhole(b.spent - b.budget)}` : b.status === "watch" ? `Watch · ${formatRMWhole(b.projected).replace("RM ", "")}` : "On track"}
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
               <ul className="hidden space-y-3.5 md:block">
                 {budgets.map((b) => (
                   <li key={b.categoryId}>
-                    <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[13px] font-extrabold">{b.name}</span>
-                      <span className={`num text-xs font-extrabold ${BUDGET_TEXT[b.status]}`}>
-                        {formatRM(b.spent)} <span className="text-muted">/ {formatRM(b.budget)}</span>
+                    <Link href={entries({ category: b.categoryId })} className="block rounded-xl hover:bg-card-subtle" aria-label={`${b.name}: see its entries`}>
+                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[13px] font-extrabold">{b.name}</span>
+                        <span className={`num text-xs font-extrabold ${BUDGET_TEXT[b.status]}`}>
+                          {formatRM(b.spent)} <span className="text-muted">/ {formatRM(b.budget)}</span>
+                        </span>
+                      </div>
+                      <Meter used={b.used} pace={b.pace} status={b.status} />
+                      <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.status]}`}>
+                        {b.status === "over"
+                          ? `Over budget by ${formatRM(b.spent - b.budget)}`
+                          : b.status === "watch"
+                            ? `On pace to reach ${formatRM(b.projected)}`
+                            : "On track"}
                       </span>
-                    </div>
-                    <Meter used={b.used} pace={b.pace} status={b.status} />
-                    <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.status]}`}>
-                      {b.status === "over"
-                        ? `Over budget by ${formatRM(b.spent - b.budget)}`
-                        : b.status === "watch"
-                          ? `On pace to reach ${formatRM(b.projected)}`
-                          : "On track"}
-                    </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -281,30 +294,43 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <h2 id="where" className="h2">
               Where it went
             </h2>
-            <p className="sub mb-3">Spending by category, {rangeLabel}</p>
+            <p className="sub mb-3">Spending by category, {rangeLabel} · tap one to see its entries</p>
             {byCategory.length === 0 ? (
               <p className="sub">No spending this {unit}.</p>
             ) : (
               <>
                 <ul className="space-y-2.5">
-                  {byCategory.slice(0, VISIBLE_CATEGORIES).map((c, i) => (
-                    <li key={c.name}>
-                      <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
-                        <span className="truncate">
-                          {c.name}
-                          <span className="ml-1.5 font-bold text-muted">{formatPct(c.share)}</span>
-                        </span>
-                        <span className="num shrink-0">{formatRM(c.total)}</span>
-                      </div>
-                      <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
-                        {/* The longest bar is the biggest spend; each lighter step is the next one down. */}
-                        <div
-                          className="h-full rounded-full bg-accent"
-                          style={{ width: `${Math.max(2, c.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }}
-                        />
-                      </div>
-                    </li>
-                  ))}
+                  {byCategory.slice(0, VISIBLE_CATEGORIES).map((c, i) => {
+                    const row = (
+                      <>
+                        <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
+                          <span className="truncate">
+                            {c.name}
+                            <span className="ml-1.5 font-bold text-muted">{formatPct(c.share)}</span>
+                          </span>
+                          <span className="num shrink-0">{formatRM(c.total)}</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
+                          {/* The longest bar is the biggest spend; each lighter step is the next one down. */}
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${Math.max(2, c.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }}
+                          />
+                        </div>
+                      </>
+                    );
+                    return (
+                      <li key={c.name}>
+                        {c.categoryId ? (
+                          <Link href={entries({ category: c.categoryId })} className="block rounded-lg hover:bg-card-subtle" aria-label={`${c.name}: see its entries`}>
+                            {row}
+                          </Link>
+                        ) : (
+                          row
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
                 {byCategory.length > VISIBLE_CATEGORIES && (
                   <details className="mt-3">
@@ -314,9 +340,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     <ul className="mt-2 space-y-1">
                       {byCategory.slice(VISIBLE_CATEGORIES).map((c) => (
                         <li key={c.name} className="flex justify-between text-xs font-bold">
-                          <span>
-                            {c.name} <span className="text-muted">{formatPct(c.share)}</span>
-                          </span>
+                          {c.categoryId ? (
+                            <Link href={entries({ category: c.categoryId })} className="hover:underline">
+                              {c.name} <span className="text-muted">{formatPct(c.share)}</span>
+                            </Link>
+                          ) : (
+                            <span>
+                              {c.name} <span className="text-muted">{formatPct(c.share)}</span>
+                            </span>
+                          )}
                           <span className="num font-extrabold">{formatRM(c.total)}</span>
                         </li>
                       ))}
@@ -324,6 +356,35 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   </details>
                 )}
               </>
+            )}
+
+            {byAccount.length > 0 && (
+              <div className="mt-5 border-t-[1.5px] border-line pt-4">
+                <h3 className="h2">By account</h3>
+                <p className="sub mb-3">Where the spending was paid from · tap one to see its entries</p>
+                <ul className="space-y-2.5">
+                  {byAccount.map((a, i) => (
+                    <li key={a.accountId}>
+                      <Link
+                        href={entries({ account: a.accountId })}
+                        className="block rounded-lg hover:bg-card-subtle"
+                        aria-label={`${accountName.get(a.accountId) ?? "Account"}: see its entries`}
+                      >
+                        <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
+                          <span className="truncate">
+                            {accountName.get(a.accountId) ?? "Account"}
+                            <span className="ml-1.5 font-bold text-muted">{formatPct(a.share)}</span>
+                          </span>
+                          <span className="num shrink-0">{formatRM(a.total)}</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
+                          <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(2, a.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }} />
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
 
@@ -371,15 +432,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <p className="sub mb-3">Specific items by total this {unit} - small and frequent adds up</p>
               <ul className="space-y-2">
                 {items.map((i) => (
-                  <li key={i.item} className="flex items-center gap-2.5 rounded-2xl bg-card-subtle px-3 py-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-extrabold">{i.item}</p>
-                      <p className="truncate text-[11px] font-bold text-muted">
-                        {i.category} · avg {formatRM(i.average)}
-                      </p>
-                    </div>
-                    <span className="pill bg-card !px-2 !py-0.5 text-muted">{i.count}×</span>
-                    <span className="num text-[13px] font-black">{formatRM(i.total)}</span>
+                  <li key={i.item}>
+                    <Link href={entries({ q: i.item })} className="flex items-center gap-2.5 rounded-2xl bg-card-subtle px-3 py-2 hover:bg-nav-active" aria-label={`${i.item}: see its entries`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-extrabold">{i.item}</p>
+                        <p className="truncate text-[11px] font-bold text-muted">
+                          {i.category} · avg {formatRM(i.average)}
+                        </p>
+                      </div>
+                      <span className="pill bg-card !px-2 !py-0.5 text-muted">{i.count}×</span>
+                      <span className="num text-[13px] font-black">{formatRM(i.total)}</span>
+                    </Link>
                   </li>
                 ))}
               </ul>
