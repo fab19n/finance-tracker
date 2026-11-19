@@ -1,14 +1,17 @@
 import { ChevronDown, Plus } from "lucide-react";
+import Link from "next/link";
 import { connection } from "next/server";
+import { AccountChips } from "@/components/AccountChips";
 import { BillForm } from "@/components/plan/BillForm";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { Kpi } from "@/components/Kpi";
 import { initials } from "@/lib/initials";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { monthlyCommitments } from "@/lib/plan/bills";
-import type { SearchParams } from "@/lib/queries/filters";
+import { getAccountBalances } from "@/lib/queries/accounts";
+import { qs, type SearchParams } from "@/lib/queries/filters";
 import { listBills, listSalaries } from "@/lib/queries/plan";
-import { listAccounts, listCategories } from "@/lib/queries/reference";
+import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -16,20 +19,29 @@ const range = (min: number, max: number) => (min === max ? formatRM(min) : `${fo
 
 export default async function BillsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await connection();
-  const error = first((await searchParams).error);
-  const [bills, categories, accounts, salaries, settings] = await Promise.all([listBills(), listCategories(), listAccounts(), listSalaries(), getSettings()]);
+  const sp = await searchParams;
+  const error = first(sp.error);
+  const [allBills, categories, accounts, salaries, settings] = await Promise.all([listBills(), listCategories(), getAccountBalances(), listSalaries(), getSettings()]);
+
+  // One account on its own (?account=): only the bills paid from it. (An investment account pays none, so it isn't offered.)
+  const payingAccounts = accounts.filter((a) => a.type !== "investment");
+  const accountId = Number(first(sp.account)) || null;
+  const accountChoice = payingAccounts.find((a) => a.id === accountId) ?? null;
+  const bills = accountChoice ? allBills.filter((b) => b.accountId === accountChoice.id) : allBills;
   const c = monthlyCommitments(bills);
   const income = salaries[salaries.length - 1]?.amount || settings.expectedIncome;
 
   const expenseCategories = categories.filter((x) => x.type === "expense").map((x) => ({ id: x.id, name: x.name, icon: x.icon }));
-  const payingAccounts = accounts.filter((a) => a.type !== "investment").map((a) => ({ id: a.id, name: a.name }));
+  const chips = payingAccounts.map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: `/plan/bills${qs({ account: a.id })}` }));
 
   return (
     <div className="max-w-3xl space-y-3 md:space-y-4">
-      <PlanHeader />
+      <PlanHeader account={accountChoice?.id} subtitle={accountChoice ? `${accountChoice.name} · bills paid from it` : undefined} />
+
+      <AccountChips label="Show bills for one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref="/plan/bills" />
 
       <div className="px-1">
-        <h2 className="h2">Bills &amp; subscriptions</h2>
+        <h2 className="h2">Bills &amp; subscriptions{accountChoice && ` · paid from ${accountChoice.name}`}</h2>
         <p className="sub mt-0.5 leading-relaxed">
           Everything that leaves your account every month. For a bill that varies (rent 950-980, electricity), give the lowest amount and the &quot;up to&quot; amount.
         </p>
@@ -48,7 +60,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
         <Kpi label="Share of your pay" value={income > 0 ? formatPct(c.monthly / income) : "-"} hint={income > 0 ? `of ${formatRMWhole(income)}` : "set your pay in Settings"} />
       </section>
 
-      <details className="card group" open={bills.length === 0}>
+      <details className="card group" open={allBills.length === 0}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="h2">Add a bill</span>
           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-card-subtle text-muted" aria-hidden>
@@ -56,12 +68,23 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
           </span>
         </summary>
         <div className="mt-4">
-          <BillForm categories={expenseCategories} accounts={payingAccounts} />
+          <BillForm categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} defaultAccountId={accountChoice?.id} />
         </div>
       </details>
 
       {bills.length === 0 ? (
-        <p className="card sub">No bills yet.</p>
+        <p className="card sub">
+          {accountChoice ? (
+            <>
+              No bills are paid from {accountChoice.name}.{" "}
+              <Link href="/plan/bills" className="font-extrabold text-accent-strong hover:underline">
+                Show every bill
+              </Link>
+            </>
+          ) : (
+            "No bills yet."
+          )}
+        </p>
       ) : (
         <ul className="space-y-1.5">
           {bills.map((b) => (
@@ -77,13 +100,16 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                       {!b.active && <span className="pill bg-warn-soft text-warn">paused</span>}
                       {b.nature === "want" && <span className="pill bg-card-subtle text-muted">want</span>}
                     </span>
-                    <span className="block text-[11px] font-bold text-muted">{b.dueDay ? `due ${b.dueDay}` : "no due day"}</span>
+                    <span className="block text-[11px] font-bold text-muted">
+                      {b.dueDay ? `due ${b.dueDay}` : "no due day"}
+                      {!accountChoice && ` · ${b.accountName}`}
+                    </span>
                   </span>
                   <span className="num shrink-0 text-[13px] font-black">{range(b.amountMin, b.amountMax)}</span>
                   <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="mt-3">
-                  <BillForm bill={b} categories={expenseCategories} accounts={payingAccounts} />
+                  <BillForm bill={b} categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} />
                 </div>
               </details>
             </li>

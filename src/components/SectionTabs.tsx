@@ -12,8 +12,8 @@ import { useLayoutEffect, useRef } from "react";
  * Two looks, both from globals.css: a segmented control (`seg`) for a few short, equal choices (Plan, More), and a row of
  * chips (`chips`) for many or longer ones that scroll sideways on a phone (Settings).
  */
-type Tab = { href: string; label: string };
-type TabState = Tab & { current: boolean };
+type Tab = { href: string; label: string; /** Carry the page's query (an account) in this tab's link. */ keepQuery?: boolean };
+type TabState = { href: string; label: string; current: boolean };
 
 export function TabLinks({ tabs, label, variant = "seg" }: { tabs: readonly TabState[]; label: string; variant?: "seg" | "chips" }) {
   const ref = useRef<HTMLElement>(null);
@@ -47,10 +47,11 @@ export function TabLinks({ tabs, label, variant = "seg" }: { tabs: readonly TabS
   );
 }
 
-function TabStrip({ tabs, pathname, label }: { tabs: readonly Tab[]; pathname: string; label: string }) {
-  // The longest matching href wins, so "/plan/bills" doesn't also light up "/plan".
+function TabStrip({ tabs, pathname, label, query = "" }: { tabs: readonly Tab[]; pathname: string; label: string; query?: string }) {
+  // The longest matching href wins, so "/plan/bills" doesn't also light up "/plan". It is matched on the plain path; the
+  // link may carry a query (the account being looked at) that the path doesn't have.
   const current = [...tabs].sort((a, b) => b.href.length - a.href.length).find((t) => pathname === t.href || pathname.startsWith(`${t.href}/`))?.href;
-  return <TabLinks label={label} tabs={tabs.map((t) => ({ ...t, current: t.href === current }))} />;
+  return <TabLinks label={label} tabs={tabs.map((t) => ({ href: t.keepQuery ? `${t.href}${query}` : t.href, label: t.label, current: t.href === current }))} />;
 }
 
 const MORE_TABS = [
@@ -59,17 +60,18 @@ const MORE_TABS = [
   { href: "/settings", label: "Settings" },
 ] as const;
 
+// Overview and Bills can be looked at for one account (?account=), so they keep it; shared bills are about people, not accounts.
 const PLAN_TABS = [
-  { href: "/plan", label: "Overview" },
-  { href: "/plan/bills", label: "Bills" },
+  { href: "/plan", label: "Overview", keepQuery: true },
+  { href: "/plan/bills", label: "Bills", keepQuery: true },
   { href: "/plan/shared", label: "Shared" },
 ] as const;
 
 export function MoreTabsView({ pathname }: { pathname: string }) {
   return <TabStrip tabs={MORE_TABS} pathname={pathname} label="More" />;
 }
-export function PlanTabsView({ pathname }: { pathname: string }) {
-  return <TabStrip tabs={PLAN_TABS} pathname={pathname} label="Plan" />;
+export function PlanTabsView({ pathname, account }: { pathname: string; account?: number }) {
+  return <TabStrip tabs={PLAN_TABS} pathname={pathname} label="Plan" query={account ? `?account=${account}` : ""} />;
 }
 
 /** Insights · Invest · Settings: what "More" opens. */
@@ -78,6 +80,6 @@ export function MoreTabs() {
 }
 
 /** Overview · Bills · Shared. */
-export function PlanTabs() {
-  return <PlanTabsView pathname={usePathname()} />;
+export function PlanTabs({ account }: { account?: number }) {
+  return <PlanTabsView pathname={usePathname()} account={account} />;
 }

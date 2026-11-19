@@ -59,6 +59,11 @@ export type LeakInput = {
   flows?: CycleFlow[];
   /** Names of your recurring bills (rent, Netflix...). They are planned spending, so never a "spike" or a "habit". */
   billItems?: string[];
+  /**
+   * Kinds of finding to leave out. Looking at ONE account's rows, the findings that compare against the whole book (budgets,
+   * income, the spending/savings routine) would be wrong, not just partial, so the page says which kinds step aside.
+   */
+  omit?: InsightKind[];
 };
 
 // --- tunable thresholds (sen unless noted) ------------------------------------
@@ -453,10 +458,14 @@ export function detectLeaks(input: LeakInput): Insight[] {
     });
   }
 
-  return out.sort(
-    (a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || b.annualSaving - a.annualSaving,
-  );
+  const omitted = new Set(input.omit ?? []);
+  return out
+    .filter((i) => !omitted.has(i.kind))
+    .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || b.annualSaving - a.annualSaving);
 }
+
+/** The findings that only make sense across every account: they compare against budgets, total income, or the payday routine. */
+export const WHOLE_BOOK_FINDINGS: InsightKind[] = ["over_budget", "wants_heavy", "planning_gap", "savings_drawdown", "savings_spending", "cash_unaccounted"];
 
 /** Headline: the biggest few findings. They can overlap (a latte also sits inside Eating Out). */
 export function headlineSavings(insights: Insight[], n = 3): { monthly: number; annual: number; invested: number } {

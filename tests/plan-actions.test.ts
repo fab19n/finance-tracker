@@ -206,6 +206,28 @@ describe("getPlan - a full payday-split scenario", () => {
     expect(safe.perDay).toBe(Math.round(RM(71.1) / 19));
   });
 
+  it("looking at the spending account on its own gives the very same safe-to-spend, from the same maths", async () => {
+    const plan = await scenario();
+    const { safeToSpend, billsPaidFrom } = await import("@/lib/plan/safe");
+    expect(safeToSpend({ accountName: "Salary & Bills", balance: RM(235), items: billsPaidFrom(plan.bills, main), daysLeft: plan.cycle.daysLeft })).toEqual(plan.safe);
+  });
+
+  it("another account's outlook counts only the bills paid from IT", async () => {
+    const { saveBill } = await import("@/app/actions/plan");
+    await redirected(saveBill(bill({ name: "Insurance", accountId: String(savings), amountMin: "120", dueDay: "20" })));
+    const plan = await scenario();
+    const { getAccountBalances } = await import("@/lib/queries/accounts");
+    const { safeToSpend, billsPaidFrom } = await import("@/lib/plan/safe");
+    const balance = (await getAccountBalances()).find((a) => a.id === savings)!.balance;
+    expect(balance).toBe(RM(4200)); // what the payday move put there
+    const mine = billsPaidFrom(plan.bills, savings);
+    expect(mine.map((i) => i.bill.name)).toEqual(["Insurance"]);
+    // 4,200 - the 120 insurance still to pay; the spending account's three bills do not touch it
+    expect(safeToSpend({ accountName: "Savings", balance, items: mine, daysLeft: plan.cycle.daysLeft })).toMatchObject({ reserve: RM(120), safe: RM(4080), unpaidCount: 1, overdueCount: 0 });
+    // and the spending account's own card is unchanged by it
+    expect(plan.safe.reserve).toBe(RM(88.9 + 75));
+  });
+
   it("goes negative - and says so - when bills outrun the account", async () => {
     const { recordPaydayTransfer } = await import("@/app/actions/plan");
     await redirected(recordPaydayTransfer(fd({ amount: "200", date: "2026-10-02" })));

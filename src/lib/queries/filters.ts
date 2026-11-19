@@ -86,6 +86,16 @@ export function datePresets(today: string): { label: string; from: string; to: s
   ];
 }
 
+/**
+ * Narrow a link into Activity to one account. A finding's "See the entries" link is built deep inside the leak detector, so
+ * the page adds the account afterwards. Anything that isn't a link into Activity (the Plan page, an anchor) is returned as it
+ * was, and so is any link when no account is chosen.
+ */
+export function withAccount(href: string, accountId: number | null | undefined): string {
+  if (!accountId || !(href === "/transactions" || href.startsWith("/transactions?"))) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}account=${accountId}`;
+}
+
 /** Rebuild a query string, dropping empty values. */
 export function qs(params: Record<string, string | number | undefined>): string {
   const u = new URLSearchParams();

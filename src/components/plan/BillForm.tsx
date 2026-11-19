@@ -6,7 +6,18 @@ import type { BillRow } from "@/lib/queries/plan";
 type Option = { id: number; name: string; icon?: string };
 
 /** Add / edit form for one recurring bill. A server component: plain fields posting to the action. */
-export function BillForm({ bill, categories, accounts }: { bill?: BillRow; categories: Option[]; accounts: Option[] }) {
+export function BillForm({
+  bill,
+  categories,
+  accounts,
+  defaultAccountId,
+}: {
+  bill?: BillRow;
+  categories: Option[];
+  accounts: Option[];
+  /** For a NEW bill: which account "Paid from" starts on (the account the Bills page is filtered to). */
+  defaultAccountId?: number;
+}) {
   const fixed = bill ? bill.amountMin === bill.amountMax : true;
   return (
     <div className="space-y-2">
@@ -23,7 +34,7 @@ export function BillForm({ bill, categories, accounts }: { bill?: BillRow; categ
             </option>
           ))}
         </select>
-        <select name="accountId" defaultValue={bill?.accountId} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Paid from">
+        <select name="accountId" defaultValue={bill?.accountId ?? defaultAccountId} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Paid from">
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               Paid from {a.name}

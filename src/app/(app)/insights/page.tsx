@@ -2,15 +2,17 @@ import { AlertCircle, AlertTriangle, ArrowRight, Check, CheckCircle2, Info } fro
 import Link from "next/link";
 import { connection } from "next/server";
 import { reconcileCashAction } from "@/app/actions/cash";
+import { AccountChips } from "@/components/AccountChips";
 import { MoreHeader } from "@/components/MoreHeader";
-import { detectLeaks, headlineSavings, type Insight, type Severity } from "@/lib/analytics/leakage";
+import { detectLeaks, headlineSavings, WHOLE_BOOK_FINDINGS, type Insight, type Severity } from "@/lib/analytics/leakage";
 import { detectRecurring, type Recurring } from "@/lib/analytics/recurring";
 import { daysBetween, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWhole } from "@/lib/money";
 import { descriptionMatchesBill } from "@/lib/plan/bills";
+import { getAccountBalances } from "@/lib/queries/accounts";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { getCashStatus } from "@/lib/queries/cash";
-import type { SearchParams } from "@/lib/queries/filters";
+import { qs, withAccount, type SearchParams } from "@/lib/queries/filters";
 import { getPlan } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
@@ -100,13 +102,25 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   await connection();
   const sp = await searchParams;
   const today = todayISO();
-  const [rows, categories, settings, cash, plan] = await Promise.all([
+  const [allRows, categories, settings, cash, plan, balances] = await Promise.all([
     listFlowRows(shiftDays(today, -150), today),
     listCategories(),
     getSettings(),
     getCashStatus(todayISO()),
     getPlan(today),
+    getAccountBalances(true),
   ]);
+
+  // One account on its own (?account=): the findings its own entries can support. An investment account has no spending to
+  // look at, so it isn't offered; an unknown id is ignored.
+  const accountId = Number(first(sp.account)) || null;
+  const accountChoice = balances.find((a) => a.id === accountId && a.type !== "investment") ?? null;
+  const rows = accountChoice ? allRows.filter((r) => r.accountId === accountChoice.id) : allRows;
+  // The cash finding is one account's story only when that account is the only cash account (the count adds them all up).
+  const cashView = accountChoice?.type === "cash" && cash.accounts.length === 1;
+  const chips = balances
+    .filter((a) => a.type !== "investment" && (!a.archived || a.id === accountChoice?.id))
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: `/insights${qs({ account: a.id })}` }));
 
   const insights = detectLeaks({
     rows,
@@ -116,7 +130,10 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     cash: { unaccounted90: cash.unaccounted90, withdrawn90: cash.withdrawn90 },
     flows: plan.flows,
     billItems: plan.bills.map((b) => b.bill.name),
-  });
+    // Budgets, wants against total income and the payday/savings routine are about every account at once: wrong, not just
+    // partial, on one account's rows.
+    omit: accountChoice ? WHOLE_BOOK_FINDINGS.filter((k) => !(k === "cash_unaccounted" && cashView)) : undefined,
+  }).map((i) => ({ ...i, href: i.href ? withAccount(i.href, accountChoice?.id) : undefined }));
   const headline = headlineSavings(insights);
   const recurring = detectRecurring(rows, today).filter((r) => r.active);
   const recurringMonthly = recurring.reduce((s, r) => s + r.monthlyCost, 0);
@@ -151,7 +168,19 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-3 md:space-y-4">
-      <MoreHeader title="Insights" subtitle="Where your money leaks, found from your own entries." />
+      <MoreHeader title="Insights" subtitle={accountChoice ? `${accountChoice.name} · where it leaks, found from its own entries.` : "Where your money leaks, found from your own entries."} />
+
+      {/* Every account together, or one on its own (each chip shows its real balance now). */}
+      <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref="/insights" />
+      {accountChoice && (
+        <p className="sub px-1">
+          Showing only what {accountChoice.name}&apos;s own entries can tell. Findings that need every account step aside: budgets, wants against your whole income,
+          the payday and savings routine{cashView ? "" : ", the cash count"} and your logging habit.{" "}
+          <Link href="/insights" className="font-extrabold text-accent-strong hover:underline">
+            See everything
+          </Link>
+        </p>
+      )}
 
       {/* Phone: one column in the order headline, cash, findings, habit, regular payments. From lg: findings on the left,
           the cash count and the small cards on the right. The wrappers are `contents` on a phone so `order` can interleave them. */}
@@ -194,104 +223,108 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         </div>
 
         <div className="contents lg:flex lg:flex-col lg:gap-4">
-          <section id="cash" className="card order-2 scroll-mt-20 space-y-3" aria-labelledby="cash-h">
-            <div>
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 id="cash-h" className="h2">
-                  Count your cash
-                </h2>
-                {cash.accounts.length > 0 && <span className="pill num bg-card-subtle text-muted">Cash · {formatRM(cashOnRecord)} on record</span>}
+          {(!accountChoice || accountChoice.type === "cash") && (
+            <section id="cash" className="card order-2 scroll-mt-20 space-y-3" aria-labelledby="cash-h">
+              <div>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <h2 id="cash-h" className="h2">
+                    Count your cash
+                  </h2>
+                  {cash.accounts.length > 0 && <span className="pill num bg-card-subtle text-muted">Cash · {formatRM(cashOnRecord)} on record</span>}
+                </div>
+                <p className="sub mt-1 leading-relaxed">
+                  Cash is where &quot;every penny&quot; usually breaks. Count what&apos;s in your wallet and the gap becomes a logged &quot;Unaccounted cash&quot; expense - so
+                  the leak is visible.
+                </p>
               </div>
-              <p className="sub mt-1 leading-relaxed">
-                Cash is where &quot;every penny&quot; usually breaks. Count what&apos;s in your wallet and the gap becomes a logged &quot;Unaccounted cash&quot; expense - so
-                the leak is visible.
-              </p>
-            </div>
 
-            {recon === "shortfall" && (
-              <p role="status" className="banner banner-warn">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
-                Cash was {formatRM(reconAmt)} short of the books. Booked as Unaccounted cash.
-              </p>
-            )}
-            {recon === "surplus" && (
-              <p role="status" className="banner banner-good">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
-                You had {formatRM(reconAmt)} more cash than the books said. Booked as a cash adjustment.
-              </p>
-            )}
-            {recon === "match" && (
-              <p role="status" className="banner banner-good">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
-                Spot on - your books match your wallet.
-              </p>
-            )}
-            {recon === "invalid" && (
-              <p role="alert" className="banner banner-danger">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
-                Enter the amount you counted, e.g. 85.50.
-              </p>
-            )}
+              {recon === "shortfall" && (
+                <p role="status" className="banner banner-warn">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  Cash was {formatRM(reconAmt)} short of the books. Booked as Unaccounted cash.
+                </p>
+              )}
+              {recon === "surplus" && (
+                <p role="status" className="banner banner-good">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  You had {formatRM(reconAmt)} more cash than the books said. Booked as a cash adjustment.
+                </p>
+              )}
+              {recon === "match" && (
+                <p role="status" className="banner banner-good">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  Spot on - your books match your wallet.
+                </p>
+              )}
+              {recon === "invalid" && (
+                <p role="alert" className="banner banner-danger">
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  Enter the amount you counted, e.g. 85.50.
+                </p>
+              )}
 
-            {cash.accounts.length === 0 ? (
-              <p className="sub">Add a &quot;Cash in hand&quot; account in Settings to use this.</p>
-            ) : (
-              <form action={reconcileCashAction} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
-                <div className="col-span-2">
-                  <label className="label" htmlFor="cash-account">
-                    Account
-                  </label>
-                  <select id="cash-account" name="accountId" className="input">
-                    {cash.accounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} (books: {formatRM(a.ledgerBalance)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label" htmlFor="actual">
-                    Actually counted (RM)
-                  </label>
-                  <input id="actual" name="actual" inputMode="decimal" placeholder="0.00" required className="input" />
-                </div>
-                <button className="btn-primary self-end">Reconcile</button>
-              </form>
-            )}
-            <p className={`text-xs ${needsCount ? "font-extrabold text-warn" : "font-bold text-muted"}`}>
-              {daysSinceRecon === null
-                ? "You haven't counted your cash yet - try it now."
-                : daysSinceRecon === 0
-                  ? "Counted today."
-                  : `Last counted ${daysSinceRecon} day${daysSinceRecon === 1 ? "" : "s"} ago${needsCount ? " - time for another count." : "."}`}
-            </p>
-          </section>
-
-          <section className="card order-4" aria-labelledby="habit">
-            <div className="mb-2.5 flex items-baseline justify-between gap-3">
-              <h2 id="habit" className="h2">
-                Logging habit
-              </h2>
-              <p className="sub whitespace-nowrap">
-                Last {stripLength} day{stripLength === 1 ? "" : "s"}
+              {cash.accounts.length === 0 ? (
+                <p className="sub">Add a &quot;Cash in hand&quot; account in Settings to use this.</p>
+              ) : (
+                <form action={reconcileCashAction} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
+                  <div className="col-span-2">
+                    <label className="label" htmlFor="cash-account">
+                      Account
+                    </label>
+                    <select id="cash-account" name="accountId" className="input">
+                      {cash.accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} (books: {formatRM(a.ledgerBalance)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="actual">
+                      Actually counted (RM)
+                    </label>
+                    <input id="actual" name="actual" inputMode="decimal" placeholder="0.00" required className="input" />
+                  </div>
+                  <button className="btn-primary self-end">Reconcile</button>
+                </form>
+              )}
+              <p className={`text-xs ${needsCount ? "font-extrabold text-warn" : "font-bold text-muted"}`}>
+                {daysSinceRecon === null
+                  ? "You haven't counted your cash yet - try it now."
+                  : daysSinceRecon === 0
+                    ? "Counted today."
+                    : `Last counted ${daysSinceRecon} day${daysSinceRecon === 1 ? "" : "s"} ago${needsCount ? " - time for another count." : "."}`}
               </p>
-            </div>
-            {/* accent = a day with an entry, grey = a gap; the sentence and the list of gaps below say the same in words */}
-            <div className="flex gap-1" role="img" aria-label={`Logged on ${stripLogged} of the last ${stripLength} days`}>
-              {strip.map((d) => (
-                <div key={d.date} className={`h-7 flex-1 rounded-lg ${d.logged ? "bg-accent" : "bg-card-subtle"}`} />
-              ))}
-            </div>
-            <p className="mt-2.5 text-[13px] font-bold">
-              You logged something on <strong className="font-black">{loggedDays}</strong> of the last {trackedWindow} days.
-            </p>
-            <p className="sub mt-0.5 leading-relaxed">
-              {loggedDays >= trackedWindow * 0.8
-                ? "Great consistency - this is what makes the insights trustworthy."
-                : "Gaps usually mean forgotten spending. Logging right after you pay is the habit that matters most."}
-            </p>
-            {gaps.length > 0 && <p className="sub mt-1">Gaps: {gaps.join(", ")}.</p>}
-          </section>
+            </section>
+          )}
+
+          {!accountChoice && (
+            <section className="card order-4" aria-labelledby="habit">
+              <div className="mb-2.5 flex items-baseline justify-between gap-3">
+                <h2 id="habit" className="h2">
+                  Logging habit
+                </h2>
+                <p className="sub whitespace-nowrap">
+                  Last {stripLength} day{stripLength === 1 ? "" : "s"}
+                </p>
+              </div>
+              {/* accent = a day with an entry, grey = a gap; the sentence and the list of gaps below say the same in words */}
+              <div className="flex gap-1" role="img" aria-label={`Logged on ${stripLogged} of the last ${stripLength} days`}>
+                {strip.map((d) => (
+                  <div key={d.date} className={`h-7 flex-1 rounded-lg ${d.logged ? "bg-accent" : "bg-card-subtle"}`} />
+                ))}
+              </div>
+              <p className="mt-2.5 text-[13px] font-bold">
+                You logged something on <strong className="font-black">{loggedDays}</strong> of the last {trackedWindow} days.
+              </p>
+              <p className="sub mt-0.5 leading-relaxed">
+                {loggedDays >= trackedWindow * 0.8
+                  ? "Great consistency - this is what makes the insights trustworthy."
+                  : "Gaps usually mean forgotten spending. Logging right after you pay is the habit that matters most."}
+              </p>
+              {gaps.length > 0 && <p className="sub mt-1">Gaps: {gaps.join(", ")}.</p>}
+            </section>
+          )}
 
           {recurring.length > 0 && (
             <section className="card order-5" aria-labelledby="recurring">

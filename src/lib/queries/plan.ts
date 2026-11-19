@@ -6,6 +6,7 @@ import type { Account } from "@/db/schema";
 import { mean } from "@/lib/analytics/stats";
 import { evaluateBills, monthlyCommitments, normalizeName, summarizeBills, type BillDef, type BillInCycle, type BillsSummary, type Commitments } from "@/lib/plan/bills";
 import { currentCycle, cycleHistory, normalizeSalaryDates, type Cycle } from "@/lib/plan/cycle";
+import { billsPaidFrom, safeToSpend, type SafeToSpend } from "@/lib/plan/safe";
 import { cycleFlow, estimateAllowance, type CycleFlow } from "@/lib/plan/savings-flow";
 import { getSettings, type AppSettings } from "@/lib/settings";
 import { getAccountBalances } from "./accounts";
@@ -93,20 +94,7 @@ export async function listPlanTxs(from: string, to: string) {
     .all();
 }
 
-export type SafeToSpend = {
-  /** Is a "spending" account chosen in Settings? Without one there is nothing to compute. */
-  configured: boolean;
-  accountName: string | null;
-  balance: number;
-  /** Money held back for bills not yet paid this cycle. */
-  reserve: number;
-  /** balance - reserve. Negative means everyday spending will be funded from savings. */
-  safe: number;
-  perDay: number | null;
-  daysLeft: number;
-  unpaidCount: number;
-  overdueCount: number;
-};
+export type { SafeToSpend };
 
 export type PlanData = {
   settings: AppSettings;
@@ -176,21 +164,12 @@ export async function getPlan(today: string): Promise<PlanData> {
   };
   if (roles.spending) {
     const spendingId = roles.spending.id;
-    const own = evaluated.filter((e) => e.bill.accountId === spendingId);
-    const balance = balances.find((a) => a.id === spendingId)?.balance ?? 0;
-    const reserve = own.reduce((s, e) => s + e.reserve, 0);
-    const left = balance - reserve;
-    safe = {
-      configured: true,
+    safe = safeToSpend({
       accountName: roles.spending.name,
-      balance,
-      reserve,
-      safe: left,
-      perDay: cycle.daysLeft > 0 ? Math.round(left / cycle.daysLeft) : null,
+      balance: balances.find((a) => a.id === spendingId)?.balance ?? 0,
+      items: billsPaidFrom(evaluated, spendingId),
       daysLeft: cycle.daysLeft,
-      unpaidCount: own.filter((e) => e.status !== "paid").length,
-      overdueCount: own.filter((e) => e.status === "overdue").length,
-    };
+    });
   }
 
   const ctx = {
