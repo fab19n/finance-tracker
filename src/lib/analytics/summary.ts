@@ -17,6 +17,8 @@ export type FlowRow = {
   isSystem: boolean;
   item: string | null;
   accountId: number;
+  /** The recurring bill this entry was linked to ("mark paid"), when it was. */
+  billId?: number | null;
 };
 
 export type BudgetCategory = {
@@ -228,6 +230,17 @@ export function needWantSplit(rows: FlowRow[], month: string): NeedWantSplit {
   return { need, want, saved, base, needPct: pct(need), wantPct: pct(want), savedPct: pct(saved), vsIncome };
 }
 
+/**
+ * A recurring bill as the budgets need it (see `toBudgetBills` in plan/bills.ts): which category it belongs to, what it
+ * usually costs, and the entry that paid it in this period (null while it is unpaid).
+ */
+export type BudgetBill = {
+  categoryId: number | null;
+  /** Typical amount: the midpoint of its range. */
+  expected: number;
+  paidTxId: number | null;
+};
+
 export type BudgetRow = {
   categoryId: number;
   name: string;
@@ -236,37 +249,72 @@ export type BudgetRow = {
   spent: number;
   /** spent / budget (can exceed 1) */
   used: number;
-  /** where you "should" be by now: day / days-in-month, 1 for a finished month */
+  /** where you "should" be by now: days gone / days in the period, 1 for a finished one */
   pace: number;
-  /** end-of-month estimate at the current rate */
+  /** end-of-period estimate: bills already paid, bills still due, and the rest at the current rate */
   projected: number;
+  /** Of `spent`: the part that paid a recurring bill. A bill is a fixed amount, so it is never extrapolated. */
+  billsPaid: number;
+  /** Bills of this category still to pay before the period ends (their typical amounts). */
+  billsDue: number;
+  /** Everything spent here so far was a bill, all of them are paid, and none is still due: nothing more is coming. */
+  settled: boolean;
   status: "over" | "watch" | "ok";
 };
 
+/** Before this many days of a period the run-rate of everyday spending is too noisy to extrapolate. */
+const PROJECT_FROM_DAY = 5;
+
 /**
- * Budget progress per category for one month. `dayOfMonth` is today's day when `month`
- * is the current month; pass daysInMonth for a finished month.
+ * Budget progress per category for one period (`month` names it: a calendar month, or the pay cycle filed under it).
+ * `dayOfMonthNow` is today's day when `month` is the current one; pass daysInMonth for a finished month.
+ *
+ * `opts.total` is how many days the period really has (a pay cycle named after a 30-day month can run 31 days) and
+ * `opts.elapsed` how many have passed (both default to the calendar month and `dayOfMonthNow`).
+ *
+ * Spending is projected in two parts. A recurring bill is a lump at a fixed amount, not a drip: a paid bill stays what it
+ * was paid and an unpaid one is expected at its usual amount. Only the rest (food, fuel...) is carried forward at the rate
+ * so far. Without `opts.bills` everything is treated as the second kind.
  */
 export function budgetProgress(
   rows: FlowRow[],
   categories: BudgetCategory[],
   month: string,
   dayOfMonthNow: number,
+  opts: { elapsed?: number; total?: number; bills?: BudgetBill[] } = {},
 ): BudgetRow[] {
-  const dim = daysInMonthOf(month);
-  const day = Math.min(Math.max(dayOfMonthNow, 1), dim);
-  const pace = day / dim;
+  const total = Math.max(1, opts.total ?? daysInMonthOf(month));
+  const day = Math.min(Math.max(opts.elapsed ?? dayOfMonthNow, 1), total);
+  const pace = day / total;
   const spentBy = new Map<number, number>();
+  const entries = new Map<number, { categoryId: number; amount: number }>();
   for (const r of rows) {
     if (r.type !== "expense" || r.categoryId == null || monthOf(r.date) !== month) continue;
     spentBy.set(r.categoryId, (spentBy.get(r.categoryId) ?? 0) + r.amount);
+    entries.set(r.id, { categoryId: r.categoryId, amount: r.amount });
   }
   return categories
     .filter((c): c is BudgetCategory & { monthlyBudget: number } => !!c.monthlyBudget && c.monthlyBudget > 0)
     .map((c) => {
       const spent = spentBy.get(c.id) ?? 0;
-      // Early in the month the run-rate is noisy: only extrapolate after a few days.
-      const projected = day >= 5 && pace < 1 ? Math.round(spent / pace) : spent;
+      let billsPaid = 0;
+      let billsDue = 0;
+      for (const bill of opts.bills ?? []) {
+        if (bill.categoryId !== c.id) continue;
+        if (bill.paidTxId === null) {
+          // Still to come, but only while the period is still running: a finished one never got it.
+          if (pace < 1) billsDue += bill.expected;
+          continue;
+        }
+        // Paid by an entry in this category and period; a payment filed elsewhere is not part of this spending.
+        const paid = entries.get(bill.paidTxId);
+        if (paid && paid.categoryId === c.id) billsPaid += paid.amount;
+      }
+      const rest = Math.max(0, spent - billsPaid);
+      // Early on the run-rate is noisy: only extrapolate after a few days.
+      const projectedRest = day >= PROJECT_FROM_DAY && pace < 1 ? Math.round(rest / pace) : rest;
+      const projected = billsPaid + billsDue + projectedRest;
+      const settled = billsPaid > 0 && billsDue === 0 && rest === 0;
       const status: BudgetRow["status"] =
         spent > c.monthlyBudget ? "over" : projected > c.monthlyBudget * 1.05 ? "watch" : "ok";
       return {
@@ -278,6 +326,9 @@ export function budgetProgress(
         used: spent / c.monthlyBudget,
         pace,
         projected,
+        billsPaid,
+        billsDue,
+        settled,
         status,
       };
     })

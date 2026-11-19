@@ -6,9 +6,9 @@ import { AccountChips } from "@/components/AccountChips";
 import { MoreHeader } from "@/components/MoreHeader";
 import { detectLeaks, headlineSavings, WHOLE_BOOK_FINDINGS, type Insight, type Severity } from "@/lib/analytics/leakage";
 import { detectRecurring, type Recurring } from "@/lib/analytics/recurring";
-import { daysBetween, shiftDays, shortDate, todayISO } from "@/lib/dates";
+import { daysBetween, monthEnd, monthStart, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWhole } from "@/lib/money";
-import { descriptionMatchesBill } from "@/lib/plan/bills";
+import { asBillTxs, descriptionMatchesBill, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { getCashStatus } from "@/lib/queries/cash";
@@ -130,6 +130,15 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     cash: { unaccounted90: cash.unaccounted90, withdrawn90: cash.withdrawn90 },
     flows: plan.flows,
     billItems: plan.bills.map((b) => b.bill.name),
+    // These findings are by calendar month, so which bills are paid is judged for this month too (not the pay cycle).
+    budgetBills: toBudgetBills(
+      evaluateBills(
+        plan.bills.map((b) => b.bill),
+        { start: monthStart(today.slice(0, 7)), end: monthEnd(today.slice(0, 7)) },
+        asBillTxs(allRows),
+        today,
+      ),
+    ),
     // Budgets, wants against total income and the payday/savings routine are about every account at once: wrong, not just
     // partial, on one account's rows.
     omit: accountChoice ? WHOLE_BOOK_FINDINGS.filter((k) => !(k === "cash_unaccounted" && cashView)) : undefined,

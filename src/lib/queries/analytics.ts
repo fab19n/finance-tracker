@@ -19,6 +19,7 @@ export async function listFlowRows(from: string, to: string): Promise<FlowRow[]>
       isSystem: categories.isSystem,
       item: transactions.item,
       accountId: transactions.accountId,
+      billId: transactions.billId,
     })
     .from(transactions)
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
@@ -38,5 +39,6 @@ export async function listFlowRows(from: string, to: string): Promise<FlowRow[]>
     isSystem: r.isSystem ?? false,
     item: r.item,
     accountId: r.accountId,
+    billId: r.billId,
   }));
 }

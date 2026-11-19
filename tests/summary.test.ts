@@ -144,6 +144,82 @@ describe("budgetProgress", () => {
   });
 });
 
+describe("budgetProgress: the period's real length and recurring bills", () => {
+  const RENT = 7;
+  const cats = [
+    { id: 1, name: "Eating Out", icon: "x", monthlyBudget: 10_000 },
+    { id: RENT, name: "Rent / Housing", icon: "x", monthlyBudget: 98_000 },
+  ];
+  // A pay cycle named after a 30-day month that really runs 31 days, 25 of them gone.
+  const cycle = { elapsed: 25, total: 31 };
+  const rent = () => row({ date: "2026-11-03", rm: 968.7, cat: "Rent / Housing", categoryId: RENT });
+  const find = (rows: ReturnType<typeof row>[], opts: Parameters<typeof budgetProgress>[4], id = RENT) =>
+    budgetProgress(rows, cats, "2026-11", 25, opts).find((b) => b.categoryId === id)!;
+
+  it("measures the pace against the days the period really has", () => {
+    const b = find([row({ date: "2026-11-03", rm: 40 })], cycle, 1);
+    expect(b.pace).toBeCloseTo(25 / 31);
+    expect(b.projected).toBe(Math.round(4000 / (25 / 31))); // 4,960, not the 4,800 a 30-day month would say
+  });
+
+  it("a bill that is already paid stays what it was paid: nothing more is coming", () => {
+    const paid = rent();
+    const b = find([paid], { ...cycle, bills: [{ categoryId: RENT, expected: 96_500, paidTxId: paid.id }] });
+    expect(b.projected).toBe(96_870);
+    expect(b.billsPaid).toBe(96_870);
+    expect(b.billsDue).toBe(0);
+    expect(b.settled).toBe(true);
+    expect(b.status).toBe("ok");
+  });
+
+  it("REGRESSION: without the bill, a rent paid on the 3rd was 'on pace to reach RM 1,200'", () => {
+    const b = find([rent()], cycle);
+    expect(b.status).toBe("watch");
+    expect(b.projected).toBeGreaterThan(98_000 * 1.05);
+    expect(b.settled).toBe(false);
+  });
+
+  it("a bill still to pay is expected at its usual amount", () => {
+    const b = find([], { ...cycle, bills: [{ categoryId: RENT, expected: 96_500, paidTxId: null }] });
+    expect(b.billsDue).toBe(96_500);
+    expect(b.projected).toBe(96_500);
+    expect(b.status).toBe("ok");
+    expect(b.settled).toBe(false);
+    // ...and one that would take it past the budget is flagged before it is paid
+    expect(find([], { ...cycle, bills: [{ categoryId: RENT, expected: 110_000, paidTxId: null }] }).status).toBe("watch");
+  });
+
+  it("only what is not a bill is carried forward at the rate so far", () => {
+    const paid = rent();
+    const parking = row({ date: "2026-11-10", rm: 50, cat: "Rent / Housing", categoryId: RENT });
+    const b = find([paid, parking], { ...cycle, bills: [{ categoryId: RENT, expected: 96_500, paidTxId: paid.id }] });
+    expect(b.projected).toBe(96_870 + Math.round(5_000 / (25 / 31)));
+    expect(b.settled).toBe(false);
+  });
+
+  it("a finished period does not wait for a bill nobody paid", () => {
+    const b = find([], { elapsed: 31, total: 31, bills: [{ categoryId: RENT, expected: 96_500, paidTxId: null }] });
+    expect(b.pace).toBe(1);
+    expect(b.billsDue).toBe(0);
+    expect(b.projected).toBe(0);
+  });
+
+  it("a payment filed under another category is not this category's bill", () => {
+    const elsewhere = row({ date: "2026-11-03", rm: 500, cat: "Eating Out" });
+    const b = find([elsewhere], { ...cycle, bills: [{ categoryId: RENT, expected: 96_500, paidTxId: elsewhere.id }] });
+    expect(b.billsPaid).toBe(0);
+    expect(b.billsDue).toBe(0);
+    expect(b.projected).toBe(0);
+  });
+
+  it("without bills or a length it behaves exactly as before", () => {
+    const b = budgetProgress([row({ date: "2026-10-03", rm: 40 })], [cats[0]], "2026-10", 10)[0];
+    expect(b.pace).toBeCloseTo(10 / 31);
+    expect(b.billsPaid + b.billsDue).toBe(0);
+    expect(b.status).toBe("watch");
+  });
+});
+
 describe("helpers", () => {
   it("changeRatio", () => {
     expect(changeRatio(150, 100)).toBeCloseTo(0.5);

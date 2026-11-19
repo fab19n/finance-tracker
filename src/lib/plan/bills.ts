@@ -1,3 +1,4 @@
+import type { BudgetBill } from "@/lib/analytics/summary";
 import { daysBetween, shiftMonth } from "@/lib/dates";
 import { clampDay, type Cycle } from "./cycle";
 
@@ -108,6 +109,19 @@ export function evaluateBills(bills: BillDef[], cycle: Pick<Cycle, "start" | "en
       (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") ||
       a.bill.name.localeCompare(b.bill.name),
   );
+}
+
+/**
+ * What the budgets need to know about each bill in a period: its category, its usual amount, and the entry that paid it.
+ * The same `findPayment` as the Plan's checklist decides "paid", so a bill is paid here exactly when it is paid there.
+ */
+export function toBudgetBills(items: BillInCycle[]): BudgetBill[] {
+  return items.map((i) => ({ categoryId: i.bill.categoryId, expected: i.expected, paidTxId: i.paid?.txId ?? null }));
+}
+
+/** Flow rows as the bill checklist reads them (an unlinked entry has no bill). */
+export function asBillTxs(rows: { id: number; date: string; amount: number; type: "income" | "expense"; accountId: number; item: string | null; billId?: number | null }[]): BillTx[] {
+  return rows.map((r) => ({ id: r.id, date: r.date, amount: r.amount, type: r.type, accountId: r.accountId, item: r.item, billId: r.billId ?? null }));
 }
 
 export type BillsSummary = {

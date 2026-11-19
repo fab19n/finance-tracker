@@ -7,6 +7,7 @@ import {
   budgetProgress,
   daysInMonthOf,
   monthTotals,
+  type BudgetBill,
   type BudgetCategory,
   type FlowRow,
 } from "./summary";
@@ -59,6 +60,11 @@ export type LeakInput = {
   flows?: CycleFlow[];
   /** Names of your recurring bills (rent, Netflix...). They are planned spending, so never a "spike" or a "habit". */
   billItems?: string[];
+  /**
+   * Your bills checked against THIS calendar month (see `toBudgetBills`), so the over-budget rule doesn't carry a rent that
+   * is already paid forward as if it were still being spent. Without it every category is projected at its run-rate.
+   */
+  budgetBills?: BudgetBill[];
   /**
    * Kinds of finding to leave out. Looking at ONE account's rows, the findings that compare against the whole book (budgets,
    * income, the spending/savings routine) would be wrong, not just partial, so the page says which kinds step aside.
@@ -264,7 +270,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
   }
 
   // 4. Over budget ------------------------------------------------------------
-  for (const b of budgetProgress(rows, categories, month, day)) {
+  for (const b of budgetProgress(rows, categories, month, day, { bills: input.budgetBills })) {
     if (b.status === "ok") continue;
     const over = b.status === "over";
     out.push({

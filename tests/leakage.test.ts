@@ -127,6 +127,15 @@ describe("budgets, wants and cash", () => {
     expect(found.monthlySaving).toBe(10_000);
   });
 
+  it("REGRESSION: a rent that is already paid is not 'on pace to go over budget'", () => {
+    // RM 968.70 paid on 3 Oct against a RM 980 budget: extrapolated from day 9 it "finishes" near RM 3,300.
+    const rent = row({ date: "2026-10-03", rm: 968.7, cat: "Rent / Housing", categoryId: 8, item: "Rent" });
+    const input = baseInput([rent], { categories: [{ id: 8, name: "Rent / Housing", icon: "x", monthlyBudget: 98_000 }] });
+    expect(detectLeaks(input).find((i) => i.kind === "over_budget")).toBeDefined(); // the old behaviour, with no bills known
+    const withBills = detectLeaks({ ...input, budgetBills: [{ categoryId: 8, expected: 96_500, paidTxId: rent.id }] });
+    expect(withBills.find((i) => i.kind === "over_budget")).toBeUndefined();
+  });
+
   it("flags wants above the 30% guide for the last complete month", () => {
     const rows = [
       row({ date: "2026-09-01", rm: 5000, type: "income", cat: "Salary", nature: "saving" }),

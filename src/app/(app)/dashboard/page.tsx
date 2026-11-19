@@ -40,13 +40,14 @@ import {
   todayISO,
 } from "@/lib/dates";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
+import { asBillTxs, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { currentCycle, cycleLabel } from "@/lib/plan/cycle";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getNetWorth } from "@/lib/queries/investments";
 import { getAccountLedger } from "@/lib/queries/ledger";
-import { listSalaries } from "@/lib/queries/plan";
+import { listBills, listSalaries } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
@@ -86,13 +87,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const nameOf = (m: string) => (period ? `${shortMonthLabel(m).split(" ")[0]} cycle` : shortMonthLabel(m));
 
   const months6 = lastMonths(month, 6);
-  const [raw, categories, worth, accounts] = await Promise.all([
+  const [raw, categories, worth, accounts, billDefs] = await Promise.all([
     periods && period
       ? listFlowRows((periods.find((p) => p.key === shiftMonth(month, -6)) ?? periods[periods.length - 1]).start, period.end)
       : listFlowRows(monthStart(shiftMonth(month, -6)), monthEnd(month)),
     listCategories(),
     getNetWorth(today),
     getAccountBalances(true),
+    listBills(),
   ]);
   // One account on its own (?account=): the same page over just the money that came into / went out of it. The pay cycles
   // above were cut from ALL salaries first, so a cycle means the same thing whichever account you look at.
@@ -135,7 +137,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const split = needWantSplit(rows, month);
   // Budgets are for the whole book: a category's limit measured against one account's share of it would say "on track" about
   // money that is simply paid from somewhere else. So they sit out an account view.
-  const budgets = accountChoice ? [] : budgetProgress(rows, categories, month, dayNow);
+  // The pace is against the period's real length (a cycle named after a 30-day month can run 31 days), and a bill is not a
+  // drip: the Plan's own checklist (same `findPayment`) says which are paid this period, so they are never extrapolated.
+  const budgetElapsed = period ? (isCurrent ? daysBetween(period.start, today) + 1 : daysTotal) : dayNow;
+  const budgetBills = toBudgetBills(
+    evaluateBills(billDefs, period ? { start: period.start, end: period.end } : { start: monthStart(month), end: monthEnd(month) }, asBillTxs(raw), today),
+  );
+  const budgets = accountChoice ? [] : budgetProgress(rows, categories, month, dayNow, { elapsed: budgetElapsed, total: daysTotal, bills: budgetBills });
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
@@ -316,7 +324,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                         {formatRMWhole(b.spent).replace("RM ", "")} / {formatRMWhole(b.budget).replace("RM ", "")}
                       </p>
                       <span className={`pill !px-2 !py-0.5 ${BUDGET_PILL[b.status]}`}>
-                        {b.status === "over" ? `Over by ${formatRMWhole(b.spent - b.budget)}` : b.status === "watch" ? `Watch · ${formatRMWhole(b.projected).replace("RM ", "")}` : "On track"}
+                        {b.status === "over"
+                          ? `Over by ${formatRMWhole(b.spent - b.budget)}`
+                          : b.settled
+                            ? "Bills paid"
+                            : b.status === "watch"
+                              ? `Watch · ${formatRMWhole(b.projected).replace("RM ", "")}`
+                              : "On track"}
                       </span>
                     </Link>
                   </li>
@@ -332,13 +346,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                           {formatRM(b.spent)} <span className="text-muted">/ {formatRM(b.budget)}</span>
                         </span>
                       </div>
-                      <Meter used={b.used} pace={b.pace} status={b.status} />
+                      {/* A category that is all bills has no "even pace": the tick would only suggest it is ahead. */}
+                      <Meter used={b.used} pace={b.settled ? undefined : b.pace} status={b.status} />
                       <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.status]}`}>
                         {b.status === "over"
                           ? `Over budget by ${formatRM(b.spent - b.budget)}`
-                          : b.status === "watch"
-                            ? `On pace to reach ${formatRM(b.projected)}`
-                            : "On track"}
+                          : b.settled
+                            ? "Bills paid: nothing more due"
+                            : b.status === "watch"
+                              ? `On pace to reach ${formatRM(b.projected)}`
+                              : b.billsDue > 0
+                                ? `On track · ${formatRM(b.billsDue)} in bills still due`
+                                : "On track"}
                       </span>
                     </Link>
                   </li>
