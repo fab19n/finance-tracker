@@ -364,3 +364,50 @@ describe("coverMonth: whoever says they'll cover a month gets it", () => {
     expect(turnsOf(sp)).toEqual({ "2026-10": ben });
   });
 });
+
+describe("a price rise on a shared bill: the page reads each month's real charge", () => {
+  // Netflix was RM 88.90 until October (setup) and rises to RM 99.70 in November: a quarter is 22.23 and then 24.93.
+  async function afterRise() {
+    h.db.insert(transactions).values({ date: "2026-11-04", type: "expense", amount: RM(99.7), accountId: main, categoryId: subsCat, item: "Netflix", billId: netflix }).run();
+    h.db.update(recurringBills).set({ amountMin: RM(99.7), amountMax: RM(99.7) }).where(eq(recurringBills.id, netflix)).run();
+    // Money already received is linked to the person the moment they are added.
+    credit("2026-01-02", 133.5, "DUITNOW TO ACCOUNT 1 KUG A/L X");
+    credit("2026-09-08", 133.5, "DUITNOW TO ACCOUNT 2 KUG A/L X");
+    const { saveShare } = await import("@/app/actions/shares");
+    await redirected(saveShare(person({ name: "Kug", share: "24.93", matchKeywords: "kug" })));
+  }
+
+  it("prices January to October at the old charge and November at the new one", async () => {
+    await afterRise();
+    const { getSharedBills } = await import("@/lib/queries/shares");
+    const [bill] = (await getSharedBills("2026-11-19")).bills;
+    const [kug] = bill.people;
+    expect(kug.cells.map((c) => c.cost)).toEqual([...Array(10).fill(RM(22.23)), RM(24.93)]);
+    expect(kug.owed).toBe(10 * RM(22.23) + RM(24.93)); // not 11 x 24.93
+  });
+
+  it("money paid at the old price leaves November and December part paid, and the page totals say so", async () => {
+    await afterRise();
+    const { getSharedBills } = await import("@/lib/queries/shares");
+    const page = await getSharedBills("2026-11-19");
+    const [bill] = page.bills;
+    const [kug] = bill.people;
+    // 267.00 = twelve shares of 22.25 (133.50 twice), covering Jan to Dec at the old price
+    expect(kug.paid).toBe(RM(267));
+    expect(kug.cells[10]).toMatchObject({ month: "2026-11", state: "partial" });
+    expect(kug.upcoming.map((c) => [c.month, c.state])).toEqual([["2026-12", "partial"]]);
+    expect(kug.owedNow).toBeGreaterThan(0);
+    expect(kug.expectedNext).toBeGreaterThan(0);
+    expect(bill.owedToYou).toBe(kug.owedNow);
+    expect(bill.upcomingMonths).toEqual(["2026-12"]);
+    expect(page.owedToYou).toBe(kug.owedNow);
+  });
+
+  it("selectShares carries what a month used to cost, so a lump of old-price months is recognised", async () => {
+    await afterRise();
+    const { selectShares } = await import("@/lib/queries/shares");
+    const [kug] = selectShares(h.db);
+    expect(kug.share).toBe(RM(24.93));
+    expect(kug.earlierShares).toEqual([RM(22.23)]);
+  });
+});

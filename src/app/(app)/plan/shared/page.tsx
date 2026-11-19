@@ -9,6 +9,7 @@ import { UnassignedPayments } from "@/components/plan/UnassignedPayments";
 import { shortMonthLabel, todayISO } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
+import { owedMonthsText } from "@/lib/plan/shares-text";
 import type { SearchParams } from "@/lib/queries/filters";
 import { listBills } from "@/lib/queries/plan";
 import { getSharedBills } from "@/lib/queries/shares";
@@ -30,7 +31,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
   // Everyone who owes you something, biggest first: the people to chase. (Equal monthly parts, or a turn that has come round.)
   const owing = page.bills
     .flatMap((b) => [
-      ...b.people.map((p) => ({ key: `m${p.share.id}`, bill: b.bill.name, name: p.share.name, amount: p.balance, detail: `${p.monthsOwed} month${p.monthsOwed === 1 ? "" : "s"}` })),
+      ...b.people.map((p) => ({ key: `m${p.share.id}`, bill: b.bill.name, name: p.share.name, amount: p.owedNow, detail: owedMonthsText(p) })),
       ...(b.rotation?.people ?? []).map((p) => ({
         key: `t${p.share.id}`,
         bill: b.bill.name,
@@ -54,8 +55,8 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
             <ChevronDown size={14} strokeWidth={2.5} className="transition group-open:rotate-180" aria-hidden />
           </summary>
           <p className="sub leading-relaxed">
-            A bill can be split two ways. <strong className="text-foreground">Equal parts</strong> (Netflix): each person owes their share of every month, and whatever they send pays their oldest unpaid month first, so a lump sum for three
-            months and a single month both work. <strong className="text-foreground">In turns</strong> (Spotify): one person pays the whole month, you take the first month of each cycle, and a payment settles that person&apos;s own month.
+            A bill can be split two ways. <strong className="text-foreground">Equal parts</strong> (Netflix): each person owes their share of every month, worked out from what the bill was charged that month, so a price rise counts only from the
+            month it took effect. Whatever they send pays whole months at the price it was sent at, oldest first, so a lump sum for three months and a single month both work, and a month that now costs more than they paid shows what is still to pay. <strong className="text-foreground">In turns</strong> (Spotify): one person pays the whole month, you take the first month of each cycle, and a payment settles that person&apos;s own month.
             Set up who shares what, and this shows who has paid for which month.
           </p>
         </details>
@@ -97,7 +98,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
                 </div>
                 <div className="max-w-[55%] shrink-0 text-right">
                   <p className="num text-[13px] font-black text-warn">{formatRM(o.amount)}</p>
-                  <p className="break-words text-[11px] font-bold text-muted">({o.detail})</p>
+                  <p className="break-words text-[11px] font-bold text-muted">{o.detail}</p>
                 </div>
               </li>
             ))}
@@ -121,7 +122,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
         <div className="mt-4 space-y-3">
           {page.bills.length === 0 && (
             <p className="sub leading-relaxed">
-              Start with the bill (it needs to be in your <Link href="/plan/bills" className="font-extrabold text-accent-strong">bills</Link> first), the person, and what they owe you each month: RM 22.25 for a Netflix quarter, RM 5.15 for a Spotify sixth.
+              Start with the bill (it needs to be in your <Link href="/plan/bills" className="font-extrabold text-accent-strong">bills</Link> first), the person, and what they owe you each month today: RM 24.93 for a Netflix quarter, RM 5.15 for a Spotify sixth. (Earlier months are worked out from what the bill was charged then.)
               Putting the words that appear on your bank statement when they pay you (a surname will do) lets the app count their payments by itself, including ones you have already received.
             </p>
           )}

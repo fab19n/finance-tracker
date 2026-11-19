@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { billedMonths, descriptionMatchesShare, personLedger, pickShare, sharedBill, type ShareDef, type SharePayment } from "@/lib/plan/shares";
+import { billedMonths, descriptionMatchesShare, earlierShareAmounts, personLedger, pickShare, sharedBill, type PriceHistory, type ShareDef, type SharePayment } from "@/lib/plan/shares";
+import { formatRM } from "@/lib/money";
+import { expectedText, monthNames, owedMonthsText, standingText } from "@/lib/plan/shares-text";
 
 const RM = (n: number) => Math.round(n * 100);
 
@@ -178,5 +180,191 @@ describe("recognising a person's payment on a bank line", () => {
     it("ignores people who have left", () => {
       expect(pickShare([{ ...netflix, active: false }], "KUGANESH", RM(22.25))).toBeNull();
     });
+  });
+});
+
+// ---- a price change: the months before it keep the old price -----------------------------------------------------------
+// A RM 80 bill split in four (RM 20 each) that rises to RM 88 (RM 22 each) from November 2026.
+describe("a price rise counts only from the month it took effect", () => {
+  const monthsTo = (last: number) => Array.from({ length: last }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}`);
+  const RISE_MONTHS = monthsTo(11); // charged January to November
+  const rise = (): PriceHistory => ({
+    charges: new Map(RISE_MONTHS.map((m) => [m, RM(m === "2026-11" ? 88 : 80)])),
+    typical: RM(88),
+  });
+  const quarter = def(1, "A", { share: RM(22) }); // today's share
+  const ledger = (payments: SharePayment[], over: Partial<ShareDef> = {}) => personLedger({ ...quarter, ...over }, RISE_MONTHS, payments, rise());
+
+  it("prices every charged month at what it was charged: RM 20 until October, RM 22 in November", () => {
+    const l = ledger([]);
+    expect(l.cells.map((c) => c.cost)).toEqual([...Array(10).fill(RM(20)), RM(22)]);
+    expect(l).toMatchObject({ owed: RM(222), paid: 0, owedNow: RM(222), expectedNext: 0, status: "owes", monthsOwed: 11 });
+  });
+
+  it("REGRESSION: twelve months paid at the old price leave November AND December part paid (a RM 2 balance each)", () => {
+    // 120 + 60 + 60 = twelve shares of RM 20, the last three paid in September for October to December.
+    const l = ledger([pay(1, "2026-01-02", 120), pay(1, "2026-07-07", 60), pay(1, "2026-09-08", 60)]);
+    expect(l.cells.slice(0, 10).every((c) => c.state === "paid")).toBe(true);
+    expect(l.cells[10]).toMatchObject({ month: "2026-11", state: "partial", cost: RM(22), paid: RM(20), remaining: RM(2), upcoming: false });
+    expect(l.upcoming).toHaveLength(1);
+    expect(l.upcoming[0]).toMatchObject({ month: "2026-12", state: "partial", cost: RM(22), paid: RM(20), remaining: RM(2), upcoming: true });
+    expect(l).toMatchObject({ owedNow: RM(2), expectedNext: RM(2), aheadPaid: RM(20), status: "owes", paidThrough: "2026-10", monthsOwed: 1, monthsAhead: 0 });
+    expect(l.balance).toBe(RM(222) - RM(240)); // ahead overall, and still owing for November: the net position hides it
+  });
+
+  it("left-over change finishes the months that are short, oldest first, and spills into the next", () => {
+    // Twelve shares at RM 20 plus RM 5 of change (60 + 60 + 65): November and December are made up, RM 1 reaches January.
+    const l = ledger([pay(1, "2026-01-02", 120), pay(1, "2026-08-03", 60), pay(1, "2026-09-08", 65)]);
+    expect(l.cells[10]).toMatchObject({ state: "paid", paid: RM(22), remaining: 0 });
+    expect(l.upcoming.map((c) => [c.month, c.state, c.paid, c.remaining])).toEqual([
+      ["2026-12", "paid", RM(22), 0],
+      ["2027-01", "partial", RM(1), RM(21)],
+    ]);
+    expect(l).toMatchObject({ owedNow: 0, expectedNext: RM(21), status: "ahead", paidThrough: "2026-12", monthsAhead: 1 });
+  });
+
+  it("a payment at the NEW price into an old month passes the surplus on instead of losing it", () => {
+    const l = ledger([pay(1, "2026-11-05", 22)]); // a RM 22 share, but January costs RM 20
+    expect(l.cells[0]).toMatchObject({ state: "paid", paid: RM(20) });
+    expect(l.cells[1]).toMatchObject({ state: "partial", paid: RM(2), remaining: RM(18) });
+    expect(l.owedNow).toBe(RM(222) - RM(22));
+  });
+
+  it("paid far ahead at the old price: every month from November on is part paid, and they are listed after the charged ones", () => {
+    const l = ledger([pay(1, "2026-10-05", 280)]); // fourteen shares of RM 20
+    expect(l.cells[10].state).toBe("partial");
+    expect(l.upcoming.map((c) => [c.month, c.state, c.remaining])).toEqual([
+      ["2026-12", "partial", RM(2)],
+      ["2027-01", "partial", RM(2)],
+      ["2027-02", "partial", RM(2)],
+    ]);
+    expect(l).toMatchObject({ owedNow: RM(2), expectedNext: RM(6) });
+  });
+
+  it("a lump that is not a whole number of months leaves a part month", () => {
+    const l = personLedger(def(1, "A", { share: RM(22) }), RISE_MONTHS.slice(0, 3), [pay(1, "2026-03-01", 50)], rise()); // 2 shares of RM 20 + RM 10
+    expect(l.cells.map((c) => [c.state, c.paid])).toEqual([["paid", RM(20)], ["paid", RM(20)], ["partial", RM(10)]]);
+  });
+
+  it("someone who joined after the rise only ever pays the new price", () => {
+    const l = ledger([], { startMonth: "2026-11" });
+    expect(l.cells.map((c) => [c.month, c.cost])).toEqual([["2026-11", RM(22)]]);
+  });
+
+  it("a month with no charge uses the nearest earlier charged month; one before the records, the first known", () => {
+    const price: PriceHistory = { charges: new Map([["2026-02", RM(80)], ["2026-04", RM(88)]]), typical: RM(88) };
+    const l = personLedger(def(1, "A", { share: RM(22) }), ["2026-02", "2026-04"], [], price);
+    expect(l.cells.map((c) => [c.month, c.cost])).toEqual([["2026-01", RM(20)], ["2026-02", RM(20)], ["2026-03", RM(20)], ["2026-04", RM(22)]]);
+  });
+
+  it("two charges in one month add up (a late-posting charge landing next to the new one counts twice)", () => {
+    const price: PriceHistory = { charges: new Map([["2026-01", RM(80)], ["2026-02", RM(160)]]), typical: RM(88) };
+    expect(personLedger(def(1, "A", { share: RM(22) }), ["2026-01", "2026-02"], [], price).cells.map((c) => c.cost)).toEqual([RM(20), RM(40)]);
+  });
+
+  it("months not charged yet cost the bill's usual amount, so raising it before the charge arrives is seen at once", () => {
+    const price: PriceHistory = { charges: new Map([["2026-01", RM(80)]]), typical: RM(96) }; // RM 24 each from now on
+    const l = personLedger(def(1, "A", { share: RM(24) }), ["2026-01"], [pay(1, "2026-01-02", 40)], price);
+    expect(l.upcoming[0]).toMatchObject({ month: "2026-02", cost: RM(24), paid: RM(20), remaining: RM(4) });
+  });
+
+  it("the listed months always add up to the totals, and no money is lost on the way", () => {
+    const scenarios: SharePayment[][] = [
+      [],
+      [pay(1, "2026-01-02", 120), pay(1, "2026-07-07", 60), pay(1, "2026-09-08", 60)],
+      [pay(1, "2026-01-02", 120), pay(1, "2026-08-03", 60), pay(1, "2026-09-08", 65)],
+      [pay(1, "2026-11-05", 22), pay(1, "2026-03-01", 7.5)],
+      [pay(1, "2026-10-05", 280)],
+      [pay(1, "2026-02-01", 0.01), pay(1, "2026-12-01", 1000)],
+    ];
+    for (const payments of scenarios) {
+      const l = ledger(payments);
+      const all = [...l.cells, ...l.upcoming];
+      expect(l.cells.reduce((s, c) => s + c.remaining, 0)).toBe(l.owedNow);
+      expect(l.upcoming.reduce((s, c) => s + c.remaining, 0)).toBe(l.expectedNext);
+      expect(l.upcoming.reduce((s, c) => s + c.paid, 0)).toBe(l.aheadPaid);
+      expect(all.reduce((s, c) => s + c.paid, 0)).toBe(l.paid); // every sen received sits on some month
+      expect(l.owed).toBe(l.cells.reduce((s, c) => s + c.cost, 0));
+    }
+  });
+
+  it("with no price change the result is IDENTICAL to a ledger without price history", () => {
+    const flat: PriceHistory = { charges: new Map(RISE_MONTHS.map((m) => [m, RM(88)])), typical: RM(88) };
+    const sets = [
+      [],
+      [pay(1, "2026-04-02", 133.5)],
+      [pay(1, "2026-02-10", 66), pay(1, "2026-08-09", 22), pay(1, "2026-05-01", 22)],
+      [pay(1, "2026-10-05", 22 * 14)],
+      [pay(1, "2026-03-01", 30), pay(1, "2026-04-01", 30), pay(1, "2026-05-01", 30)],
+    ];
+    for (const payments of sets) expect(personLedger(quarter, RISE_MONTHS, payments, flat)).toEqual(personLedger(quarter, RISE_MONTHS, payments));
+  });
+
+  it("sharedBill adds up what is owed now, what is paid in advance, and what is expected once the next month is charged", () => {
+    const defs = [def(1, "A", { share: RM(22) }), def(2, "B", { share: RM(22) })];
+    const payments = [pay(1, "2026-01-02", 120), pay(1, "2026-07-07", 60), pay(1, "2026-09-08", 60), pay(2, "2026-02-01", 100)];
+    const s = sharedBill({ id: 1 }, RM(88), RISE_MONTHS, defs, payments, rise().charges);
+    const [a, b] = s.people;
+    expect(s.owedToYou).toBe(a.owedNow + b.owedNow);
+    expect(a.owedNow).toBe(RM(2)); // November, paid at the old price
+    expect(b.owedNow).toBe(RM(222) - RM(100)); // five shares of RM 20 and nothing more
+    expect(s.paidAhead).toBe(RM(20));
+    expect(s.expectedNext).toBe(RM(2));
+    expect(s.upcomingMonths).toEqual(["2026-12"]);
+    expect(s.yourMonthlyCost).toBe(RM(88) - 2 * RM(22));
+  });
+});
+
+describe("recognising a lump of months paid at the old price", () => {
+  it("earlierShareAmounts: what a month used to cost them, other than today's share", () => {
+    const price: PriceHistory = { charges: new Map([["2026-01", RM(80)], ["2026-02", RM(80)], ["2026-11", RM(88)]]), typical: RM(88) };
+    expect(earlierShareAmounts(RM(22), price)).toEqual([RM(20)]);
+    expect(earlierShareAmounts(RM(22), { ...price, typical: 0 })).toEqual([]);
+    expect(earlierShareAmounts(0, price)).toEqual([]);
+  });
+
+  it("one friend in two plans: a lump of old-price months still says which plan it is", () => {
+    const netflix = def(1, "Kuganesh", { share: RM(22), matchKeywords: "kuganesh" });
+    const spotify = def(2, "Kuganesh", { billId: 2, share: RM(5.15), matchKeywords: "kuganesh" });
+    expect(pickShare([netflix, spotify], "KUGANESH", RM(120))).toBeNull(); // 120 is not a whole number of RM 22 or RM 5.15
+    expect(pickShare([{ ...netflix, earlierShares: [RM(20)] }, spotify], "KUGANESH", RM(120))).toMatchObject({ id: 1 }); // six months at RM 20
+  });
+});
+
+describe("the words for a person's standing", () => {
+  const charges = new Map<string, number>(Array.from({ length: 11 }, (_, i) => [`2026-${String(i + 1).padStart(2, "0")}`, RM(i === 10 ? 88 : 80)]));
+  const rise: PriceHistory = { charges, typical: RM(88) };
+  const months = [...charges.keys()];
+  const ledger = (payments: SharePayment[], over: Partial<ShareDef> = {}) => personLedger(def(1, "A", { share: RM(22), ...over }), months, payments, rise);
+
+  it("owing for a part-paid charged month and expecting more for the next one", () => {
+    const l = ledger([pay(1, "2026-01-02", 120), pay(1, "2026-07-07", 60), pay(1, "2026-09-08", 60)]);
+    expect(standingText(l)).toEqual({ text: `Owes ${formatRM(RM(2))} now · Nov (part) · ${formatRM(RM(2))} more when Dec is charged`, tone: "owes" });
+  });
+
+  it("behind with nothing ahead: the total and every month it is made of", () => {
+    const l = ledger([pay(1, "2026-01-02", 160), pay(1, "2026-08-03", 0.5)]); // eight shares and 50 sen: September onwards owed
+    expect(owedMonthsText(l)).toBe("Sep (part), Oct, Nov");
+    expect(standingText(l).text).toBe(`Owes ${formatRM(RM(222) - RM(160.5))} · Sep (part), Oct, Nov`);
+  });
+
+  it("paid up, with part of the next months already in", () => {
+    // Thirteen shares of RM 20 and RM 3 of change: November is made up (RM 2), RM 1 reaches December, January has only its share.
+    const l = ledger([pay(1, "2026-04-20", 120), pay(1, "2026-08-02", 143)]);
+    expect(l.owedNow).toBe(0);
+    expect(l.upcoming.map((c) => [c.month, c.paid, c.remaining])).toEqual([["2026-12", RM(21), RM(1)], ["2027-01", RM(20), RM(2)]]);
+    // December and January are in different years, so each says which.
+    expect(standingText(l)).toEqual({ text: `Paid up · ${formatRM(RM(3))} more expected (Dec 26, Jan 27)`, tone: "ahead" });
+    expect(expectedText(l)).toBe(`${formatRM(RM(3))} more expected (Dec 26, Jan 27)`);
+  });
+
+  it("settled, and paid whole months ahead", () => {
+    expect(standingText(ledger([pay(1, "2026-10-05", 222)])).text).toBe("Paid up");
+    expect(standingText(ledger([pay(1, "2026-10-05", 222 + 44)])).text).toBe("Paid ahead 2 months");
+  });
+
+  it("month names carry the year only when they span more than one", () => {
+    expect(monthNames(["2026-10", "2026-11"])).toBe("Oct, Nov");
+    expect(monthNames(["2026-12", "2027-01"])).toBe("Dec 26, Jan 27");
   });
 });

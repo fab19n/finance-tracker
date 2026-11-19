@@ -3,13 +3,35 @@ import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
 import { billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
 import { shiftDays } from "@/lib/dates";
-import { billedMonths, pickShare, rotationBill, rotationLedger, SHARE_CANDIDATE_CATEGORIES, sharedBill, type ShareDef, type SharedBill, type SharePayment, type TurnSlot } from "@/lib/plan/shares";
+import { billedMonths, earlierShareAmounts, pickShare, rotationBill, rotationLedger, SHARE_CANDIDATE_CATEGORIES, sharedBill, type ShareDef, type SharedBill, type SharePayment, type TurnSlot } from "@/lib/plan/shares";
 
-export type ShareRow = ShareDef & { billName: string; sortOrder: number };
+export type ShareRow = ShareDef & {
+  billName: string;
+  sortOrder: number;
+  /** What a month of this bill used to cost them, from what it was charged before a price change (see `pickShare`). */
+  earlierShares: number[];
+};
+
+/** Every time the bill was charged: the payments linked to it, or typed by its name. `today` leaves out later-dated ones. */
+function billCharges(db: DB, bill: { id: number; name: string }, today?: string): { date: string; amount: number }[] {
+  return db
+    .select({ date: transactions.date, amount: transactions.amount })
+    .from(transactions)
+    .where(and(eq(transactions.type, "expense"), today ? lte(transactions.date, today) : undefined, or(eq(transactions.billId, bill.id), eq(transactions.item, bill.name))))
+    .orderBy(asc(transactions.date))
+    .all();
+}
+
+/** What the bill was charged in each 'YYYY-MM' (several charges in a month add up). */
+function chargesByMonth(charges: { date: string; amount: number }[]): Map<string, number> {
+  const byMonth = new Map<string, number>();
+  for (const c of charges) byMonth.set(c.date.slice(0, 7), (byMonth.get(c.date.slice(0, 7)) ?? 0) + c.amount);
+  return byMonth;
+}
 
 /** Every person who shares a bill with you, by bill. Takes the db so the importer (not a request) can use it too. */
 export function selectShares(db: DB): ShareRow[] {
-  return db
+  const rows = db
     .select({
       id: billShares.id,
       billId: billShares.billId,
@@ -21,11 +43,31 @@ export function selectShares(db: DB): ShareRow[] {
       active: billShares.active,
       sortOrder: billShares.sortOrder,
       billName: recurringBills.name,
+      billMin: recurringBills.amountMin,
+      billMax: recurringBills.amountMax,
     })
     .from(billShares)
     .innerJoin(recurringBills, eq(billShares.billId, recurringBills.id))
     .orderBy(asc(billShares.billId), asc(billShares.sortOrder), asc(billShares.id))
     .all();
+  // A share that cost less before the bill's price rose: the amounts a lump of old-price months would add up from.
+  const prices = new Map<number, { charges: Map<string, number>; typical: number }>();
+  for (const r of rows) {
+    if (!prices.has(r.billId)) prices.set(r.billId, { charges: chargesByMonth(billCharges(db, { id: r.billId, name: r.billName })), typical: Math.round((r.billMin + r.billMax) / 2) });
+  }
+  return rows.map((r) => ({
+    id: r.id,
+    billId: r.billId,
+    name: r.name,
+    share: r.share,
+    startMonth: r.startMonth,
+    endMonth: r.endMonth,
+    matchKeywords: r.matchKeywords,
+    active: r.active,
+    sortOrder: r.sortOrder,
+    billName: r.billName,
+    earlierShares: earlierShareAmounts(r.share, prices.get(r.billId)!),
+  }));
 }
 
 export async function listShares(): Promise<ShareRow[]> {
@@ -59,13 +101,8 @@ export async function getSharedBills(today: string): Promise<SharesPage> {
   for (const billId of [...new Set(people.map((p) => p.billId))]) {
     const group = people.filter((p) => p.billId === billId);
     const bill = db.select().from(recurringBills).where(eq(recurringBills.id, billId)).get()!;
-    // The months the bill was really charged: payments linked to it, or typed by its name.
-    const charges = db
-      .select({ date: transactions.date, amount: transactions.amount })
-      .from(transactions)
-      .where(and(eq(transactions.type, "expense"), lte(transactions.date, today), or(eq(transactions.billId, billId), eq(transactions.item, bill.name))))
-      .orderBy(asc(transactions.date))
-      .all();
+    // The months the bill was really charged, and what each charge was: payments linked to it, or typed by its name.
+    const charges = billCharges(db, bill, today);
     const payments: SharePayment[] = db
       .select({ shareId: transactions.shareId, txId: transactions.id, date: transactions.date, amount: transactions.amount })
       .from(transactions)
@@ -80,7 +117,8 @@ export async function getSharedBills(today: string): Promise<SharesPage> {
       const charged = new Map(charges.map((c) => [c.date.slice(0, 7), c.amount]));
       bills.push(rotationBill(header, amount, rotationLedger({ schedule, defs: group, payments, dueFor: (month) => charged.get(month) ?? amount, today, charged: [...charged.keys()] })));
     } else {
-      bills.push(sharedBill(header, amount, billedMonths(charges.map((c) => c.date)), group, payments));
+      // Each month costs a person their part of what it was charged, so a price rise counts only from when it took effect.
+      bills.push(sharedBill(header, amount, billedMonths(charges.map((c) => c.date)), group, payments, chargesByMonth(charges)));
     }
   }
 

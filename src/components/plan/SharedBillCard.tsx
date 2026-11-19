@@ -2,30 +2,24 @@ import { Check, ChevronDown, Minus, X } from "lucide-react";
 import { shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
-import type { PersonLedger } from "@/lib/plan/shares";
+import type { MonthCell, PersonLedger } from "@/lib/plan/shares";
+import { standingText } from "@/lib/plan/shares-text";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
 import { RotationCard } from "./RotationCard";
 import { ShareForm } from "./ShareForm";
 import { SharingToggle } from "./SharingToggle";
 
 const MONTHS_SHOWN = 12;
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** One line that says where this person stands. */
-function standing(p: PersonLedger): { text: string; tone: "ok" | "owes" | "ahead" } {
-  if (p.status === "owes") {
-    const firstUnpaid = p.cells.find((c) => c.state !== "paid");
-    return { text: `Owes ${formatRM(p.balance)} (${plural(p.monthsOwed, "month")}${firstUnpaid ? `, since ${shortMonthLabel(firstUnpaid.month)}` : ""})`, tone: "owes" };
-  }
-  if (p.status === "ahead") {
-    return { text: p.monthsAhead > 0 ? `Paid ahead ${plural(p.monthsAhead, "month")}` : `Credit ${formatRM(-p.balance)}`, tone: "ahead" };
-  }
-  return { text: "Paid up", tone: "ok" };
+/** The months a person still has something to pay for: charged ones they owe now, then ones not charged yet. */
+function breakdown(p: PersonLedger): MonthCell[] {
+  return [...p.cells.filter((c) => c.remaining > 0), ...p.upcoming.filter((c) => c.remaining > 0)];
 }
 
-function Cell({ state, name, month }: { state: "paid" | "partial" | "unpaid" | "none"; name: string; month: string }) {
+function Cell({ state, name, month, notCharged, detail }: { state: "paid" | "partial" | "unpaid" | "none"; name: string; month: string; notCharged?: boolean; detail?: string }) {
   // Never colour alone: each state has its own mark and a text label.
-  const label = `${name}, ${shortMonthLabel(month)}: ${state === "none" ? "not sharing yet" : state}`;
+  const what = state === "none" ? (notCharged ? "not charged yet" : "not sharing yet") : state === "paid" && notCharged ? "paid in advance" : state;
+  const label = `${name}, ${shortMonthLabel(month)}: ${what}${detail ? `, ${detail}` : ""}`;
   if (state === "none") return <td className="px-1 py-1.5 text-center text-muted" title={label}><span aria-label={label}>·</span></td>;
   if (state === "paid")
     return (
@@ -54,6 +48,8 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
   if (view.rotation) return <RotationCard view={view} people={people} bills={bills} defaultStart={defaultStart} today={today} />;
   const shown = view.months.slice(-MONTHS_SHOWN);
   const hidden = view.months.length - shown.length;
+  // Months not charged yet that somebody has already paid into follow the charged ones, marked "next".
+  const columns = [...shown, ...view.upcomingMonths.filter((m) => !shown.includes(m))];
   const mine = people.filter((p) => p.billId === view.bill.id);
 
   return (
@@ -69,12 +65,14 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         <span className="min-w-0">
           {view.owedToYou > 0 ? `Owed to you: ${formatRM(view.owedToYou)}` : "Everyone is paid up."}
           {view.paidAhead > 0 && <span className="font-bold"> ({formatRM(view.paidAhead)} paid in advance)</span>}
+          {view.expectedNext > 0 && <span className="block text-xs font-bold">{formatRM(view.expectedNext)} more expected once the next month is charged</span>}
         </span>
       </p>
 
       <ul className="space-y-1.5">
         {view.people.map((p) => {
-          const s = standing(p);
+          const s = standingText(p);
+          const rows = breakdown(p);
           return (
             <li key={p.share.id} className="rounded-2xl bg-card-subtle px-3 py-2.5">
               <details className="group">
@@ -98,6 +96,36 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                     {p.lastPayment ? `Last paid ${formatRM(p.lastPayment.amount)} on ${p.lastPayment.date}.` : "No payment received."}{" "}
                     Charged {formatRM(p.owed)} so far, received {formatRM(p.paid)}.
                   </p>
+                  {rows.length > 0 && (
+                    // A stacked list, not a table: four columns do not fit a phone, and the amount to pay must never scroll out of view.
+                    <ul className="divide-y divide-line text-xs" aria-label={`What ${p.share.name} still has to pay, month by month`}>
+                      {rows.map((c) => (
+                        <li key={c.month} className="flex items-start justify-between gap-3 py-2">
+                          <span className="min-w-0">
+                            <span className="font-extrabold">{shortMonthLabel(c.month)}</span>
+                            {c.upcoming && <span className="font-bold text-muted"> · not charged yet</span>}
+                            <span className="num block text-[11px] font-bold text-muted">
+                              paid {formatRM(c.paid)} of {c.upcoming ? "about " : ""}{formatRM(c.cost)}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="num block font-black text-warn">{formatRM(c.remaining)}</span>
+                            <span className="block text-[11px] font-bold text-muted">to pay</span>
+                          </span>
+                        </li>
+                      ))}
+                      <li className="flex items-baseline justify-between gap-3 py-2 font-extrabold">
+                        <span>Owed now</span>
+                        <span className="num font-black">{formatRM(p.owedNow)}</span>
+                      </li>
+                      {p.expectedNext > 0 && (
+                        <li className="flex items-baseline justify-between gap-3 py-2 font-extrabold text-muted">
+                          <span className="min-w-0">More once those months are charged</span>
+                          <span className="num shrink-0 font-black">{formatRM(p.expectedNext)}</span>
+                        </li>
+                      )}
+                    </ul>
+                  )}
                   {mine.find((m) => m.id === p.share.id) && <ShareForm share={mine.find((m) => m.id === p.share.id)} bills={bills} defaultStart={defaultStart} />}
                 </div>
               </details>
@@ -114,10 +142,11 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
               <thead className="text-muted">
                 <tr>
                   <th className="py-1.5 pr-2 text-left font-extrabold">{hidden > 0 ? `Last ${MONTHS_SHOWN} months` : "Month"}</th>
-                  {shown.map((m) => (
+                  {columns.map((m) => (
                     <th key={m} scope="col" className="px-1 py-1.5 text-center font-extrabold">
                       {shortMonthLabel(m).split(" ")[0]}
                       <span className="block text-[11px] font-bold">{m.slice(2, 4)}</span>
+                      {!shown.includes(m) && <span className="block text-[11px] font-bold">next</span>}
                     </th>
                   ))}
                 </tr>
@@ -128,9 +157,13 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                     <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold">
                       {p.share.name}
                     </th>
-                    {shown.map((m) => (
-                      <Cell key={m} name={p.share.name} month={m} state={p.cells.find((c) => c.month === m)?.state ?? "none"} />
-                    ))}
+                    {columns.map((m) => {
+                      const notCharged = !shown.includes(m);
+                      const c = (notCharged ? p.upcoming : p.cells).find((x) => x.month === m);
+                      // A part-paid month says how much of what, because the mark alone cannot.
+                      const detail = c && c.state === "partial" ? `paid ${formatRM(c.paid)} of ${formatRM(c.cost)}` : undefined;
+                      return <Cell key={m} name={p.share.name} month={m} state={c?.state ?? "none"} notCharged={notCharged} detail={detail} />;
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -140,7 +173,8 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
             <span className="inline-flex items-center gap-1"><Check size={12} strokeWidth={3} className="text-good" aria-hidden /> paid</span>
             <span><span className="font-black text-warn">½</span> part paid</span>
             <span className="inline-flex items-center gap-1"><X size={12} strokeWidth={3} className="text-danger" aria-hidden /> not paid yet</span>
-            <span className="inline-flex items-center gap-1"><Minus size={12} aria-hidden /> a lump sum covers the oldest months first</span>
+            <span className="inline-flex items-center gap-1"><Minus size={12} aria-hidden /> a lump sum covers the oldest months first, at the price it was paid at</span>
+            {view.upcomingMonths.length > 0 && <span>next = not charged yet</span>}
           </p>
         </div>
       )}
