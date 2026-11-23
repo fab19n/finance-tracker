@@ -110,6 +110,17 @@ describe("saveTransaction", () => {
     expect(txs()).toHaveLength(1);
     expect(txs()[0]).toMatchObject({ id, amount: 1500, item: "Latte" });
   });
+
+  it("editing returns to the list the entry was opened from, but never to another site", async () => {
+    const { saveTransaction } = await import("@/app/actions/transactions");
+    await saveTransaction({ ok: false }, expense());
+    const id = String(txs()[0].id);
+    const back = "/transactions?month=2026-09&q=teh&page=2";
+    expect(await redirected(saveTransaction({ ok: false }, expense({ id, back })))).toBe(back);
+    for (const evil of ["https://evil.example", "//evil.example", "/\\evil.example"]) {
+      expect(await redirected(saveTransaction({ ok: false }, expense({ id, back: evil })))).toBe("/transactions");
+    }
+  });
 });
 
 describe("deleteTransaction", () => {
@@ -137,6 +148,7 @@ describe("deleteTransaction", () => {
     // A link off the site is ignored: the row still goes, and there is no redirect.
     expect(await redirected(deleteTransaction(fd({ id: String(b.id), next: "https://evil.example/x" })))).toBeNull();
     expect(await redirected(deleteTransaction(fd({ id: String(c.id), next: "//evil.example" })))).toBeNull();
+    expect(await redirected(deleteTransaction(fd({ id: String(c.id), next: "/\\evil.example" })))).toBeNull();
     expect(txs()).toHaveLength(0);
   });
 });

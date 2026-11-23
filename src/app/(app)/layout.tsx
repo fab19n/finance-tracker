@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { KoopangLogo } from "@/components/KoopangLogo";
+import { NavTracker } from "@/components/NavTracker";
 import { BottomNav, BottomNavView, SidebarNav, SidebarNavView, SidebarSettings, SidebarSettingsView } from "@/components/NavLinks";
 import { OfflineProvider } from "@/components/offline/OfflineProvider";
 import { SyncBanner } from "@/components/offline/SyncBanner";
@@ -41,6 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <Suspense fallback={<BottomNavView pathname="" />}>
           <BottomNav />
+        </Suspense>
+        <Suspense fallback={null}>
+          <NavTracker />
         </Suspense>
       </div>
     </OfflineProvider>

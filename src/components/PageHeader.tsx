@@ -1,5 +1,4 @@
-import { ChevronLeft } from "lucide-react";
-import Link from "next/link";
+import { BackLink } from "@/components/BackLink";
 import type { ReactNode } from "react";
 import { SyncChip } from "@/components/offline/SyncChip";
 
@@ -10,17 +9,14 @@ import { SyncChip } from "@/components/offline/SyncChip";
  * The title is the page's one <h1>.
  *
  * `back` puts a round back link before the title: pages reached from the More menu (Plan, Insights, Invest, Settings)
- * return to it, since they no longer have a tab of their own.
+ * return to where you came from (More when nothing else is remembered; see BackLink), since they no longer have a tab of
+ * their own.
  */
 export function PageHeader({ title, subtitle, actions, back }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        {back && (
-          <Link href={back.href} aria-label={back.label} className="grid size-11 shrink-0 place-items-center rounded-full bg-card text-foreground transition hover:bg-card-subtle">
-            <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
-          </Link>
-        )}
+        {back && <BackLink href={back.href} label={back.label} />}
         <div className="min-w-0 flex-1">
           <h1 className="h-page">{title}</h1>
           {subtitle && <p className="sub mt-0.5">{subtitle}</p>}

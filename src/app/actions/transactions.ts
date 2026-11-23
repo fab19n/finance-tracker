@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { categories, transactions } from "@/db/schema";
+import { safeBackPath } from "@/lib/back";
 import { shortDate } from "@/lib/dates";
 import { checkEntry } from "@/lib/entries";
 import { formatRM, parseSen } from "@/lib/money";
@@ -55,7 +56,8 @@ export async function saveTransaction(_prev: FormState, formData: FormData): Pro
   if (v.id) {
     db.update(transactions).set(row).where(eq(transactions.id, Number(v.id))).run();
     refreshAll();
-    redirect("/transactions");
+    // Back to the list the entry was opened from (a same-site path only), else the current month.
+    redirect(safeBackPath(formData.get("back")) ?? "/transactions");
   }
   db.insert(transactions).values(row).run();
   refreshAll();
@@ -130,6 +132,6 @@ export async function deleteTransaction(formData: FormData): Promise<void> {
   db.delete(transactions).where(eq(transactions.id, id)).run();
   refreshAll();
   // Deleting from the entry's own page can't stay there: go to where `next` says (a same-site path only).
-  const next = String(formData.get("next") ?? "");
-  if (next.startsWith("/") && !next.startsWith("//")) redirect(next);
+  const next = safeBackPath(formData.get("next"));
+  if (next) redirect(next);
 }

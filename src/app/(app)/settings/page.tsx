@@ -11,6 +11,7 @@ import {
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { LockNowForm } from "@/components/offline/LockNowForm";
 import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
+import { SwipeTabs } from "@/components/SwipeTabs";
 import { TabLinks } from "@/components/SectionTabs";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import { ColorField } from "@/components/settings/ColorField";
@@ -385,6 +386,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   ]);
 
   return (
+    <SwipeTabs hrefs={SETTINGS_TABS.map((t) => settingsHref(t.id))} current={SETTINGS_TABS.findIndex((t) => t.id === tab)}>
     <div className="max-w-3xl space-y-3 md:space-y-4">
       <PageHeader title="Settings" subtitle="Accounts, categories, appearance" back={BACK_TO_MORE} />
 
@@ -402,5 +404,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "investing" && <InvestingTab settings={settings} />}
       {tab === "data" && <DataTab />}
     </div>
+    </SwipeTabs>
   );
 }

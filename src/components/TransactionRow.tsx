@@ -5,6 +5,7 @@ import type { TxRow } from "@/lib/queries/transactions";
 import { shortDate } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
+import { withBack } from "@/lib/back";
 import { transferView } from "@/lib/transfer-view";
 import { DeleteButton } from "./DeleteButton";
 
@@ -13,7 +14,8 @@ import { DeleteButton } from "./DeleteButton";
  * the normal text colour, so they are readable on any colour. Tapping the row opens the entry; Edit and Delete are also
  * plain visible buttons (no hidden gestures).
  */
-export function TransactionRow({ tx, showDate = false, viewing = null }: { tx: TxRow; showDate?: boolean; viewing?: number | null }) {
+export function TransactionRow({ tx, showDate = false, viewing = null, backHref }: { tx: TxRow; showDate?: boolean; viewing?: number | null; /** The list this row is on: the entry's page returns there after Save, Delete and Back. */ backHref?: string }) {
+  const entryHref = backHref ? withBack(`/transactions/${tx.id}`, backHref) : `/transactions/${tx.id}`;
   const isTransfer = tx.type === "transfer";
   // In one account's list a transfer is money going out or coming in, so it says which and gets a sign.
   const transfer = transferView(tx, viewing);
@@ -28,7 +30,7 @@ export function TransactionRow({ tx, showDate = false, viewing = null }: { tx: T
 
   return (
     <li className="flex items-center gap-0.5 rounded-2xl bg-card py-0.5 pl-1.5 pr-1">
-      <Link href={`/transactions/${tx.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-2">
+      <Link href={entryHref} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-2">
         <span
           className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card-subtle text-xs font-black"
           style={tx.categoryColor && !isTransfer ? { backgroundColor: `${tx.categoryColor}26` } : undefined}
@@ -47,7 +49,7 @@ export function TransactionRow({ tx, showDate = false, viewing = null }: { tx: T
       </Link>
       <div className="flex shrink-0 items-center">
         <Link
-          href={`/transactions/${tx.id}`}
+          href={entryHref}
           aria-label="Edit"
           title="Edit"
           className="grid size-9 place-items-center rounded-full text-muted transition hover:bg-card-subtle hover:text-foreground"
