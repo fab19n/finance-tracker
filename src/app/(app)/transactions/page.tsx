@@ -1,4 +1,4 @@
-import { Download, X } from "lucide-react";
+import { Download, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
@@ -6,6 +6,7 @@ import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ActivitySearch } from "@/components/activity/ActivitySearch";
 import { FilterSheet } from "@/components/activity/FilterSheet";
 import { MonthNav } from "@/components/MonthNav";
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { TransactionRow } from "@/components/TransactionRow";
 import { balanceHistory } from "@/lib/analytics/ledger";
@@ -105,6 +106,8 @@ export default async function TransactionsPage({
     max: view.raw.max,
     sort: view.raw.sort,
   };
+  // This list as it is on screen (filters and page), so an entry opened from it can come back here.
+  const listHref = `/transactions${qs({ ...base, page: view.page > 1 ? view.page : undefined })}`;
   // Settings the Filter sheet edits itself; "Clear" in it removes exactly these.
   const sheetKeys = { category: undefined, from: undefined, to: undefined, min: undefined, max: undefined, sort: undefined, page: undefined };
   const amount = amountText(view.raw.min, view.raw.max);
@@ -134,6 +137,9 @@ export default async function TransactionsPage({
   const chips = accounts
     .filter((a) => !a.archived || String(a.id) === account)
     .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: qs({ ...base, account: String(a.id), page: undefined }) }));
+
+  // Nothing recorded anywhere (first run), as opposed to an empty month or a filter that matches nothing.
+  const nothingAtAll = groups.length === 0 && !filtered ? (await sumTransactions({})).count === 0 : false;
 
   return (
     <div className="space-y-3">
@@ -266,7 +272,15 @@ export default async function TransactionsPage({
         />
       )}
 
-      {groups.length === 0 ? (
+      {groups.length === 0 && nothingAtAll ? (
+        <EmptyState
+          icon={<Plus size={28} strokeWidth={2} />}
+          title="No entries yet"
+          text="Add what you spend and earn, or bring in a bank statement. Everything you record shows up here."
+          primary={{ label: "Add your first entry", href: "/" }}
+          secondary={{ label: "Import a statement", href: "/import" }}
+        />
+      ) : groups.length === 0 ? (
         <div className="card py-10 text-center">
           <p className="text-sm font-black">No entries match.</p>
           <p className="sub mt-1">{filtered ? "Try clearing the filters or searching all time." : "Nothing has been recorded for this period yet."}</p>
@@ -279,7 +293,7 @@ export default async function TransactionsPage({
           </div>
           <ul className="space-y-1.5">
             {pageRows.map((t) => (
-              <TransactionRow key={t.id} tx={t} showDate viewing={viewing} />
+              <TransactionRow key={t.id} tx={t} showDate viewing={viewing} backHref={listHref} />
             ))}
           </ul>
         </section>
@@ -294,7 +308,7 @@ export default async function TransactionsPage({
               </div>
               <ul className="space-y-1.5">
                 {g.items.map((t) => (
-                  <TransactionRow key={t.id} tx={t} viewing={viewing} />
+                  <TransactionRow key={t.id} tx={t} viewing={viewing} backHref={listHref} />
                 ))}
               </ul>
             </section>

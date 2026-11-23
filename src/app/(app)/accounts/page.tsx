@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { AccountCard } from "@/components/account/AccountCard";
+import { EmptyState } from "@/components/EmptyState";
+import { DuoIcon } from "@/components/DuoIcon";
 import { PageHeader } from "@/components/PageHeader";
 import { formatRM } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
@@ -24,13 +26,12 @@ export default async function AccountsPage() {
       </section>
 
       {accounts.length === 0 ? (
-        <section className="card space-y-2">
-          <p className="text-sm font-extrabold">Add your first account</p>
-          <p className="sub">Accounts are where money sits: a bank, an e-wallet, the cash in your pocket.</p>
-          <Link href="/settings" className="btn-primary w-fit">
-            Add an account
-          </Link>
-        </section>
+        <EmptyState
+          icon={<DuoIcon name="accounts" size={28} aria-hidden />}
+          title="Add your first account"
+          text="Accounts are where money sits: a bank, an e-wallet, the cash in your pocket."
+          primary={{ label: "Add an account", href: "/settings" }}
+        />
       ) : (
         <ul className="space-y-3">
           {accounts.map((a) => (

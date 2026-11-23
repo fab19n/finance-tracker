@@ -56,6 +56,8 @@ describe("the offline page (public/offline.html)", () => {
     expect(html).toMatch(/Tailscale/);
     expect(html).toMatch(/location\.reload\(\)/);
     expect(html).toMatch(/location\.assign\('\/'\)/);
+    for (const p of ["/transactions", "/plan", "/dashboard"]) expect(html).toContain(`location.assign('${p}')`);
+    expect(html).toMatch(/You're offline/);
   });
 });
 
