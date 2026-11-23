@@ -32,35 +32,41 @@ export function BalanceHistory({
   const tone = up ? "bg-good-soft text-good" : down ? "bg-danger-soft text-danger" : "bg-card-subtle text-muted";
   return (
     <section className="card" aria-labelledby="balance-history">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 id="balance-history" className="h2">
             {name} balance
           </h2>
           <p className="sub">{period}</p>
         </div>
+        <p className={`num font-display text-[19px] font-semibold leading-tight tracking-[-0.01em] ${history.end < 0 ? "text-danger" : ""}`}>
+          {history.end < 0 ? "−" : ""}
+          {formatRM(Math.abs(history.end))}
+        </p>
+      </div>
+      <div className="mt-1.5">
         <span className={`pill ${tone}`}>
           <Icon size={13} strokeWidth={2.5} aria-hidden />
           {up ? "Up " : down ? "Down " : "No change"}
           {change !== 0 && formatRMWhole(Math.abs(change))}
         </span>
       </div>
-      <p className={`num mt-2 text-[28px] font-black leading-none tracking-[-0.02em] ${history.end < 0 ? "text-danger" : ""}`}>
-        {history.end < 0 ? "−" : ""}
-        {formatRM(Math.abs(history.end))}
-      </p>
-      <p className="sub mt-1">
-        {history.low && history.high && history.low.balance !== history.high.balance ? (
-          <>
-            Lowest {formatRM(history.low.balance)} on {shortDate(history.low.date)} · highest {formatRM(history.high.balance)} on {shortDate(history.high.date)}
-          </>
-        ) : (
-          <>Started at {formatRM(history.start)}</>
-        )}
-      </p>
-      <div className="mt-2">
+      <div className="mt-1">
         <BalanceChart data={history.points} name={name} />
       </div>
+      <dl className="mt-1 grid grid-cols-3 gap-2 text-center">
+        {[
+          { label: "Start", v: history.start, d: undefined as string | undefined },
+          { label: "Low", v: history.low?.balance ?? history.start, d: history.low?.date },
+          { label: "High", v: history.high?.balance ?? history.end, d: history.high?.date },
+        ].map((r) => (
+          <div key={r.label} className="rounded-2xl bg-card-subtle px-1.5 py-2">
+            <dt className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted">{r.label}</dt>
+            <dd className="num mt-0.5 text-[12.5px] font-extrabold">{formatRMWhole(r.v)}</dd>
+            {r.d && <dd className="text-[10.5px] font-semibold text-muted">{shortDate(r.d)}</dd>}
+          </div>
+        ))}
+      </dl>
       <ChartTable
         caption={`${name} balance at the end of each day shown`}
         columns={["Date", "Balance"]}
@@ -68,7 +74,7 @@ export function BalanceHistory({
       />
       {note && <p className="sub mt-2">{note}</p>}
       {statementHref && (
-        <Link href={statementHref} className="btn mt-3" prefetch={false}>
+        <Link href={statementHref} className="btn mt-3 w-full" prefetch={false}>
           <FileText size={14} strokeWidth={2.5} aria-hidden />
           Download statement
         </Link>

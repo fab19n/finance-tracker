@@ -1,15 +1,16 @@
 "use client";
 
-import type { Key } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CumulativePoint } from "@/lib/analytics/summary";
-import { ChartTooltip, compactRM } from "./ChartTooltip";
-
-type DotProps = { cx?: number; cy?: number; index?: number; key?: Key | null };
+import { formatRMWhole } from "@/lib/money";
+import { ChartTooltip } from "./ChartTooltip";
+import { ACTIVE_DOT, AreaGradient, endDotRenderer, useGradientId } from "./parts";
 
 /**
- * Cumulative spending through the month vs the previous month. One axis: this month as a solid accent line over a soft
- * accent area, last month as a dotted gray line. The colours live in globals.css (viz-*), which is how they follow the theme.
+ * Cumulative spending through the period vs the previous one, drawn the way the design draws it: compact, no axes, three
+ * dashed gridlines, this period as a gold line over a gold area that fades out, the last one as a dotted grey line, and a
+ * dark pill with the total pinned to the latest day. Hover or focus still gives the day-by-day tooltip, and the page keeps
+ * a "View as table" next to it.
  */
 export function CumulativeSpendChart({
   data,
@@ -20,36 +21,27 @@ export function CumulativeSpendChart({
   currentLabel: string;
   previousLabel: string;
 }) {
+  const gid = useGradientId();
   const lastIdx = data.reduce((acc, p, i) => (p.current !== null ? i : acc), -1);
+  const total = lastIdx >= 0 ? data[lastIdx].current : null;
   return (
-    <div className="h-64 w-full" role="img" aria-label={`Cumulative spending, ${currentLabel} versus ${previousLabel}`}>
+    <div
+      className="h-[140px] w-full"
+      role="img"
+      aria-label={`Cumulative spending, ${currentLabel} versus ${previousLabel}${total !== null ? `. ${currentLabel} so far: ${formatRMWhole(total)}` : ""}`}
+    >
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 12, right: 16, bottom: 4, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 4, left: 10 }}>
+          <AreaGradient id={gid} />
           <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="day"
-            tickLine={false}
-            tick={{ fontSize: 11 }}
-            interval="preserveStartEnd"
-            minTickGap={24}
-          />
-          <YAxis
-            tickLine={false}
-            axisLine={false}
-            width={44}
-            tick={{ fontSize: 11 }}
-            tickFormatter={compactRM}
-          />
-          <Tooltip
-            content={<ChartTooltip labelFormatter={(l) => `Day ${l}`} />}
-            cursor={{ className: "viz-cursor-line", strokeWidth: 1 }}
-          />
+          <XAxis dataKey="day" hide />
+          <YAxis hide tickCount={3} domain={[0, "auto"]} />
+          <Tooltip content={<ChartTooltip labelFormatter={(l) => `Day ${l}`} />} cursor={{ className: "viz-cursor-line", strokeWidth: 1 }} />
           <Area
-            className="viz-area-current"
             type="monotone"
             dataKey="current"
             stroke="none"
-            fill="none"
+            fill={`url(#${gid})`}
             connectNulls={false}
             activeDot={false}
             legendType="none"
@@ -62,10 +54,10 @@ export function CumulativeSpendChart({
             dataKey="previous"
             name={previousLabel}
             stroke="var(--series-gray)"
-            strokeWidth={2}
+            strokeWidth={1.8}
             strokeLinecap="round"
             dot={false}
-            activeDot={{ r: 4, strokeWidth: 2, style: { fill: "var(--series-gray)", stroke: "var(--card)" } }}
+            activeDot={{ ...ACTIVE_DOT, className: "viz-dot viz-dot-gray" }}
             connectNulls={false}
             isAnimationActive={false}
           />
@@ -75,16 +67,10 @@ export function CumulativeSpendChart({
             dataKey="current"
             name={currentLabel}
             stroke="var(--series-2)"
-            strokeWidth={3}
+            strokeWidth={2.4}
             strokeLinecap="round"
-            dot={(p: DotProps) =>
-              p.index === lastIdx && p.cx !== undefined && p.cy !== undefined ? (
-                <circle key={p.key ?? "end"} cx={p.cx} cy={p.cy} r={6} strokeWidth={3} style={{ fill: "var(--series-2)", stroke: "var(--card)" }} />
-              ) : (
-                <g key={p.key ?? p.index} />
-              )
-            }
-            activeDot={{ r: 6, strokeWidth: 3, style: { fill: "var(--series-2)", stroke: "var(--card)" } }}
+            dot={endDotRenderer(lastIdx, (pt: { current: number | null }) => (pt.current === null ? null : formatRMWhole(pt.current)))}
+            activeDot={ACTIVE_DOT}
             connectNulls={false}
             isAnimationActive={false}
           />

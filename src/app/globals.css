@@ -245,6 +245,12 @@ body {
   outline-color: var(--nav-focus);
 }
 
+/* A page whose tabs swipe (SwipeTabs): no browser "swipe back" from the sideways overscroll, which would beat the tab swipe. */
+html.swipe-tabs,
+html.swipe-tabs body {
+  overscroll-behavior-x: none;
+}
+
 /* The soft half of a dual-tone icon (DuoIcon): the icon's own colour, faint. Outside @layer on purpose, like the
    hero figure rules: an SVG attribute can't use var(), and this must beat the outline's stroke settings. */
 .duo-fill {
@@ -416,29 +422,71 @@ body {
  */
 .recharts-cartesian-grid line {
   stroke: var(--grid);
+  stroke-dasharray: 2 5; /* the design's dashed hairline */
+  stroke-linecap: round;
 }
 .recharts-cartesian-axis-line {
   stroke: var(--grid);
 }
 .recharts-cartesian-axis-tick-value {
   fill: var(--ink-muted);
+  font-size: 10.5px;
+  font-weight: 600;
 }
 .viz-bar-income .recharts-rectangle,
-.viz-bar-income path {
+.viz-bar-income path,
+.viz-bar-income rect {
   fill: var(--series-3);
 }
 .viz-bar-spent .recharts-rectangle,
-.viz-bar-spent path {
+.viz-bar-spent path,
+.viz-bar-spent rect {
   fill: var(--series-2);
+}
+/* Earlier months sit back at 60%; the month in progress is at full strength. */
+.viz-bar-past {
+  opacity: 0.6;
+}
+/* Month labels under the bars: the current one is 800 in the ink colour. */
+.viz-tick {
+  fill: var(--ink-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.viz-tick-now {
+  fill: var(--foreground);
+  font-weight: 800;
 }
 .viz-line-current .recharts-line-curve {
   stroke: var(--series-2);
 }
-/* The soft area under the accent line: this period's spending, and your portfolio's value. */
-.viz-area-current .recharts-area-area,
-.viz-area-value .recharts-area-area {
-  fill: var(--accent-soft);
-  fill-opacity: 1;
+/* The gold area under the line fades from 42% to nothing (an SVG linearGradient: stop colours need CSS, not attributes). */
+.viz-grad-top {
+  stop-color: var(--accent-strong);
+  stop-opacity: 0.42;
+}
+.viz-grad-bottom {
+  stop-color: var(--accent-strong);
+  stop-opacity: 0;
+}
+/* The latest point: a dot with a 2px card-coloured edge inside a 22% halo, and the dark value pill above it. */
+.viz-dot {
+  fill: var(--accent-strong);
+  stroke: var(--card);
+  stroke-width: 2;
+}
+.viz-halo {
+  fill: var(--accent-strong);
+  opacity: 0.22;
+}
+.viz-pill {
+  fill: var(--foreground);
+}
+.viz-pill-text {
+  fill: var(--background);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 /* Last month, and the money you put in: a dotted line with round dots, the design's way of saying "for comparison". */
 .viz-line-previous .recharts-line-curve,
@@ -465,4 +513,67 @@ body {
 }
 .viz-line-mix .recharts-line-curve {
   stroke: var(--series-3);
+}
+
+/* Shared-bill month grid: 24px round badges. Each state also has its own glyph, so colour is never the only signal. */
+.mk {
+  display: flex;
+  height: 24px;
+  width: 24px;
+  margin-inline: auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink-muted);
+}
+.mk-paid {
+  background: color-mix(in srgb, var(--good) 20%, var(--card));
+  color: var(--good);
+}
+.mk-part,
+.mk-open {
+  background: color-mix(in srgb, var(--warn) 22%, var(--card));
+  color: var(--warn);
+}
+.mk-unpaid {
+  background: color-mix(in srgb, var(--danger) 16%, var(--card));
+  color: var(--danger);
+}
+/* Paid in advance: a dashed good-coloured ring instead of a fill. */
+.mk-advance {
+  border: 1.5px dashed var(--good);
+  color: var(--good);
+}
+/* Covered, still to come: a plain ring. */
+.mk-later {
+  border: 2px solid var(--ink-muted);
+}
+/* Your own month: the gold pill. */
+.mk-you {
+  width: 34px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.mk-key {
+  margin-inline: 0;
+  height: 18px;
+  width: 18px;
+  font-size: 10px;
+}
+.mk-key.mk-you {
+  width: 26px;
+  border-radius: 9px;
+}
+.viz-dot-gray {
+  fill: var(--series-gray);
+}
+.viz-bar-income-rect {
+  fill: var(--series-3);
+}
+.viz-bar-spent-rect {
+  fill: var(--series-2);
 }

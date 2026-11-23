@@ -282,25 +282,28 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {hasData && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-12">
           <section className="card lg:order-1 lg:col-span-7" aria-labelledby="pace">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="pace" className="h2">
-                Spending pace
+                Spent so far
               </h2>
-              {pacePill && <span className={`pill ${pacePill.cls}`}>{pacePill.text}</span>}
+              <span className="num font-display text-base font-semibold">{formatRM(totals.expense)}</span>
             </div>
-            <p className="sub mb-2">
-              Running total through the {unit}
-              {period && <> · day 1 is payday, {cycleLabel(period).split(" - ")[0]}</>}
+            <p className="sub mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>
+                Running total through the {unit}
+                {period && <> · day 1 is payday, {cycleLabel(period).split(" - ")[0]}</>}
+              </span>
+              {pacePill && <span className={`pill ${pacePill.cls}`}>{pacePill.text}</span>}
             </p>
-            <ul className="mb-1 flex gap-4 text-xs font-bold" aria-label="Legend">
+            <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} />
+            <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
               <li className="flex items-center gap-1.5">
-                <span className="h-[3px] w-4 rounded bg-series-2" /> {nameOf(month)}
+                <span className="h-[3px] w-3.5 rounded bg-series-2" aria-hidden /> This {unit}
               </li>
               <li className="flex items-center gap-1.5 text-muted">
-                <span className="w-4 border-t-2 border-dotted border-ink-muted" /> {nameOf(prev)}
+                <span className="w-3.5 border-t-2 border-dotted border-ink-muted" aria-hidden /> Last {unit}
               </li>
             </ul>
-            <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} />
             <ChartTable
               caption={`Cumulative spending by day of the ${unit}`}
               columns={["Day", nameOf(month), nameOf(prev)]}
@@ -473,13 +476,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
           <section className="card lg:order-2 lg:col-span-5" aria-labelledby="split">
             <h2 id="split" className="h2">
-              Needs, wants &amp; saving
+              50 / 30 / 20
             </h2>
             <p className="sub mb-3">
               {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
             </p>
             <div className="flex items-center gap-4">
-              <NeedWantDonut need={split.need} want={split.want} saved={split.saved} />
+              <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
               <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
                 {[
                   { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
@@ -533,21 +536,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
 
           <section className="card lg:order-6 lg:col-span-12" aria-labelledby="monthly">
-            <h2 id="monthly" className="h2">
-              Income vs spending
-            </h2>
-            <p className="sub mb-2">
-              Last 6 {unit}s{period && <> · each named after the month most of it falls in</>}
-            </p>
-            <ul className="mb-1 flex gap-4 text-xs font-bold" aria-label="Legend">
-              <li className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-sm bg-series-3" /> Income
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-sm bg-series-2" /> Spent
-              </li>
-            </ul>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 id="monthly" className="h2">
+                Income and spending
+              </h2>
+              <span className="sub">Last 6 {unit}s</span>
+            </div>
+            <p className="sub mb-1">{period ? "Each one is named after the month most of it falls in" : "One column pair per month"}</p>
             <IncomeExpenseChart data={series} />
+            <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
+              <li className="flex items-center gap-1.5">
+                <span className="size-2.5 rounded-[3px] bg-series-3" aria-hidden /> Income
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="size-2.5 rounded-[3px] bg-series-2" aria-hidden /> Spent
+              </li>
+              <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} is so far</li>
+            </ul>
             <ChartTable
               caption={`Income and spending by ${unit}`}
               columns={[period ? "Cycle" : "Month", "Income", "Spent", "Net"]}

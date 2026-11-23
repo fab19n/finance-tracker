@@ -7,6 +7,8 @@ import { AddInvestmentForm } from "@/components/invest/AddInvestmentForm";
 import { AdvisorSection } from "@/components/invest/AdvisorSection";
 import { HoldingCard } from "@/components/invest/HoldingCard";
 import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
+import { DuoIcon } from "@/components/DuoIcon";
+import { EmptyState } from "@/components/EmptyState";
 import { Kpi } from "@/components/Kpi";
 import { MoreHeader } from "@/components/MoreHeader";
 import { shortDate, todayISO } from "@/lib/dates";
@@ -121,9 +123,11 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
             </h2>
 
             {investments.length === 0 ? (
-              <div className="card sub leading-relaxed">
-                Nothing here yet. Once you invest - an S&amp;P 500 fund, a fixed deposit - add it below and this page tracks how your money grows.
-              </div>
+              <EmptyState
+                icon={<DuoIcon name="invest" size={28} aria-hidden />}
+                title="Nothing invested yet"
+                text="Once you invest (an S&P 500 fund, a fixed deposit), add it below and this page tracks how your money grows."
+              />
             ) : (
               <>
                 {series.length > 1 && (

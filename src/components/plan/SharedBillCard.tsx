@@ -1,15 +1,17 @@
-import { Check, ChevronDown, Minus, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import type { MonthCell, PersonLedger } from "@/lib/plan/shares";
 import { standingText } from "@/lib/plan/shares-text";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
+import { MonthBadge, NoMonth } from "./MonthBadge";
 import { RotationCard } from "./RotationCard";
 import { ShareForm } from "./ShareForm";
 import { SharingToggle } from "./SharingToggle";
 
-const MONTHS_SHOWN = 12;
+// Six columns fit a phone beside the name column; older months stay in each person's own list.
+const MONTHS_SHOWN = 6;
 
 /** The months a person still has something to pay for: charged ones they owe now, then ones not charged yet. */
 function breakdown(p: PersonLedger): MonthCell[] {
@@ -17,25 +19,16 @@ function breakdown(p: PersonLedger): MonthCell[] {
 }
 
 function Cell({ state, name, month, notCharged, detail }: { state: "paid" | "partial" | "unpaid" | "none"; name: string; month: string; notCharged?: boolean; detail?: string }) {
-  // Never colour alone: each state has its own mark and a text label.
+  // Never colour alone: each state has its own glyph and a text label.
   const what = state === "none" ? (notCharged ? "not charged yet" : "not sharing yet") : state === "paid" && notCharged ? "paid in advance" : state;
   const label = `${name}, ${shortMonthLabel(month)}: ${what}${detail ? `, ${detail}` : ""}`;
-  if (state === "none") return <td className="px-1 py-1.5 text-center text-muted" title={label}><span aria-label={label}>·</span></td>;
-  if (state === "paid")
-    return (
-      <td className="px-1 py-1.5 text-center text-good" title={label}>
-        <Check size={14} strokeWidth={3} className="inline" aria-label={label} />
-      </td>
-    );
-  if (state === "partial")
-    return (
-      <td className="px-1 py-1.5 text-center font-black text-warn" title={label}>
-        <span aria-label={label}>½</span>
-      </td>
-    );
   return (
-    <td className="px-1 py-1.5 text-center text-danger" title={label}>
-      <X size={14} strokeWidth={3} className="inline" aria-label={label} />
+    <td className="px-0 py-1">
+      {state === "none" ? (
+        <NoMonth label={label} />
+      ) : (
+        <MonthBadge kind={state === "paid" ? (notCharged ? "advance" : "paid") : state === "partial" ? "part" : "unpaid"} label={label} />
+      )}
     </td>
   );
 }
@@ -51,6 +44,15 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
   // Months not charged yet that somebody has already paid into follow the charged ones, marked "next".
   const columns = [...shown, ...view.upcomingMonths.filter((m) => !shown.includes(m))];
   const mine = people.filter((p) => p.billId === view.bill.id);
+  // The latest charged month: what each person has paid towards it, of what it costs them.
+  const latest = shown[shown.length - 1];
+  const soFarRows = latest
+    ? view.people.flatMap((p) => {
+        const c = p.cells.find((x) => x.month === latest);
+        return c ? [{ id: p.share.id, name: p.share.name, paid: c.paid, cost: c.cost }] : [];
+      })
+    : [];
+  const soFar = latest && soFarRows.length > 0 ? { month: latest, rows: soFarRows, total: soFarRows.reduce((n, r) => n + r.cost, 0), paid: soFarRows.reduce((n, r) => n + Math.min(r.paid, r.cost), 0) } : null;
 
   return (
     <section className="card space-y-3.5" aria-label={`${view.bill.name}, shared`}>
@@ -134,19 +136,45 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         })}
       </ul>
 
+      {soFar && (
+        <div className="rounded-2xl bg-card-subtle p-3.5">
+          <div className="mb-2.5 flex items-baseline justify-between gap-2">
+            <h3 className="text-[13px] font-extrabold">{shortMonthLabel(soFar.month)} so far</h3>
+            <span className="num text-xs font-bold text-muted">{formatRM(soFar.paid)} of {formatRM(soFar.total)}</span>
+          </div>
+          <ul className="space-y-2.5">
+            {soFar.rows.map((r) => (
+              <li key={r.id}>
+                <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-bold">
+                  <span className="truncate font-extrabold">{r.name}</span>
+                  <span className="num shrink-0 text-muted">
+                    {formatRM(r.paid)} of {formatRM(r.cost)}{r.paid >= r.cost ? " · paid" : ""}
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-card" aria-hidden>
+                  <div className="h-full rounded-full bg-good" style={{ width: `${r.cost > 0 ? Math.min(100, (r.paid / r.cost) * 100) : 0}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {shown.length > 0 && (
         <div>
-          <div className="overflow-x-auto" tabIndex={0} aria-label="Who has covered which month">
-            <table className="w-full min-w-[28rem] border-collapse text-xs">
+          <div>
+            <table className="w-full table-fixed border-collapse text-xs">
               <caption className="sr-only">Months each person has covered</caption>
+              <colgroup>
+                <col className="w-[54px]" />
+              </colgroup>
               <thead className="text-muted">
                 <tr>
-                  <th className="py-1.5 pr-2 text-left font-extrabold">{hidden > 0 ? `Last ${MONTHS_SHOWN} months` : "Month"}</th>
+                  <th className="py-1.5 pr-2 text-left text-[10.5px] font-bold">{hidden > 0 ? `Last ${MONTHS_SHOWN} months` : "Month"}</th>
                   {columns.map((m) => (
-                    <th key={m} scope="col" className="px-1 py-1.5 text-center font-extrabold">
+                    <th key={m} scope="col" className="px-0 py-1.5 text-center text-[10.5px] font-bold leading-tight">
                       {shortMonthLabel(m).split(" ")[0]}
-                      <span className="block text-[11px] font-bold">{m.slice(2, 4)}</span>
-                      {!shown.includes(m) && <span className="block text-[11px] font-bold">next</span>}
+                      <span className="block text-[10px] font-semibold">{!shown.includes(m) ? "next" : m.slice(2, 4)}</span>
                     </th>
                   ))}
                 </tr>
@@ -154,7 +182,7 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
               <tbody>
                 {view.people.map((p) => (
                   <tr key={p.share.id} className="border-t border-line">
-                    <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold">
+                    <th scope="row" className="truncate py-1.5 pr-2 text-left text-xs font-extrabold">
                       {p.share.name}
                     </th>
                     {columns.map((m) => {
@@ -169,12 +197,12 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
               </tbody>
             </table>
           </div>
-          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-muted">
-            <span className="inline-flex items-center gap-1"><Check size={12} strokeWidth={3} className="text-good" aria-hidden /> paid</span>
-            <span><span className="font-black text-warn">½</span> part paid</span>
-            <span className="inline-flex items-center gap-1"><X size={12} strokeWidth={3} className="text-danger" aria-hidden /> not paid yet</span>
-            <span className="inline-flex items-center gap-1"><Minus size={12} aria-hidden /> a lump sum covers the oldest months first, at the price it was paid at</span>
-            {view.upcomingMonths.length > 0 && <span>next = not charged yet</span>}
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-bold text-muted">
+            <span className="inline-flex items-center gap-1.5"><MonthBadge kind="paid" label="paid" small /> paid</span>
+            <span className="inline-flex items-center gap-1.5"><MonthBadge kind="part" label="part paid" small /> part paid</span>
+            <span className="inline-flex items-center gap-1.5"><MonthBadge kind="unpaid" label="not paid yet" small /> not paid yet</span>
+            {view.upcomingMonths.length > 0 && <span className="inline-flex items-center gap-1.5"><MonthBadge kind="advance" label="paid in advance" small /> paid in advance (next = not charged yet)</span>}
+            <span className="basis-full">A lump sum covers the oldest months first, at the price it was paid at.</span>
           </p>
         </div>
       )}

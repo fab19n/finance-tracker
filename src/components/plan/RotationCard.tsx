@@ -1,10 +1,11 @@
-import { Check, ChevronDown, Circle, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { coverMonth, saveTurns } from "@/app/actions/shares";
 import { dayLabel, shiftMonth, shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { monthRange, rotationWindow, type TurnCell, type TurnPerson } from "@/lib/plan/shares";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
+import { MonthBadge, NoMonth } from "./MonthBadge";
 import { ShareForm } from "./ShareForm";
 import { SharingToggle } from "./SharingToggle";
 
@@ -38,30 +39,18 @@ function turnLine(c: TurnCell): string {
 }
 
 function Mark({ cell, name, month }: { cell: TurnCell | undefined; name: string; month: string }) {
-  if (!cell) return <td className="px-1 py-1.5 text-center text-muted/40" aria-label={`${name}, ${shortMonthLabel(month)}: not their turn`}>·</td>;
-  // Never colour alone: each state has its own mark and a text label.
+  if (!cell)
+    return (
+      <td className="px-0 py-1">
+        <NoMonth label={`${name}, ${shortMonthLabel(month)}: not their turn`} />
+      </td>
+    );
+  // Never colour alone: each state has its own glyph and a text label.
   const label = `${name}, ${shortMonthLabel(month)}: ${turnLine(cell)}`;
-  if (cell.state === "paid")
-    return (
-      <td className="px-1 py-1.5 text-center text-good" title={label}>
-        <Check size={14} strokeWidth={3} className="inline" aria-label={label} />
-      </td>
-    );
-  if (cell.state === "part")
-    return (
-      <td className="px-1 py-1.5 text-center font-black text-warn" title={label}>
-        <span aria-label={label}>½</span>
-      </td>
-    );
-  if (cell.state === "due")
-    return (
-      <td className="px-1 py-1.5 text-center text-danger" title={label}>
-        <X size={14} strokeWidth={3} className="inline" aria-label={label} />
-      </td>
-    );
+  const kind = cell.state === "paid" ? "paid" : cell.state === "part" ? "part" : cell.state === "due" ? "unpaid" : "later";
   return (
-    <td className="px-1 py-1.5 text-center text-muted" title={label}>
-      <Circle size={12} strokeWidth={2.5} className="inline" aria-label={label} />
+    <td className="px-0 py-1">
+      <MonthBadge kind={kind} label={label} />
     </td>
   );
 }
@@ -196,36 +185,50 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
 
       <div>
         <div className="overflow-x-auto" tabIndex={0} aria-label="Who covered which month, for your two latest cycles">
-          <table className="w-full min-w-[28rem] border-collapse text-xs">
+          <table className="w-full table-fixed border-collapse text-xs" style={{ minWidth: 54 + columns.length * 34 }}>
             <caption className="sr-only">Who covers each month, for your two latest cycles</caption>
+            <colgroup>
+              <col className="w-[54px]" />
+            </colgroup>
             <thead className="text-muted">
               <tr>
-                <th className="py-1.5 pr-2 text-left font-extrabold">Month</th>
+                <th className="py-1.5 pr-2 text-left text-[10.5px] font-bold">Month</th>
                 {columns.map((m) => (
-                  <th key={m} scope="col" className="px-1 py-1.5 text-center font-extrabold">
+                  <th key={m} scope="col" className="px-0 py-1.5 text-center text-[10.5px] font-bold leading-tight">
                     {shortMonthLabel(m).split(" ")[0]}
-                    <span className="block text-[11px] font-bold">{m.slice(2, 4)}</span>
-                    {whoIn(m) === undefined && <span className="block text-[11px] font-black text-warn" title="Open: nobody has covered it yet">?</span>}
+                    <span className="block text-[10px] font-semibold">{m.slice(2, 4)}</span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
+              {columns.some((m) => whoIn(m) === undefined) && (
+                <tr className="border-t border-line">
+                  <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">Open</th>
+                  {columns.map((m) => (
+                    <td key={m} className="px-0 py-1">
+                      {whoIn(m) === undefined ? <MonthBadge kind="open" label={`${shortMonthLabel(m)}: open, nobody has covered it yet`} /> : <NoMonth label={`${shortMonthLabel(m)}: covered`} />}
+                    </td>
+                  ))}
+                </tr>
+              )}
               <tr className="border-t border-line">
-                <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold text-muted">You</th>
+                <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">You</th>
                 {columns.map((m) =>
                   whoIn(m) === "you" ? (
-                    <td key={m} className="px-1 py-1.5 text-center text-[11px] font-extrabold text-accent-strong" aria-label={`${shortMonthLabel(m)}: your month${r.charged.includes(m) ? ", paid" : ""}`}>
-                      you{r.charged.includes(m) && <Check size={11} strokeWidth={3} className="ml-0.5 inline text-good" aria-hidden />}
+                    <td key={m} className="px-0 py-1">
+                      <MonthBadge kind="you" label={`${shortMonthLabel(m)}: your month${r.charged.includes(m) ? ", paid" : ""}`} />
                     </td>
                   ) : (
-                    <td key={m} className="px-1 py-1.5 text-center text-muted/40">·</td>
+                    <td key={m} className="px-0 py-1">
+                      <NoMonth label={`${shortMonthLabel(m)}: not your month`} />
+                    </td>
                   ),
                 )}
               </tr>
               {r.people.map((p) => (
                 <tr key={p.share.id} className="border-t border-line">
-                  <th scope="row" className="whitespace-nowrap py-1.5 pr-2 text-left font-extrabold">
+                  <th scope="row" className="truncate py-1.5 pr-2 text-left text-xs font-extrabold">
                     {p.share.name}
                   </th>
                   {columns.map((m) => (
@@ -236,13 +239,14 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
             </tbody>
           </table>
         </div>
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-muted">
-          <span className="inline-flex items-center gap-1"><Check size={12} strokeWidth={3} className="text-good" aria-hidden /> covered and paid</span>
-          <span><span className="font-black text-warn">½</span> part paid</span>
-          <span className="inline-flex items-center gap-1"><X size={12} strokeWidth={3} className="text-danger" aria-hidden /> covered, month has come, not paid yet</span>
-          <span className="inline-flex items-center gap-1"><Circle size={10} strokeWidth={2.5} aria-hidden /> covered, still to come</span>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] font-bold text-muted">
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="paid" label="covered and paid" small /> covered and paid</span>
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="part" label="part paid" small /> part paid</span>
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="unpaid" label="covered, month has come, not paid yet" small /> not paid yet</span>
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="later" label="covered, still to come" small /> covered, still to come</span>
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="you" label="your month" small /> your month</span>
+          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="open" label="open" small /> open: nobody has covered it yet</span>
           <span>· not their month</span>
-          <span><span className="font-black text-warn">?</span> open: nobody has covered it yet</span>
         </p>
       </div>
 
