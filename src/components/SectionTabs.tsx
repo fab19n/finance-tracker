@@ -9,7 +9,7 @@ import { useLayoutEffect, useRef } from "react";
  * own URL, back/forward work, and each page still renders on the server. Like the nav bars, the hook lives in the wrapper
  * (behind <Suspense>) and the view is pure.
  *
- * Two looks, both from globals.css: a segmented control (`seg`) for a few short, equal choices (Plan, More), and a row of
+ * Two looks, both from globals.css: a segmented control (`seg`) for a few short, equal choices (Plan), and a row of
  * chips (`chips`) for many or longer ones that scroll sideways on a phone (Settings).
  */
 type Tab = { href: string; label: string; /** Carry the page's query (an account) in this tab's link. */ keepQuery?: boolean };
@@ -54,12 +54,6 @@ function TabStrip({ tabs, pathname, label, query = "" }: { tabs: readonly Tab[];
   return <TabLinks label={label} tabs={tabs.map((t) => ({ href: t.keepQuery ? `${t.href}${query}` : t.href, label: t.label, current: t.href === current }))} />;
 }
 
-const MORE_TABS = [
-  { href: "/insights", label: "Insights" },
-  { href: "/invest", label: "Invest" },
-  { href: "/settings", label: "Settings" },
-] as const;
-
 // Overview and Bills can be looked at for one account (?account=), so they keep it; shared bills are about people, not accounts.
 const PLAN_TABS = [
   { href: "/plan", label: "Overview", keepQuery: true },
@@ -67,17 +61,11 @@ const PLAN_TABS = [
   { href: "/plan/shared", label: "Shared" },
 ] as const;
 
-export function MoreTabsView({ pathname }: { pathname: string }) {
-  return <TabStrip tabs={MORE_TABS} pathname={pathname} label="More" />;
-}
 export function PlanTabsView({ pathname, account }: { pathname: string; account?: number }) {
   return <TabStrip tabs={PLAN_TABS} pathname={pathname} label="Plan" query={account ? `?account=${account}` : ""} />;
 }
 
-/** Insights · Invest · Settings: what "More" opens. */
-export function MoreTabs() {
-  return <MoreTabsView pathname={usePathname()} />;
-}
+
 
 /** Overview · Bills · Shared. */
 export function PlanTabs({ account }: { account?: number }) {

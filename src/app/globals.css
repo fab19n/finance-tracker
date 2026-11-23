@@ -1,113 +1,134 @@
 @import "tailwindcss";
 
 /*
- * Design tokens (v2 "Soft, neutral" direction: warm greys, one terracotta accent, pill shapes, Nunito). Every colour in the
- * app comes from a token below; components never contain a raw hex. The exceptions: a category's own colour (user data),
- * the --brand orange of the logo's K, and public/offline.html, which writes the tokens out because nothing can be fetched there.
+ * Design tokens (the "Kupang card" look: green-black and warm paper, ONE gold accent, Sora for page titles, Manrope
+ * for everything else). Every colour in the app comes from a token below; components never contain a raw hex. The
+ * exceptions: a category's own colour (user data), the --brand orange of the logo's K, and public/offline.html, which
+ * writes the tokens out because nothing can be fetched there.
  *
  * Themes: Light is the default. Dark applies when the OS is dark AND the user hasn't forced Light, or when the user
  * forced Dark on this device (<html data-theme="dark">, set before paint by the inline script in layout.tsx and
  * changed in Settings > Appearance & data). CSS can't share one rule between a media query and an attribute selector,
  * so the dark values are written twice below: keep the two blocks identical (tests/design-tokens.test.ts checks).
  *
- * Contrast: tests/design-tokens.test.ts holds every text/background pair to 4.5:1. The handoff's own values missed it in
- * Light (its accent was 4.04:1 under white text), so --accent, --good, --warn, --danger and --ink-muted are a shade
- * darker than the design's hex: same hue, imperceptible, but readable.
+ * Gold is split in two. --accent is the FILL (buttons, the hero, the chosen chip) and always carries --accent-fg text.
+ * --accent-strong is gold you READ or follow (accent text, links, chart lines, the focus ring). In Dark they are the same
+ * gold; in Light the fill stays bright but --accent-strong is a deep gold, because bright gold on paper is only 1.8:1.
+ *
+ * Contrast: tests/design-tokens.test.ts holds every text/background pair to 4.5:1 in both themes.
  */
 :root {
   color-scheme: light;
 
-  --background: #f4f2ee;
-  --foreground: #211f1c;
-  --card: #ffffff;
-  --card-subtle: #efece6;
-  --muted: #6c675f;
-  --line: #e6e2db;
-  --nav-active-bg: #e6e2db;
+  /* Warm paper, a lighter card, a raised step for tracks and icon discs. */
+  --background: #f7f1e1;
+  --foreground: #12241f;
+  --card: #fffaf0;
+  --card-subtle: #efe7d2;
+  --muted: #4f5d57;
+  --line: #ddd3ba;
+  --nav-active-bg: #efe7d2;
 
-  /* Terracotta. --accent fills (buttons, hero, active icon); --accent-strong is the colour of accent TEXT and links. */
-  --accent: #c75029;
-  --accent-fg: #ffffff;
-  --accent-soft: #fbe3da;
-  --accent-strong: #a84322;
+  /* Gold. --accent fills (buttons, hero, active icon); --accent-strong is the colour of accent TEXT, links and lines. */
+  --accent: #e0b04a;
+  --accent-fg: #12241f;
+  --accent-soft: #f5e6bd;
+  --accent-strong: #7a5810;
 
   /* Status. --good is also the colour of income text and positive amounts. */
-  --good: #1b7a51;
-  --good-soft: #dcf3e8;
-  --warn: #985e0a;
-  --warn-soft: #fbeccf;
-  --danger: #b93845;
-  --danger-soft: #fbe1e4;
+  --good: #1d6b45;
+  --good-soft: #dcefe2;
+  --warn: #8a5a06;
+  --warn-soft: #f6e8c8;
+  --danger: #a8322a;
+  --danger-soft: #f8e1dc;
   --danger-fg: #ffffff;
-  --info: #1e40af;
-  --info-soft: #dbeafe;
+  --info: #1e4fa8;
+  --info-soft: #dde7f7;
   --income: var(--good);
 
-  /* Chart slots. 1 = needs / fixed deposit (the text colour), 2 = wants / spending / S&P 500 (the accent),
-     3 = saved / income / your mix (good). Slot 2 and 3 are close in luminance in Light, so charts always carry labels. */
+  /* Chart slots. 1 = needs / fixed deposit (the text colour), 2 = wants / spending / S&P 500 (gold you can see: the
+     deep gold in Light), 3 = saved / income / your mix (good). Charts always carry labels as well. */
   --series-1: var(--foreground);
-  --series-2: var(--accent);
+  --series-2: var(--accent-strong);
   --series-3: var(--good);
   --series-gray: var(--ink-muted); /* de-emphasis: last month, money you put in */
-  --ink-muted: #6f6a60; /* chart axis text: the design's #9a948a measured 3.0:1 */
+  --ink-muted: #56625b; /* chart axis text */
   --grid: var(--line);
 
-  /* The big card at the top of a page: solid accent (or solid danger when it's bad news), a pale circle off its corner. */
-  --hero-bg: var(--accent);
-  --hero-fg: var(--accent-fg);
-  --hero-circle: rgba(255, 255, 255, 0.12);
-  --hero-track: rgba(255, 255, 255, 0.28);
-  --hero-danger-bg: var(--danger);
-  --hero-danger-fg: var(--danger-fg);
+  /* The big card at the top of a page, the "coin rim": a card with a gold edge and a second hairline ring outside it,
+     a pale gold circle off its corner. Bad news (negative left-to-spend) swaps the gold for danger. */
+  --hero-bg: var(--card);
+  --hero-fg: var(--foreground);
+  --hero-rim: var(--accent-strong);
+  --hero-circle: rgba(224, 176, 74, 0.16);
+  --hero-track: var(--card-subtle);
+  --hero-danger-bg: var(--card);
+  --hero-danger-fg: var(--foreground);
+  --hero-danger-rim: var(--danger);
+
+  /* The tab bar (and, later, the desktop sidebar): deep green in BOTH themes, so the gold tab and the orange K keep their
+     contrast. --nav-fg is an idle tab, --nav-strong the chosen tab's label; the chosen icon sits on a gold pill. */
+  --nav-bg: #12241f;
+  --nav-fg: #cfd8d2;
+  --nav-strong: #f2ede0;
+  --nav-focus: var(--accent); /* focus ring and the Add page's ring on the bar: bright gold, 8:1 on --nav-bg */
 
   --brand: #ff8f39; /* the K in the logo: one orange in both themes */
-  --focus-ring: var(--accent);
-  --overlay: rgba(33, 31, 28, 0.6);
+  --focus-ring: var(--accent-strong);
+  --overlay: rgba(18, 36, 31, 0.6);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --background: #141311;
-  --foreground: #f1eee8;
-  --card: #1e1c19;
-  --card-subtle: #262321;
-  --muted: #a7a197;
-  --line: #2d2a26;
-  --nav-active-bg: #2a2724;
+  --background: #101c19;
+  --foreground: #f2ede0;
+  --card: #172622;
+  --card-subtle: #1e302b;
+  --muted: #a9b4ae;
+  --line: #2a3e38;
+  --nav-active-bg: #1e302b;
 
-  --accent: #ff8f66;
-  --accent-fg: #2d1208;
-  --accent-soft: #3d1f14;
-  --accent-strong: #ffb093;
+  --accent: #e0b04a;
+  --accent-fg: #101c19;
+  --accent-soft: #3a321c;
+  --accent-strong: #e0b04a;
 
-  --good: #6fe0ac;
-  --good-soft: #16352a;
-  --warn: #f3c56b;
-  --warn-soft: #3a2d12;
-  --danger: #ff8a95;
-  --danger-soft: #3d1c22;
+  --good: #7fd8a6;
+  --good-soft: #183a2c;
+  --warn: #f0c77a;
+  --warn-soft: #3a2f16;
+  --danger: #ff9a8f;
+  --danger-soft: #3d1f22;
   --danger-fg: #2d0a10;
-  --info: #60a5fa;
+  --info: #9cc4ff;
   --info-soft: #1e3a5f;
   --income: var(--good);
 
   --series-1: var(--foreground);
-  --series-2: var(--accent);
+  --series-2: var(--accent-strong);
   --series-3: var(--good);
   --series-gray: var(--ink-muted);
-  --ink-muted: #8f8a82;
+  --ink-muted: #97a39c;
   --grid: var(--line);
 
-  --hero-bg: var(--accent);
-  --hero-fg: var(--accent-fg);
-  --hero-circle: rgba(255, 255, 255, 0.12);
-  --hero-track: rgba(45, 18, 8, 0.28);
-  --hero-danger-bg: var(--danger);
-  --hero-danger-fg: var(--danger-fg);
+  --hero-bg: var(--card);
+  --hero-fg: var(--foreground);
+  --hero-rim: var(--accent-strong);
+  --hero-circle: rgba(224, 176, 74, 0.1);
+  --hero-track: var(--card-subtle);
+  --hero-danger-bg: var(--card);
+  --hero-danger-fg: var(--foreground);
+  --hero-danger-rim: var(--danger);
+
+  --nav-bg: #1e302b;
+  --nav-fg: #a9b4ae;
+  --nav-strong: #f2ede0;
+  --nav-focus: var(--accent); /* focus ring and the Add page's ring on the bar: bright gold, 8:1 on --nav-bg */
 
   --brand: #ff8f39;
-  --focus-ring: var(--accent);
+  --focus-ring: var(--accent-strong);
   --overlay: rgba(0, 0, 0, 0.72);
 }
 
@@ -115,46 +136,53 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --background: #141311;
-    --foreground: #f1eee8;
-    --card: #1e1c19;
-    --card-subtle: #262321;
-    --muted: #a7a197;
-    --line: #2d2a26;
-    --nav-active-bg: #2a2724;
+    --background: #101c19;
+    --foreground: #f2ede0;
+    --card: #172622;
+    --card-subtle: #1e302b;
+    --muted: #a9b4ae;
+    --line: #2a3e38;
+    --nav-active-bg: #1e302b;
 
-    --accent: #ff8f66;
-    --accent-fg: #2d1208;
-    --accent-soft: #3d1f14;
-    --accent-strong: #ffb093;
+    --accent: #e0b04a;
+    --accent-fg: #101c19;
+    --accent-soft: #3a321c;
+    --accent-strong: #e0b04a;
 
-    --good: #6fe0ac;
-    --good-soft: #16352a;
-    --warn: #f3c56b;
-    --warn-soft: #3a2d12;
-    --danger: #ff8a95;
-    --danger-soft: #3d1c22;
+    --good: #7fd8a6;
+    --good-soft: #183a2c;
+    --warn: #f0c77a;
+    --warn-soft: #3a2f16;
+    --danger: #ff9a8f;
+    --danger-soft: #3d1f22;
     --danger-fg: #2d0a10;
-    --info: #60a5fa;
+    --info: #9cc4ff;
     --info-soft: #1e3a5f;
     --income: var(--good);
 
     --series-1: var(--foreground);
-    --series-2: var(--accent);
+    --series-2: var(--accent-strong);
     --series-3: var(--good);
     --series-gray: var(--ink-muted);
-    --ink-muted: #8f8a82;
+    --ink-muted: #97a39c;
     --grid: var(--line);
 
-    --hero-bg: var(--accent);
-    --hero-fg: var(--accent-fg);
-    --hero-circle: rgba(255, 255, 255, 0.12);
-    --hero-track: rgba(45, 18, 8, 0.28);
-    --hero-danger-bg: var(--danger);
-    --hero-danger-fg: var(--danger-fg);
+    --hero-bg: var(--card);
+    --hero-fg: var(--foreground);
+    --hero-rim: var(--accent-strong);
+    --hero-circle: rgba(224, 176, 74, 0.1);
+    --hero-track: var(--card-subtle);
+    --hero-danger-bg: var(--card);
+    --hero-danger-fg: var(--foreground);
+    --hero-danger-rim: var(--danger);
+
+    --nav-bg: #1e302b;
+    --nav-fg: #a9b4ae;
+    --nav-strong: #f2ede0;
+    --nav-focus: var(--accent); /* focus ring and the Add page's ring on the bar: bright gold, 8:1 on --nav-bg */
 
     --brand: #ff8f39;
-    --focus-ring: var(--accent);
+    --focus-ring: var(--accent-strong);
     --overlay: rgba(0, 0, 0, 0.72);
   }
 }
@@ -190,23 +218,39 @@
   --color-hero-track: var(--hero-track);
   --color-hero-danger-bg: var(--hero-danger-bg);
   --color-hero-danger-fg: var(--hero-danger-fg);
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-fg: var(--nav-fg);
+  --color-nav-strong: var(--nav-strong);
+  --color-nav-focus: var(--nav-focus);
   --color-brand: var(--brand);
   --color-overlay: var(--overlay);
-  --font-sans: var(--font-nunito);
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-sora);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-nunito), system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   font-weight: 600;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Keyboard focus: one visible ring everywhere. */
+/* Keyboard focus: one visible ring everywhere (bright gold on the deep-green tab bar, where the deep gold vanishes). */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+.nav-bar :focus-visible {
+  outline-color: var(--nav-focus);
+}
+
+/* The soft half of a dual-tone icon (DuoIcon): the icon's own colour, faint. Outside @layer on purpose, like the
+   hero figure rules: an SVG attribute can't use var(), and this must beat the outline's stroke settings. */
+.duo-fill {
+  fill: currentColor;
+  fill-opacity: 0.22;
+  stroke: none;
 }
 
 /* Money should line up in columns. */
@@ -239,7 +283,7 @@ body {
   }
   /* 16px on phones (iOS zooms the page when a smaller input is focused), 14px from md up. */
   .input {
-    @apply w-full rounded-[14px] border-[1.5px] border-line bg-background px-3.5 py-2.5 text-base font-semibold outline-none transition focus:border-accent md:text-sm;
+    @apply w-full rounded-[14px] border-[1.5px] border-line bg-background px-3.5 py-2.5 text-base font-semibold outline-none transition focus:border-accent-strong md:text-sm;
   }
   /* Secondary button: a white pill with a hairline. */
   .btn {
@@ -256,7 +300,8 @@ body {
   }
 
   /* A chip (filters, Settings tabs) and a segmented control (Expense/Income/Transfer, Plan tabs, Cycle/Month). The chosen
-     one is solid foreground: selection is never colour alone, it is also the heavier weight and the inverted pill. Both
+     one is solid gold with dark text and a deep-gold edge (bright gold alone is 1.8:1 on paper): selection is never
+     colour alone, it is also the heavier weight and the filled pill. Both
      work as links (aria-current), buttons (aria-selected) or the .on class. */
   .chip {
     @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] border-line bg-card px-3.5 py-[7px] text-xs font-bold text-muted transition hover:text-foreground;
@@ -264,8 +309,10 @@ body {
   .chip.on,
   .chip[aria-current="page"],
   .chip[aria-current="true"],
-  .chip[aria-selected="true"] {
-    @apply border-foreground bg-foreground font-extrabold text-background hover:text-background;
+  .chip[aria-selected="true"],
+  .chip[aria-checked="true"],
+  .chip[aria-pressed="true"] {
+    @apply border-accent-strong bg-accent font-extrabold text-accent-fg hover:text-accent-fg;
   }
   .seg {
     @apply flex gap-1 rounded-full border-[1.5px] border-line bg-card p-[3px];
@@ -278,12 +325,12 @@ body {
   .seg-item[aria-current="true"],
   .seg-item[aria-checked="true"],
   .seg-item[aria-selected="true"] {
-    @apply bg-foreground font-extrabold text-background hover:text-background;
+    @apply bg-accent font-extrabold text-accent-fg shadow-[inset_0_0_0_1.5px_var(--accent-strong)] hover:text-accent-fg;
   }
 
   /* A page's <h1>: the title above the page, on phones too (the v2 phone has no app bar). */
   .h-page {
-    @apply text-[26px] font-black leading-[1.05] tracking-[-0.02em] md:text-[30px];
+    @apply font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.02em] md:text-[30px];
   }
 
   /* Banners: an icon-led message in one of four tones. */
@@ -303,17 +350,23 @@ body {
     @apply bg-info-soft text-info;
   }
 
-  /* The big card at the top of a page. Solid accent; solid danger when it is bad news (negative safe-to-spend). The
-     pale circle is decoration: its children sit above it. */
+  /* The big card at the top of a page: the coin rim. A card with a gold edge and a second hairline ring just outside it;
+     danger instead of gold when it is bad news (negative left-to-spend). The pale circle is decoration: its children
+     sit above it. The key figure and the bar are styled below, outside the layers (see "Hero figure"). */
   .hero,
   .hero-danger {
-    @apply relative overflow-hidden rounded-3xl p-5;
+    @apply relative overflow-hidden rounded-3xl border-[1.5px] p-5;
+    outline: 1px solid var(--hero-rim);
+    outline-offset: 3px;
   }
   .hero {
     @apply bg-hero-bg text-hero-fg;
+    border-color: var(--hero-rim);
   }
   .hero-danger {
     @apply bg-hero-danger-bg text-hero-danger-fg;
+    border-color: var(--hero-danger-rim);
+    outline-color: var(--hero-danger-rim);
   }
   .hero::before,
   .hero-danger::before {
@@ -331,6 +384,29 @@ body {
   .hero-danger > * {
     position: relative;
   }
+}
+
+/*
+ * Hero figure. The one key figure on a hero (a .num set in font-black) is Sora in gold, or in danger on bad news, and a
+ * bar inside a hero (drawn with bg-current) is gold too. Big KPI figures use .figure (Sora, semibold).
+ */
+.hero .num.font-black,
+.hero-danger .num.font-black,
+.figure {
+  font-family: var(--font-display), var(--font-manrope), system-ui, sans-serif;
+  font-weight: 600;
+}
+.hero .num.font-black {
+  color: var(--accent-strong);
+}
+.hero-danger .num.font-black {
+  color: var(--danger);
+}
+.hero .bg-current {
+  background-color: var(--accent-strong);
+}
+.hero-danger .bg-current {
+  background-color: var(--danger);
 }
 
 /*

@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Check, CheckCircle2, ChevronLeft, FileText, FileUp, Loader2, Lock, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, FileText, FileUp, Loader2, Lock, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { commitImport, previewStatement } from "@/app/actions/import";
-import { PageHeader } from "@/components/PageHeader";
+import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import type { CommitResult, PreviewOk, PreviewResult } from "@/lib/import/api-types";
 import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
 import { dayLabel } from "@/lib/dates";
@@ -189,13 +189,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       <PageHeader
         title="Import statement"
         subtitle={subtitle}
-        actions={
-          <Link href="/plan" className="btn">
-            <ChevronLeft size={14} strokeWidth={2.5} aria-hidden />
-            <span className="md:hidden">Plan</span>
-            <span className="hidden md:inline">Back to Plan</span>
-          </Link>
-        }
+        back={BACK_TO_MORE}
       />
       <div className="max-w-[45rem] space-y-3 md:space-y-4">{body}</div>
     </div>
@@ -257,7 +251,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               Statement file (PDF or CSV)
             </label>
             {/* The real file input sits invisibly over the whole zone: a tap opens the picker and a file dropped on it is taken. */}
-            <div className="relative rounded-[20px] border-2 border-dashed border-line bg-background px-4 py-7 text-center transition hover:border-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent">
+            <div className="relative rounded-[20px] border-2 border-dashed border-line bg-background px-4 py-7 text-center transition hover:border-accent-strong has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-strong">
               <div className="mx-auto mb-2.5 grid size-12 place-items-center rounded-full bg-accent-soft text-accent-strong">
                 {file ? <FileText size={22} aria-hidden /> : <Upload size={22} aria-hidden />}
               </div>
@@ -465,7 +459,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
 
         {preview.openingBalance !== null && preview.account.existingEntries === 0 && (
           <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
-            <input type="checkbox" checked={setOpening} onChange={(e) => setSetOpening(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent" />
+            <input type="checkbox" checked={setOpening} onChange={(e) => setSetOpening(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
             <span>
               Set {preview.account.name}&apos;s starting balance to <strong className="font-black">{formatRM(preview.openingBalance)}</strong> (the balance before the first line), so the app matches your bank.
               {!check.openingVerified && <span className="text-warn"> The statement didn&apos;t state it, so this is worked out from the first line - check it against your statement.</span>}
@@ -584,7 +578,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
 
                 {r.kind !== "skip" && r.edited && (
                   <label className="mt-1 flex min-h-8 items-center gap-2 text-[11px] font-bold text-muted">
-                    <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent" />
+                    <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
                     Remember for next time
                   </label>
                 )}
@@ -606,17 +600,17 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         </p>
       )}
 
-      {/* The commit bar. It floats above the phone's tab bar (70 px plus the iPhone's safe area), and this one shadow is the
+      {/* The commit bar. It floats above the phone's tab bar (the floating bar and the raised Add button, about 100 px, plus the iPhone's safe area), and this one shadow is the
           design's single exception to "no shadows": the bar lies over white cards, so nothing else would set it apart. */}
-      <div className="card sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-10 space-y-2.5 px-4 py-3.5 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] md:bottom-4">
+      <div className="card sticky bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-10 space-y-2.5 px-4 py-3.5 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] md:bottom-4">
         {check.mismatches.length > 0 && (
           <label className="flex items-start gap-2 text-[13px] font-bold">
-            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent" />I&apos;ve checked the lines marked red and want to import anyway.
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />I&apos;ve checked the lines marked red and want to import anyway.
           </label>
         )}
         {preview.accountCheck?.looksLike && (
           <label className="flex items-start gap-2 text-[13px] font-bold">
-            <input type="checkbox" checked={ackAccount} onChange={(e) => setAckAccount(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent" />
+            <input type="checkbox" checked={ackAccount} onChange={(e) => setAckAccount(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
             This really is {preview.account.name}&apos;s statement; import it here anyway.
           </label>
         )}

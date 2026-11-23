@@ -132,7 +132,7 @@ export function AddInvestmentForm({
       )}
 
       <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
-        <input type="checkbox" name="recordTransfer" defaultChecked className="mt-0.5 size-4 shrink-0 accent-accent" />
+        <input type="checkbox" name="recordTransfer" defaultChecked className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
         <span>
           Also record the transfer out of that account <span className="text-muted">(keeps your bank balance accurate - it&apos;s not counted as spending)</span>
         </span>

@@ -16,5 +16,5 @@ export default function LoginPage({ searchParams }: { searchParams: Params }) {
 
 async function Form({ searchParams }: { searchParams: Params }) {
   const raw = (await searchParams).next;
-  return <LoginForm next={(Array.isArray(raw) ? raw[0] : raw) ?? "/"} />;
+  return <LoginForm next={(Array.isArray(raw) ? raw[0] : raw) ?? "/dashboard"} />;
 }

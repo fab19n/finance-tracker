@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from "react";
-import { PageHeader } from "@/components/PageHeader";
+import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import { PlanTabs, PlanTabsView } from "@/components/SectionTabs";
 
 /**
@@ -10,7 +10,7 @@ import { PlanTabs, PlanTabsView } from "@/components/SectionTabs";
 export function PlanHeader({ subtitle, actions, account }: { subtitle?: ReactNode; actions?: ReactNode; account?: number }) {
   return (
     <header className="space-y-3">
-      <PageHeader title="Plan" subtitle={subtitle} actions={actions} />
+      <PageHeader title="Plan" subtitle={subtitle} actions={actions} back={BACK_TO_MORE} />
       <Suspense fallback={<PlanTabsView pathname="" account={account} />}>
         <PlanTabs account={account} />
       </Suspense>

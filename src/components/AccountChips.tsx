@@ -6,7 +6,7 @@ type Chip = { id: number; name: string; balance: number; href: string };
 
 /**
  * Accounts as a row of pills, each showing its balance and each a LINK: on the Add page a tap opens that account's
- * entries; on Activity the row is the account filter (the chosen one is solid, "All accounts" clears it). It scrolls
+ * entries; on Activity the row is the account filter (the chosen one is solid gold, "All accounts" clears it). It scrolls
  * sideways on a phone. Balances are derived from transactions, so they are the real ones.
  */
 export function AccountChips({
@@ -23,7 +23,7 @@ export function AccountChips({
 }) {
   const base = "flex shrink-0 flex-col items-start rounded-full border-[1.5px] px-3.5 py-1.5 transition";
   const idle = "border-line bg-card hover:border-foreground";
-  const chosen = "border-foreground bg-foreground text-background";
+  const chosen = "border-accent-strong bg-accent text-accent-fg";
   return (
     <nav aria-label={label} className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0">
       {/* The row scrolls sideways on a phone: bring the chosen account into view if it is off-screen. */}

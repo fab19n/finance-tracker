@@ -12,8 +12,8 @@ export type LoginState = { error?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const pin = process.env.APP_PIN;
-  const next = String(formData.get("next") ?? "/");
-  const dest = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const next = String(formData.get("next") ?? "/dashboard");
+  const dest = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
   if (!pin) redirect(dest);
 
   if (Date.now() < lockedUntil) return { error: "Too many wrong attempts. Wait a minute and try again." };

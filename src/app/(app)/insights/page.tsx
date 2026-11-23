@@ -320,7 +320,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
               {/* accent = a day with an entry, grey = a gap; the sentence and the list of gaps below say the same in words */}
               <div className="flex gap-1" role="img" aria-label={`Logged on ${stripLogged} of the last ${stripLength} days`}>
                 {strip.map((d) => (
-                  <div key={d.date} className={`h-7 flex-1 rounded-lg ${d.logged ? "bg-accent" : "bg-card-subtle"}`} />
+                  <div key={d.date} className={`h-7 flex-1 rounded-lg ${d.logged ? "bg-accent-strong" : "bg-card-subtle"}`} />
                 ))}
               </div>
               <p className="mt-2.5 text-[13px] font-bold">

@@ -26,7 +26,7 @@ export function AdvisorSection({ advice, settings }: { advice: Advice; settings:
     <section className="@container space-y-3" aria-labelledby="advisor-h">
       <div className="px-1">
         <h2 id="advisor-h" className="h2 flex items-center gap-2">
-          <Lightbulb size={18} className="shrink-0 text-accent" aria-hidden /> What should I do with extra money?
+          <Lightbulb size={18} className="shrink-0 text-accent-strong" aria-hidden /> What should I do with extra money?
         </h2>
         <p className="sub mt-0.5 leading-relaxed">
           A step-by-step path built from your own numbers. Change the assumptions in{" "}

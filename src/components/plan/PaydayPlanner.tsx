@@ -25,7 +25,7 @@ const FROM_INCOME = {
 const FROM_ALLOWANCE = {
   settings: "from Settings",
   history: "estimated from what you actually spent",
-  none: "your guess is fine; the Dashboard will show the truth",
+  none: "your guess is fine; Home will show the truth",
 } as const;
 
 /**

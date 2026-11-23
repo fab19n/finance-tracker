@@ -62,6 +62,6 @@ describe("the theme script that runs before first paint", () => {
   });
 
   it("uses the page background of each theme as the browser's theme colour", () => {
-    expect(THEME_COLORS).toEqual({ light: "#f4f2ee", dark: "#141311" });
+    expect(THEME_COLORS).toEqual({ light: "#f7f1e1", dark: "#101c19" });
   });
 });

@@ -9,8 +9,8 @@ import { SyncChip } from "@/components/offline/SyncChip";
 /**
  * The shell. The PAGE scrolls (no locked viewport, no inner scroller).
  *  - Phone: no app bar. Each page opens with its own title (PageHeader), and a bottom tab bar holds
- *    Add · Activity · Plan · Dashboard · More.
- *  - Desktop (md and up): a floating 196 px sidebar card with the logo, the same five places and Settings; the sync chip
+ *    Home · Activity · Add (a larger centre button) · Accounts · More.
+ *  - Desktop (md and up): a floating 196 px sidebar card with the logo, a gold Add entry button, the same places and Settings; the sync chip
  *    sits above Settings. (On a phone the sync chip is in the page header.)
  * Each <Suspense> below wraps a piece that reads the pathname (runtime data), with the same piece, no active item, as the
  * fallback.
@@ -18,9 +18,9 @@ import { SyncChip } from "@/components/offline/SyncChip";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <OfflineProvider>
-      <div className="min-h-dvh pb-24 md:pb-0 md:pl-57">
+      <div className="min-h-dvh pb-32 md:pb-0 md:pl-57">
         <aside className="fixed inset-y-4 left-4 z-20 hidden w-49 flex-col rounded-3xl bg-card px-3 py-5 md:flex">
-          <Link href="/" className="mb-4 block px-2.5 pt-1">
+          <Link href="/dashboard" className="mb-4 block px-2.5 pt-1">
             <KoopangLogo height={28} />
           </Link>
           <Suspense fallback={<SidebarNavView pathname="" />}>

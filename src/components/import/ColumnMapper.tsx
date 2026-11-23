@@ -72,7 +72,7 @@ export function ColumnMapper({
       </div>
 
       <label className="flex min-h-8 items-center gap-2">
-        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 shrink-0 accent-accent" />
+        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 shrink-0 accent-accent-strong" />
         The first row holds column names
       </label>
 
@@ -91,10 +91,10 @@ export function ColumnMapper({
 
       <div className="flex flex-wrap gap-x-5 gap-y-1">
         <label className="flex min-h-8 items-center gap-2">
-          <input type="radio" checked={shape === "amount"} onChange={() => setShape("amount")} className="size-4 shrink-0 accent-accent" /> One amount column (+ / −)
+          <input type="radio" checked={shape === "amount"} onChange={() => setShape("amount")} className="size-4 shrink-0 accent-accent-strong" /> One amount column (+ / −)
         </label>
         <label className="flex min-h-8 items-center gap-2">
-          <input type="radio" checked={shape === "split"} onChange={() => setShape("split")} className="size-4 shrink-0 accent-accent" /> Separate money out / in columns
+          <input type="radio" checked={shape === "split"} onChange={() => setShape("split")} className="size-4 shrink-0 accent-accent-strong" /> Separate money out / in columns
         </label>
       </div>
 

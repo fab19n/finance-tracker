@@ -57,7 +57,11 @@ const TEXT_PAIRS: [text: string, on: string[]][] = [
   ["--warn", ["--card", "--warn-soft"]],
   ["--danger", ["--background", "--card", "--danger-soft"]],
   ["--info", ["--info-soft"]],
-  ["--danger-fg", ["--danger"]], // the hero card when safe-to-spend is negative
+  ["--danger-fg", ["--danger"]], // text on a solid danger fill
+  ["--nav-fg", ["--nav-bg"]], // an idle tab on the tab bar
+  ["--nav-strong", ["--nav-bg"]], // the chosen tab's label
+  ["--hero-fg", ["--hero-bg"]], // text on the hero card
+  ["--hero-danger-fg", ["--hero-danger-bg"]],
 ];
 
 describe("design tokens", () => {
@@ -82,6 +86,34 @@ describe("design tokens", () => {
         }
       }
       expect(failures).toEqual([]);
+    });
+  }
+
+  // Lines, bars and the focus ring are not text, so they need 3:1 (WCAG non-text contrast). Bright gold on paper is only
+  // about 1.8:1, which is why Light draws them in --accent-strong and keeps --accent for fills that carry their own label.
+  for (const [themeName, theme] of [
+    ["Light", light],
+    ["Dark", dark],
+  ] as const) {
+    it(`${themeName}: the focus ring and the gold chart series hold 3:1 against the page and cards`, () => {
+      const failures: string[] = [];
+      // The tab bar is deep green in both themes; its focus ring is checked against it below.
+      for (const token of ["--focus-ring", "--series-2", "--series-3", "--series-gray"]) {
+        for (const bg of ["--background", "--card"]) {
+          const ratio = contrast(colour(theme, token), colour(theme, bg));
+          if (ratio < 3) failures.push(`${token} on ${bg}: ${ratio.toFixed(2)}:1`);
+        }
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+
+  for (const [themeName, theme] of [
+    ["Light", light],
+    ["Dark", dark],
+  ] as const) {
+    it(`${themeName}: the tab bar's focus ring holds 3:1 on the deep-green bar`, () => {
+      expect(contrast(colour(theme, "--nav-focus"), colour(theme, "--nav-bg"))).toBeGreaterThanOrEqual(3);
     });
   }
 

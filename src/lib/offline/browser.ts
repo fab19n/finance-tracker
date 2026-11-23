@@ -23,6 +23,8 @@ export const SAVED_PAGES = [
   "/plan/bills",
   "/plan/shared",
   "/dashboard",
+  "/accounts",
+  "/more",
   "/insights",
   "/invest",
   ...SETTINGS_TABS.map((t) => settingsHref(t.id)),

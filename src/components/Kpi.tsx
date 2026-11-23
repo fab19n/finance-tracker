@@ -48,7 +48,7 @@ export function Kpi({
     <div className="rounded-[20px] bg-card px-3.5 py-3.5 md:p-[22px]">
       <p className="text-[11px] font-extrabold text-muted md:text-xs">{label}</p>
       <p
-        className={`num mt-0.5 text-base font-black tracking-[-0.02em] md:mt-1 md:text-2xl ${
+        className={`num figure mt-0.5 text-base tracking-[-0.02em] md:mt-1 md:text-2xl ${
           tone === "bad" ? "text-danger" : tone === "good" ? "text-good" : ""
         }`}
       >

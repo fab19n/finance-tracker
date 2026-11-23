@@ -39,7 +39,7 @@ export function ShareForm({ share, bills, defaultBillId, defaultStart }: { share
           aria-label="Words on the bank statement"
         />
         <label className="col-span-2 flex min-h-10 items-center gap-2 text-[13px] font-extrabold md:col-span-2">
-          <input type="checkbox" name="active" defaultChecked={share?.active ?? true} className="size-4 accent-accent" /> Still sharing
+          <input type="checkbox" name="active" defaultChecked={share?.active ?? true} className="size-4 accent-accent-strong" /> Still sharing
         </label>
         <button className="btn-primary col-span-2 w-full md:col-span-6">{share ? "Save" : "Add person"}</button>
       </form>

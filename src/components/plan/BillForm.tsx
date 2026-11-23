@@ -53,7 +53,7 @@ export function BillForm({
         <input name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="Due day" className="input min-w-0" aria-label="Due day of month" />
         <input name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="Words on the bank statement (netflix, tnb)" className="input col-span-2 min-w-0 md:col-span-2" aria-label="Statement keywords" />
         <label className="col-span-2 flex min-h-10 items-center gap-2 text-[13px] font-extrabold md:col-span-1">
-          <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-accent" /> Active
+          <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-accent-strong" /> Active
         </label>
         <button className="btn-primary col-span-2 w-full md:col-span-6">{bill ? "Save bill" : "Add bill"}</button>
       </form>

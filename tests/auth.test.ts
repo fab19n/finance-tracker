@@ -118,7 +118,7 @@ describe("login action", () => {
     async (next) => {
       process.env.APP_PIN = "482915";
       const { login } = await import("@/app/actions/auth");
-      expect(await redirected(login({}, form({ pin: "482915", next })))).toBe("/");
+      expect(await redirected(login({}, form({ pin: "482915", next })))).toBe("/dashboard");
     },
   );
 

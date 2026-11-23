@@ -16,7 +16,7 @@ describe("the web app manifest", () => {
 
   it("meets Chrome's install criteria", () => {
     expect(m.name || m.short_name).toBeTruthy();
-    expect(m.start_url).toBe("/");
+    expect(m.start_url).toBe("/dashboard");
     expect(["standalone", "fullscreen", "minimal-ui"]).toContain(m.display);
     const png = (m.icons ?? []).filter((i) => i.type === "image/png").map((i) => i.sizes);
     expect(png).toEqual(expect.arrayContaining(["192x192", "512x512"]));

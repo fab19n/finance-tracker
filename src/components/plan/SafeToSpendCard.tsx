@@ -7,8 +7,8 @@ import type { SafeToSpend } from "@/lib/queries/plan";
 
 /**
  * The one number that answers "can I spend this?": what is in the spending account minus the bills it
- * still has to pay before the next payday. It is the hero card of the page: solid accent. When it goes negative,
- * spending is quietly coming out of savings, and the card turns solid danger (the --hero-danger-* tokens).
+ * still has to pay before the next payday. It is the hero card of the page: a gold rim and a gold figure. When it goes
+ * negative, spending is quietly coming out of savings, and the rim and figure turn danger (the --hero-danger-* tokens).
  *
  * `compact` is the Add page's version: a smaller amount, with the days to payday, the date and the daily figure
  * tucked into the corner. The full version (Plan) has the room to say it in a line under the amount.
