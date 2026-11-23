@@ -1,10 +1,13 @@
 "use client";
 
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Info, Loader2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { adoptLookalike, saveTransaction, type FormState } from "@/app/actions/transactions";
-import { isISODate, shortDate, todayISO } from "@/lib/dates";
+import { AccountPicker, type PickableAccount } from "@/components/entry/AccountPicker";
+import { CategoryPicker } from "@/components/entry/CategoryPicker";
+import { dayChoice, submitLabel } from "@/components/entry/entry-logic";
+import { isISODate, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { entryShapeError, type WireEntry } from "@/lib/entry-shape";
 import { parseSen } from "@/lib/money";
 import { offlineStore } from "@/lib/offline/browser";
@@ -14,7 +17,7 @@ import type { Lookalike } from "@/lib/queries/lookalikes";
 
 type TxType = "income" | "expense" | "transfer";
 type Cat = { id: number; name: string; type: "income" | "expense"; color: string; icon: string };
-type Acc = { id: number; name: string; type: string };
+type Acc = PickableAccount;
 type Hint = {
   item: string;
   type: "income" | "expense";
@@ -53,6 +56,8 @@ type Props = {
   initial?: TxInitial;
   /** An outbox entry being corrected. Never together with `initial`. */
   draft?: EntryDraft;
+  /** With `initial`: the list the entry was opened from, where Save returns to. */
+  backHref?: string;
 };
 export type TransactionFormProps = Props;
 
@@ -61,8 +66,6 @@ const TYPE_LABEL: Record<TxType, string> = {
   income: "Income",
   transfer: "Transfer",
 };
-
-const VISIBLE_CHIPS = 9;
 
 const subscribeNever = () => () => {};
 
@@ -80,6 +83,7 @@ export function TransactionForm({
   defaultDate,
   defaultAccountId,
   initial,
+  backHref,
   draft,
 }: Props) {
   const seed = initial ?? draft;
@@ -95,7 +99,8 @@ export function TransactionForm({
   const [pickedDate, setPickedDate] = useState<string | null>(seed?.date ?? null);
   const today = useSyncExternalStore(subscribeNever, todayISO, () => defaultDate);
   const date = pickedDate ?? today;
-  const [showAll, setShowAll] = useState(false);
+  // The result whose "Saved" notice the user has moved on from (any edit afterwards); the notice shows only for a newer one.
+  const [seenResult, setSeenResult] = useState<FormState | null>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -230,13 +235,23 @@ export function TransactionForm({
   // never somewhere you "spend from" or receive a salary into.
   const fromAccounts = type === "transfer" ? accounts : accounts.filter((a) => a.type !== "investment" || a.id === accountId);
   const chips = categories.filter((c) => c.type === type);
-  const shownChips = showAll ? chips : chips.slice(0, VISIBLE_CHIPS);
   const typeHints = hints.filter((h) => h.type === type);
 
+  function dismissSaved() {
+    setSeenResult(state);
+  }
+
+  function changeAccount(id: number) {
+    setAccountId(id);
+    // "To" can't be the account the money leaves: move it to another one.
+    if (toAccountId === id) setToAccountId(accounts.find((a) => a.id !== id)?.id ?? null);
+  }
+
   function changeType(next: TxType) {
+    if (next === type) return; // tapping the chosen type again must not wipe the category
+    dismissSaved();
     setType(next);
     setCategoryId(null);
-    setShowAll(false);
     if (next === "transfer") {
       setToAccountId((cur) => cur ?? accounts.find((a) => a.id !== accountId)?.id ?? null);
     } else {
@@ -258,13 +273,16 @@ export function TransactionForm({
     }
   }
 
-  const verb = initial ? "Save changes" : draft ? "Save and send" : type === "expense" ? "Add expense" : type === "income" ? "Add income" : "Add transfer";
-  // While the warning is up, the button says what pressing it means.
-  const buttonLabel = lookalikes.length > 0 ? `${verb} anyway` : verb;
+  const buttonLabel = submitLabel({ editing: !!initial, correcting: !!draft, type, sen, anyway: lookalikes.length > 0 });
+  const dayPicked = dayChoice(date, today);
+  const toAccounts = accounts.filter((a) => a.id !== accountId);
+  const showSaved = state.ok && !initial && seenResult !== state;
 
   return (
-    <form ref={formRef} action={formAction} className="card space-y-3.5">
+    // An edit anywhere in the form starts a new entry in the user's mind: the "Saved" notice from the last one goes.
+    <form ref={formRef} action={formAction} onChange={dismissSaved} className="space-y-4">
       {initial && <input type="hidden" name="id" value={initial.id} />}
+      {initial && backHref && <input type="hidden" name="back" value={backHref} />}
       <input type="hidden" name="type" value={type} />
       <input type="hidden" name="categoryId" value={categoryId ?? ""} />
 
@@ -272,26 +290,32 @@ export function TransactionForm({
         <div className="banner banner-warn flex-col gap-0.5 !items-start">
           <p className="font-extrabold">{draft.error ? "Correcting an entry your PC didn't accept" : "Editing an entry waiting to be sent"}</p>
           {draft.error && <p>{draft.error}</p>}
-          <button type="button" className="mt-1 text-xs font-extrabold underline" onClick={() => offlineStore().cancelEdit()}>
+          <button type="button" className="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold underline" onClick={() => offlineStore().cancelEdit()}>
             Cancel
           </button>
         </div>
       )}
 
-      <div className="seg" role="tablist">
+      {showSaved && (
+        <p role="status" className="banner banner-good font-extrabold">
+          <Check size={16} className="mt-0.5 shrink-0" /> {state.message ?? "Saved"}
+        </p>
+      )}
+
+      <div className="seg" role="tablist" aria-label="Entry type">
         {(Object.keys(TYPE_LABEL) as TxType[]).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={type === t} onClick={() => changeType(t)} className="seg-item">
+          <button key={t} type="button" role="tab" aria-selected={type === t} onClick={() => changeType(t)} className="seg-item min-h-11">
             {TYPE_LABEL[t]}
           </button>
         ))}
       </div>
 
       <div>
-        <label htmlFor="amount" className="label">
+        <label htmlFor="amount" className="sr-only">
           Amount
         </label>
-        <div className="flex items-baseline gap-2 rounded-[18px] border-[1.5px] border-line bg-background px-4 py-3 focus-within:border-accent-strong focus-within:ring-2 focus-within:ring-accent-strong/30">
-          <span className="text-base font-extrabold text-muted">RM</span>
+        <div className="flex items-baseline gap-2 border-b-[1.5px] border-line px-1 pb-1 focus-within:border-accent-strong">
+          <span className="text-sm font-bold text-muted">RM</span>
           <input
             ref={amountRef}
             id="amount"
@@ -301,154 +325,105 @@ export function TransactionForm({
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="num w-full bg-transparent text-4xl font-black tracking-[-0.03em] outline-none"
+            className="num font-display w-full bg-transparent text-[54px] font-semibold leading-[1.05] tracking-[-0.02em] outline-none placeholder:text-muted/60"
             required
           />
         </div>
       </div>
 
-      {type !== "transfer" && (
-        <div>
-          <span className="label">Category</span>
-          <div className="grid grid-cols-3 gap-2 md:grid-cols-4">
-            {shownChips.map((c) => {
-              const selected = categoryId === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  aria-pressed={selected}
-                  className={`relative flex min-h-[60px] flex-col items-center justify-center gap-[5px] rounded-2xl border-[1.5px] px-2 py-2.5 text-center text-[11px] font-extrabold leading-tight transition active:scale-95 ${
-                    selected ? "border-foreground bg-nav-active" : "border-transparent bg-card-subtle"
-                  }`}
-                >
-                  {/* Selected = a filled tile with a dark border AND a check, so it never relies on colour alone. The
-                      category's own colour is only the dot. */}
-                  {selected && (
-                    <span className="absolute right-1.5 top-1.5 grid size-4 place-items-center rounded-full bg-foreground text-background" aria-hidden>
-                      <Check size={11} strokeWidth={3} />
-                    </span>
-                  )}
-                  <span className="size-2.5 rounded-full" style={{ backgroundColor: c.color }} aria-hidden />
-                  {c.name}
-                </button>
-              );
-            })}
-          </div>
-          {chips.length > VISIBLE_CHIPS && (
-            <button
-              type="button"
-              onClick={() => setShowAll((v) => !v)}
-              className="mt-2 text-xs font-extrabold text-accent-strong"
-            >
-              {showAll ? "Show fewer" : `Show all ${chips.length} categories →`}
-            </button>
-          )}
-        </div>
-      )}
-
-      {type !== "transfer" && (
-        <div>
-          <label htmlFor="item" className="label">
-            Description <span className="font-semibold">(what was it? helps find leaks)</span>
-          </label>
-          <input
-            id="item"
-            name="item"
-            list="item-hints"
-            autoComplete="off"
-            placeholder={type === "expense" ? "e.g. teh tarik, Grab, Netflix" : "e.g. March salary"}
-            value={item}
-            onChange={(e) => changeItem(e.target.value)}
-            className="input"
-          />
-          <datalist id="item-hints">
-            {typeHints.slice(0, 120).map((h) => (
-              <option key={h.item} value={h.item} />
-            ))}
-          </datalist>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <div>
-          <label htmlFor="accountId" className="label">
-            {type === "transfer" ? "From" : type === "income" ? "Into" : "Paid from"}
-          </label>
-          <select
-            id="accountId"
-            name="accountId"
-            value={accountId}
-            onChange={(e) => setAccountId(Number(e.target.value))}
-            className="input"
-          >
-            {fromAccounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {type === "transfer" ? (
-          <div>
-            <label htmlFor="toAccountId" className="label">
-              To
-            </label>
-            <select
-              id="toAccountId"
-              name="toAccountId"
-              value={toAccountId ?? ""}
-              onChange={(e) => setToAccountId(Number(e.target.value))}
-              className="input"
-            >
-              {accounts
-                .filter((a) => a.id !== accountId)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-        ) : (
-          <div>
-            <label htmlFor="date" className="label">
-              Date
-            </label>
-            <input
-              id="date"
-              name="date"
-              type="date"
-              value={date}
-              onChange={(e) => setPickedDate(e.target.value)}
-              className="input"
-              required
-            />
-          </div>
-        )}
+      <div>
+        <label htmlFor="item" className="label">
+          Description{type !== "transfer" && <span className="font-semibold"> (what was it? helps find leaks)</span>}
+        </label>
+        <input
+          id="item"
+          name="item"
+          list="item-hints"
+          autoComplete="off"
+          placeholder={type === "expense" ? "e.g. teh tarik, Grab, Netflix" : type === "income" ? "e.g. March salary" : "e.g. Top up eWallet"}
+          value={item}
+          onChange={(e) => changeItem(e.target.value)}
+          className="input"
+        />
+        <datalist id="item-hints">
+          {typeHints.slice(0, 120).map((h) => (
+            <option key={h.item} value={h.item} />
+          ))}
+        </datalist>
       </div>
 
+      <AccountPicker
+        legend={type === "transfer" ? "From" : type === "income" ? "Into" : "Paid from"}
+        name="accountId"
+        accounts={fromAccounts}
+        value={accountId}
+        onChange={changeAccount}
+      />
+
       {type === "transfer" && (
-        <div>
-          <label htmlFor="date" className="label">
-            Date
-          </label>
+        <>
+          <ChevronDown size={22} aria-hidden className="mx-auto -my-1 text-muted" />
+          <AccountPicker legend="To" name="toAccountId" accounts={toAccounts} value={toAccountId} onChange={(id) => setToAccountId(id)} />
+          <p className="banner banner-info">
+            <Info size={16} aria-hidden className="mt-0.5 shrink-0" />
+            Moving money between your own accounts (ATM withdrawal, top-up, investing) is not spending.
+          </p>
+        </>
+      )}
+
+      {type !== "transfer" && (
+        <CategoryPicker
+          key={type}
+          categories={chips}
+          value={categoryId}
+          onChange={(id) => {
+            setCategoryId(id);
+            dismissSaved();
+          }}
+        />
+      )}
+
+      <div>
+        <label htmlFor="date" className="label">
+          Date
+        </label>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="chip min-h-11"
+            aria-pressed={dayPicked === "today"}
+            onClick={() => {
+              setPickedDate(today);
+              dismissSaved();
+            }}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            className="chip min-h-11"
+            aria-pressed={dayPicked === "yesterday"}
+            onClick={() => {
+              setPickedDate(shiftDays(today, -1));
+              dismissSaved();
+            }}
+          >
+            Yesterday
+          </button>
           <input
             id="date"
             name="date"
             type="date"
             value={date}
             onChange={(e) => setPickedDate(e.target.value)}
-            className="input"
+            className="input min-h-11 min-w-0 flex-1"
             required
           />
-          <p className="sub mt-2">Moving money between your own accounts (ATM withdrawal, top-up, investing) is not spending.</p>
         </div>
-      )}
+      </div>
 
       <details className="text-[13px]" open={!!seed?.note}>
-        <summary className="cursor-pointer list-none font-bold text-muted [&::-webkit-details-marker]:hidden">+ Add a note</summary>
+        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center font-bold text-muted [&::-webkit-details-marker]:hidden">+ Add a note</summary>
         <input
           name="note"
           value={note}
@@ -503,21 +478,25 @@ export function TransactionForm({
         </div>
       )}
 
-      {state.error && (
-        <p role="alert" className="banner banner-danger leading-snug">
-          {state.error}
-        </p>
-      )}
-      {state.ok && !initial && (
-        <p role="status" className="banner banner-good font-extrabold">
-          <Check size={16} className="mt-0.5 shrink-0" /> {state.message ?? "Saved"}
-        </p>
-      )}
-
-      <button type="submit" disabled={pending} className="btn-primary w-full !py-3.5">
-        {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" /> : null}
-        {buttonLabel}
-      </button>
+      {/* The docked button: sticky above the tab bar (about 100 px) and its raised Add button, inside the form so Enter in any
+          field still submits. A refusal shows right above it, where it can't be scrolled away from the button that caused it. */}
+      <div className="sticky bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-10 -mx-1 space-y-2 bg-gradient-to-t from-background from-70% to-transparent px-1 pt-4 md:bottom-4">
+        {state.error && (
+          <p role="alert" className="banner banner-danger leading-snug">
+            {state.error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={pending}
+          className="flex h-[54px] w-full items-center justify-between gap-3 rounded-full bg-accent pl-[22px] pr-2 text-[15px] font-extrabold text-accent-fg shadow-[inset_0_0_0_1.5px_var(--accent-strong)] transition active:scale-[0.99] disabled:opacity-60"
+        >
+          <span className="num truncate">{buttonLabel}</span>
+          <span className="grid size-[38px] shrink-0 place-items-center rounded-full bg-accent-fg text-accent" aria-hidden>
+            {pending ? <Loader2 size={18} strokeWidth={3} className="animate-spin" /> : <ArrowRight size={18} strokeWidth={2.5} />}
+          </span>
+        </button>
+      </div>
     </form>
   );
 }

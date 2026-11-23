@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { shortDate } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
@@ -10,10 +10,23 @@ import type { SafeToSpend } from "@/lib/queries/plan";
  * still has to pay before the next payday. It is the hero card of the page: a gold rim and a gold figure. When it goes
  * negative, spending is quietly coming out of savings, and the rim and figure turn danger (the --hero-danger-* tokens).
  *
- * `compact` is the Add page's version: a smaller amount, with the days to payday, the date and the daily figure
- * tucked into the corner. The full version (Plan) has the room to say it in a line under the amount.
+ * `compact` is the Add page's version, and it is not a card at all: one quiet line (shield, "Left to spend RM x", the days
+ * to payday on the right), as drawn on the Entry board. The full version (Plan) keeps the coin-rim card.
  */
 export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeToSpend; cycle: Cycle; compact?: boolean }) {
+  if (!safe.configured && compact) {
+    return (
+      <p className="flex items-center gap-2 text-xs font-semibold text-muted">
+        <ShieldCheck size={16} aria-hidden className="shrink-0" />
+        <span>
+          Choose your spending account to see what is left to spend.{" "}
+          <Link href="/settings?tab=accounts" className="font-extrabold text-accent-strong underline">
+            Set it in Settings
+          </Link>
+        </span>
+      </p>
+    );
+  }
   if (!safe.configured) {
     return (
       <div className="card">
@@ -31,15 +44,28 @@ export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeTo
 
   const short = safe.safe < 0;
   const days = cycle.paydayOverdue ? "Payday due" : `${cycle.daysLeft} day${cycle.daysLeft === 1 ? "" : "s"} to payday`;
+
+  if (compact) {
+    return (
+      <section aria-label="Safe to spend" className="flex items-center gap-2 text-xs font-semibold text-muted">
+        {short ? <AlertTriangle size={16} aria-hidden className="shrink-0 text-danger" /> : <ShieldCheck size={16} aria-hidden className="shrink-0" />}
+        <span className="min-w-0">
+          Left to spend{" "}
+          <b className={`num font-extrabold ${short ? "text-danger" : "text-foreground"}`}>
+            {short ? "−" : ""}
+            {formatRM(Math.abs(safe.safe))}
+          </b>
+          {short && <span className="font-extrabold text-danger"> (short)</span>}
+        </span>
+        <span className="ml-auto shrink-0 whitespace-nowrap">{days}</span>
+      </section>
+    );
+  }
+
   const amount = (
-    <p className={`num font-black leading-none tracking-[-0.03em] ${compact ? "text-[38px]" : "text-[44px]"}`}>
+    <p className="num text-[44px] font-black leading-none tracking-[-0.03em]">
       {short ? "−" : ""}
       {formatRM(Math.abs(safe.safe))}
-    </p>
-  );
-  const shortMessage = (
-    <p className="mt-3 text-[13px] font-extrabold">
-      Your bills need more than {safe.accountName} holds. Anything you spend now is really coming out of savings.
     </p>
   );
   return (
@@ -48,35 +74,22 @@ export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeTo
         {short && <AlertTriangle size={14} aria-hidden />} Safe to spend until payday
       </p>
 
-      {compact ? (
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5">
-          {amount}
-          <div className="ml-auto shrink-0 text-right">
-            <p className="text-xs font-extrabold">{days}</p>
-            <p className="whitespace-nowrap text-[11px] font-bold">
-              {shortDate(cycle.nextPayday)}
-              {!short && safe.perDay !== null && ` · ${formatRM(safe.perDay)} a day`}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="mt-1.5">{amount}</div>
-      )}
+      <div className="mt-1.5">{amount}</div>
 
       {short ? (
-        shortMessage
+        <p className="mt-3 text-[13px] font-extrabold">
+          Your bills need more than {safe.accountName} holds. Anything you spend now is really coming out of savings.
+        </p>
       ) : (
-        !compact && (
-          <p className="mt-2.5 text-[13px] font-extrabold">
-            {days}
-            {safe.perDay !== null && (
-              <>
-                {" "}
-                · About {formatRM(safe.perDay)} a day for everyday things.
-              </>
-            )}
-          </p>
-        )
+        <p className="mt-2.5 text-[13px] font-extrabold">
+          {days}
+          {safe.perDay !== null && (
+            <>
+              {" "}
+              · About {formatRM(safe.perDay)} a day for everyday things.
+            </>
+          )}
+        </p>
       )}
 
       <p className="mt-2.5 text-[11px] font-bold">
