@@ -290,7 +290,7 @@ export function TransactionForm({
         <label htmlFor="amount" className="label">
           Amount
         </label>
-        <div className="flex items-baseline gap-2 rounded-[18px] border-[1.5px] border-line bg-background px-4 py-3 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
+        <div className="flex items-baseline gap-2 rounded-[18px] border-[1.5px] border-line bg-background px-4 py-3 focus-within:border-accent-strong focus-within:ring-2 focus-within:ring-accent-strong/30">
           <span className="text-base font-extrabold text-muted">RM</span>
           <input
             ref={amountRef}
@@ -351,7 +351,7 @@ export function TransactionForm({
       {type !== "transfer" && (
         <div>
           <label htmlFor="item" className="label">
-            What exactly? <span className="font-semibold">(item - helps find leaks)</span>
+            Description <span className="font-semibold">(what was it? helps find leaks)</span>
           </label>
           <input
             id="item"

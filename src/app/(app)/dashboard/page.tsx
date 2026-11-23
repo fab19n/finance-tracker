@@ -158,6 +158,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const overspent = !accountChoice && hasPay && totals.net < 0;
   const used = !accountChoice && hasPay && totals.income > 0 ? totals.expense / totals.income : null;
   const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? "Net so far" : totals.net >= 0 ? "Left over" : "Overspent";
+  // Days until this period ends (the day before the next payday for a pay cycle), counting today. Only for the one in progress.
+  const daysLeft = isCurrent ? Math.max(1, daysBetween(today, period ? period.end : monthEnd(month)) + 1) : null;
   const heroSign = (accountChoice || !hasPay) && totals.net < 0 ? "−" : "";
 
   // "Slower than Sep": this period's running total against last period's at the same day.
@@ -178,7 +180,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <PageHeader
         title={
           <>
-            <span className="sr-only">Dashboard: </span>
+            <span className="sr-only">Home: </span>
             {monthLabel(month).split(" ")[0]}
           </>
         }
@@ -228,6 +230,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </div>
           ) : (
             <p className="mt-3 text-xs font-extrabold">no pay in this {unit} yet</p>
+          )}
+          {!accountChoice && daysLeft !== null && (
+            <p className="mt-2.5 text-xs font-extrabold">
+              {daysLeft} {daysLeft === 1 ? "day" : "days"} {period ? "to payday" : "left this month"}
+            </p>
           )}
         </div>
         <Kpi
@@ -389,7 +396,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                         <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
                           {/* The longest bar is the biggest spend; each lighter step is the next one down. */}
                           <div
-                            className="h-full rounded-full bg-accent"
+                            className="h-full rounded-full bg-accent-strong"
                             style={{ width: `${Math.max(2, c.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }}
                           />
                         </div>
@@ -454,7 +461,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                           <span className="num shrink-0">{formatRM(a.total)}</span>
                         </div>
                         <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
-                          <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(2, a.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }} />
+                          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, a.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }} />
                         </div>
                       </Link>
                     </li>

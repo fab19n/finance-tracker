@@ -13,6 +13,7 @@ import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/d
 import { formatRM, formatRMWhole, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { datePresets, parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
+import { FlowBar } from "@/components/FlowBar";
 import { getAccountLedger } from "@/lib/queries/ledger";
 import { listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, sumTransferFlow, type TxRow } from "@/lib/queries/transactions";
@@ -29,12 +30,12 @@ const TYPES = [
 /** Drop empty values so the rest can be written into hidden form fields or a query string. */
 const present = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== ""));
 
-/** A small figure tile (label over a whole-ringgit value). */
+/** A figure tile (label over a whole-ringgit value in the display face). */
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "good" | "danger" }) {
   return (
-    <div className="rounded-[20px] bg-card px-3 py-3.5 md:p-[22px]">
-      <p className="text-[11px] font-extrabold text-muted md:text-xs">{label}</p>
-      <p className={`num text-sm font-black md:mt-1 md:text-[22px] ${tone === "good" ? "text-good" : tone === "danger" ? "text-danger" : ""}`}>{value}</p>
+    <div className="min-w-0 rounded-[20px] bg-card px-3 py-4 md:p-[22px]">
+      <p className="text-xs font-extrabold text-muted">{label}</p>
+      <p className={`num figure mt-1 text-[17px] leading-tight tracking-[-0.02em] md:text-[26px] ${tone === "good" ? "text-good" : tone === "danger" ? "text-danger" : ""}`}>{value}</p>
     </div>
   );
 }
@@ -248,6 +249,7 @@ export default async function TransactionsPage({
           <Tile label="Net" value={`${net < 0 ? "−" : "+"}${formatRMWhole(Math.abs(net))}`} tone={net < 0 ? "danger" : "good"} />
         </div>
       )}
+      {type !== "transfer" && <FlowBar income={totals.income} spent={totals.expense} />}
       {accountChoice && flow && type !== "transfer" && (
         <p className="sub px-1">
           Transfers in this period: {formatRM(flow.out)} out, {formatRM(flow.in)} in. Income and spending above leave them out; a transfer shows on this account with a − (out) or + (in).

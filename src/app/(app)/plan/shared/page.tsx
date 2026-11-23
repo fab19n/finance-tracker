@@ -75,7 +75,12 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
 
       {page.bills.length > 0 && (
         <section className="grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-3" aria-label="Totals">
-          <Kpi label="Owed to you" value={formatRM(page.owedToYou)} hint={owing.length ? `${owing.length} ${owing.length === 1 ? "person" : "people"}` : "everyone is paid up"} />
+          {/* The headline of this page is what people owe you: the coin-rim hero, with the people count as its hint. */}
+          <div className="hero col-span-2 md:col-span-3">
+            <p className="mb-1.5 text-xs font-extrabold">Owed to you</p>
+            <p className="num text-[44px] font-black leading-[0.95] tracking-[-0.03em]">{formatRM(page.owedToYou)}</p>
+            <p className="mt-3 text-xs font-extrabold">{owing.length ? `${owing.length} ${owing.length === 1 ? "person" : "people"} still owe you` : "everyone is paid up"}</p>
+          </div>
           <Kpi label="Shared bills" value={String(page.bills.length)} hint={`${page.people.filter((p) => p.active).length} people sharing`} />
           <Kpi label="Unclaimed money in" value={String(page.unassigned.length)} hint="entries not counted towards anyone" />
         </section>
