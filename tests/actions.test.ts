@@ -392,3 +392,47 @@ describe("reconcileCashAction", () => {
     expect(txs()).toHaveLength(0);
   });
 });
+
+describe("saveCardSettings", () => {
+  const row = (id: number) => h.db.select().from(accounts).where(eq(accounts.id, id)).get()!;
+
+  it("saves the mark, colour and last digits, and goes to the account's page", async () => {
+    const { saveCardSettings } = await import("@/app/actions/cards");
+    const url = await redirected(saveCardSettings(fd({ id: String(ids.bank), network: "visa", otherName: "", color: "#112233", last4: "12 34" })));
+    expect(url).toBe(`/accounts/${ids.bank}`);
+    expect(row(ids.bank)).toMatchObject({ cardNetwork: "visa", cardColor: "#112233", cardLast4: "1234" });
+  });
+
+  it("clears them when the form is empty, and names an Other mark", async () => {
+    const { saveCardSettings } = await import("@/app/actions/cards");
+    await redirected(saveCardSettings(fd({ id: String(ids.bank), network: "other", otherName: "Bank Islam", color: "", last4: "" })));
+    expect(row(ids.bank)).toMatchObject({ cardNetwork: "other:Bank Islam", cardColor: null, cardLast4: null });
+    await redirected(saveCardSettings(fd({ id: String(ids.bank), network: "none", otherName: "", color: "", last4: "" })));
+    expect(row(ids.bank).cardNetwork).toBeNull();
+  });
+
+  it("refuses a bad colour, bad digits or an unnamed Other mark, and changes nothing", async () => {
+    const { saveCardSettings } = await import("@/app/actions/cards");
+    for (const bad of [{ color: "red" }, { last4: "123" }, { network: "other", otherName: " " }]) {
+      const url = await redirected(saveCardSettings(fd({ id: String(ids.bank), network: "visa", otherName: "", color: "", last4: "", ...bad })));
+      expect(url).toContain(`/accounts/${ids.bank}/card?error=`);
+    }
+    expect(row(ids.bank)).toMatchObject({ cardNetwork: null, cardColor: null, cardLast4: null });
+  });
+
+  it("makes an account Main by taking the role from the old one, and can give it up", async () => {
+    const { saveCardSettings } = await import("@/app/actions/cards");
+    const base = { network: "", otherName: "", color: "", last4: "" };
+    await redirected(saveCardSettings(fd({ id: String(ids.bank), ...base, main: "1" })));
+    await redirected(saveCardSettings(fd({ id: String(ids.ewallet), ...base, main: "1" })));
+    expect(row(ids.ewallet).purpose).toBe("spending");
+    expect(row(ids.bank).purpose).toBeNull();
+    await redirected(saveCardSettings(fd({ id: String(ids.ewallet), ...base, main: "0" })));
+    expect(row(ids.ewallet).purpose).toBeNull();
+  });
+
+  it("sends an unknown account back to the list", async () => {
+    const { saveCardSettings } = await import("@/app/actions/cards");
+    expect(await redirected(saveCardSettings(fd({ id: "9999", network: "visa" })))).toBe("/accounts");
+  });
+});

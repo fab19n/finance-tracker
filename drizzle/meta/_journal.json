@@ -57,6 +57,13 @@
       "when": 1791650838731,
       "tag": "0007_offline_entry_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795434181240,
+      "tag": "0008_account_cards",
+      "breakpoints": true
     }
   ]
 }

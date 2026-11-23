@@ -1,0 +1,47 @@
+import Link from "next/link";
+import { AccountCard } from "@/components/account/AccountCard";
+import { PageHeader } from "@/components/PageHeader";
+import { formatRM } from "@/lib/money";
+import { getAccountBalances } from "@/lib/queries/accounts";
+
+/**
+ * The Accounts tab: every account as a card (bank colour, network mark, Main tag) with its balance (derived from its
+ * entries, never stored). A card opens that account's own page: the card, its latest movements, Card settings.
+ */
+export default async function AccountsPage() {
+  const accounts = await getAccountBalances();
+  // An investment's "balance" is the money put in, not what it is worth now, so it is left out of this total.
+  const cash = accounts.filter((a) => a.type !== "investment").reduce((t, a) => t + a.balance, 0);
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <PageHeader title="Accounts" subtitle={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`} />
+
+      <section className="card" aria-label="Total">
+        <p className="label">In your accounts</p>
+        <p className={`num figure text-[34px] leading-tight tracking-[-0.02em] ${cash < 0 ? "text-danger" : ""}`}>{formatRM(cash)}</p>
+        <p className="sub">Banks, wallets and cash. Investments are on the Invest page.</p>
+      </section>
+
+      {accounts.length === 0 ? (
+        <section className="card space-y-2">
+          <p className="text-sm font-extrabold">Add your first account</p>
+          <p className="sub">Accounts are where money sits: a bank, an e-wallet, the cash in your pocket.</p>
+          <Link href="/settings" className="btn-primary w-fit">
+            Add an account
+          </Link>
+        </section>
+      ) : (
+        <ul className="space-y-3">
+          {accounts.map((a) => (
+            <li key={a.id}>
+              <Link href={`/accounts/${a.id}`} aria-label={`${a.name}: ${formatRM(a.balance)}. Open`} className="block rounded-[24px] transition active:scale-[0.99]">
+                <AccountCard account={a} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

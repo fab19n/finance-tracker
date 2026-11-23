@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/settings";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { LockNowForm } from "@/components/offline/LockNowForm";
-import { PageHeader } from "@/components/PageHeader";
+import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import { TabLinks } from "@/components/SectionTabs";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import { ColorField } from "@/components/settings/ColorField";
@@ -108,6 +108,9 @@ function AccountsTab({ accounts }: { accounts: Account[] }) {
                 <div className="mt-3 space-y-2">
                   <Link href={`/transactions?account=${a.id}`} className="btn w-full md:w-auto">
                     <ListOrdered size={14} strokeWidth={2.5} aria-hidden /> See this account&apos;s entries
+                  </Link>
+                  <Link href={`/accounts/${a.id}/card`} className="btn w-full md:ml-2 md:w-auto">
+                    Card, colour and Main account
                   </Link>
                   <form action={saveAccount} className="grid grid-cols-2 gap-2.5 md:grid-cols-5">
                     <input type="hidden" name="id" value={a.id} />
@@ -383,7 +386,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="max-w-3xl space-y-3 md:space-y-4">
-      <PageHeader title="Settings" subtitle="Accounts, categories, appearance" />
+      <PageHeader title="Settings" subtitle="Accounts, categories, appearance" back={BACK_TO_MORE} />
 
       <TabLinks variant="chips" label="Settings" tabs={SETTINGS_TABS.map((t) => ({ href: settingsHref(t.id), label: t.label, current: t.id === tab }))} />
 

@@ -24,6 +24,11 @@ export const accounts = sqliteTable("accounts", {
   //   savings:  the emergency fund / money set aside
   purpose: text("purpose", { enum: ["spending", "savings"] }),
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  // How the account's card looks (Accounts page). All optional: a bank known by name gets its own colour, others stay plain.
+  //   cardNetwork: the mark in the corner (a key of CARD_NETWORKS in lib/card.ts), cardColor: #rrggbb override, cardLast4: 4 digits
+  cardNetwork: text("card_network"),
+  cardColor: text("card_color"),
+  cardLast4: text("card_last4"),
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
