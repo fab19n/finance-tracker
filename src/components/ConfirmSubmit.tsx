@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useActionPending } from "./ActionForm";
+import { DuoIcon } from "./DuoIcon";
 
 /**
  * A button that asks "are you sure?" before the surrounding <form> is submitted. It is a native <dialog>, opened with
@@ -69,10 +70,11 @@ export function ConfirmSubmit({
         onClick={(e) => {
           if (e.target === ref.current) ref.current?.close();
         }}
-        className="m-auto w-[min(26rem,calc(100%-2rem))] rounded-3xl bg-card p-0 text-foreground backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none"
+        className="sheet-dialog"
       >
-        <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:pb-5">
-          <h2 id={titleId} className="h2">
+        <div className="px-4 pb-[calc(1.125rem+env(safe-area-inset-bottom))] pt-2.5 md:p-5">
+          <span className="sheet-grab" aria-hidden />
+          <h2 id={titleId} className="sheet-title">
             {title}
           </h2>
           {body && <p className="sub mt-1.5 leading-relaxed">{body}</p>}
@@ -83,19 +85,22 @@ export function ConfirmSubmit({
               ))}
             </ul>
           )}
-          <div className="mt-5 flex flex-col-reverse gap-2 md:flex-row md:justify-end">
-            <button type="button" className="btn" onClick={() => ref.current?.close()}>
+          {/* The design's order: the destructive choice is a quiet red ghost with a bin, the safe choice the gold pill
+              under it (on phones; side by side from md up). A neutral action (archive, lock) keeps gold on the confirm. */}
+          <div className="mt-5 flex flex-col gap-2 md:flex-row-reverse md:justify-start">
+            <button
+              type="button"
+              className={tone === "danger" ? "btn-primary w-full md:w-auto" : "btn w-full md:w-auto"}
+              onClick={() => ref.current?.close()}
+            >
               {cancelLabel}
             </button>
             <button
               type="submit"
               disabled={pending}
-              className={
-                tone === "danger"
-                  ? "inline-flex min-h-11 items-center justify-center rounded-full bg-danger px-[18px] py-3 text-sm font-extrabold text-danger-fg transition hover:opacity-90 disabled:opacity-50"
-                  : "btn-primary"
-              }
+              className={tone === "danger" ? "btn-danger w-full font-extrabold md:w-auto" : "btn-primary w-full md:w-auto"}
             >
+              {tone === "danger" && <DuoIcon name="trash" size={18} aria-hidden />}
               {confirmLabel}
             </button>
           </div>

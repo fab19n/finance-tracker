@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { transactions } from "@/db/schema";
 import type { Account } from "@/db/schema";
@@ -45,4 +45,21 @@ export async function getAccountBalances(includeArchived = false): Promise<Accou
       netTransferred: transfersIn - transfersOut,
     };
   });
+}
+
+/**
+ * Income and spending on the given accounts between two dates (both inclusive), transfers left out: what the net-worth
+ * pill adds up. `count` is the number of entries, so "nothing happened" can be told from "it netted to zero".
+ */
+export async function getRecentFlow(accountIds: number[], from: string, to: string): Promise<{ income: number; expense: number; count: number }> {
+  if (accountIds.length === 0) return { income: 0, expense: 0, count: 0 };
+  const db = await getDb();
+  const rows = db
+    .select({ type: transactions.type, total: sql<number>`sum(${transactions.amount})`, n: sql<number>`count(*)` })
+    .from(transactions)
+    .where(and(inArray(transactions.accountId, accountIds), gte(transactions.date, from), lte(transactions.date, to), inArray(transactions.type, ["income", "expense"])))
+    .groupBy(transactions.type)
+    .all();
+  const get = (t: string) => rows.find((r) => r.type === t);
+  return { income: get("income")?.total ?? 0, expense: get("expense")?.total ?? 0, count: rows.reduce((n, r) => n + r.n, 0) };
 }

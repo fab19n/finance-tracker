@@ -61,7 +61,6 @@
   --hero-bg: var(--card);
   --hero-fg: var(--foreground);
   --hero-rim: var(--accent-strong);
-  --hero-circle: rgba(224, 176, 74, 0.16);
   --hero-track: var(--card-subtle);
   --hero-danger-bg: var(--card);
   --hero-danger-fg: var(--foreground);
@@ -116,7 +115,6 @@
   --hero-bg: var(--card);
   --hero-fg: var(--foreground);
   --hero-rim: var(--accent-strong);
-  --hero-circle: rgba(224, 176, 74, 0.1);
   --hero-track: var(--card-subtle);
   --hero-danger-bg: var(--card);
   --hero-danger-fg: var(--foreground);
@@ -170,7 +168,6 @@
     --hero-bg: var(--card);
     --hero-fg: var(--foreground);
     --hero-rim: var(--accent-strong);
-    --hero-circle: rgba(224, 176, 74, 0.1);
     --hero-track: var(--card-subtle);
     --hero-danger-bg: var(--card);
     --hero-danger-fg: var(--foreground);
@@ -251,6 +248,15 @@ html.swipe-tabs body {
   overscroll-behavior-x: none;
 }
 
+/* The cents of a money figure (<Money>): smaller and quieter than the ringgit, as the design draws them. Unlayered so the
+   hero's own figure rules (gold, Sora) cannot override the size and weight. */
+.dec {
+  font-size: 0.62em;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
 /* The soft half of a dual-tone icon (DuoIcon): the icon's own colour, faint. Outside @layer on purpose, like the
    hero figure rules: an SVG attribute can't use var(), and this must beat the outline's stroke settings. */
 .duo-fill {
@@ -273,12 +279,56 @@ html.swipe-tabs body {
 }
 
 @layer components {
-  /* Depth comes from a white card on the warm-grey page and a grey row inside the card: no borders, no shadows. */
+  /* The design's card: a lighter surface with a 1px hairline (--line), radius 20, 12x14 padding on phones. No shadows. A
+     card that needs other padding passes it (`!p-0`, `px-6 py-8`); an element with its own border colour (a status
+     border on an import row) overrides only the colour, the 1px width stays. */
   .card {
-    @apply rounded-3xl bg-card p-[18px] md:p-5;
+    @apply rounded-[20px] border border-line bg-card px-3.5 py-3 md:p-5;
   }
+  /* A stat tile (Kpi): the card's smaller sibling, radius 18, 10x12 padding. */
+  .kpi {
+    @apply flex min-w-0 flex-col gap-0.5 rounded-[18px] border border-line bg-card px-3 py-2.5 md:p-[18px];
+  }
+  /* A list of rows as ONE card with hairline dividers, the design's entry list: put `rows` on the list (a <ul>, or a
+     <div> of rows) inside or instead of a `.card`; every row after the first gets a 1px top line and is at least 56 px
+     tall. A row that is a card of its own on a grey page should become a row of this one. */
+  .rows {
+    @apply overflow-hidden rounded-[20px] border border-line bg-card;
+  }
+  .rows > * {
+    @apply min-h-14 px-3.5;
+  }
+  .rows > * + * {
+    border-top: 1px solid var(--line);
+  }
+  /* The round raised disc that leads a row (an entry's category icon, a budget's icon): 40 px, 36 px with `.disc-sm`. */
+  .disc {
+    @apply grid size-10 shrink-0 place-items-center rounded-full bg-card-subtle text-foreground;
+  }
+  .disc-sm {
+    @apply size-9;
+  }
+  /* A round 44 px icon button in a page header (search, filter, back): the raised colour. */
+  .ib {
+    @apply grid size-11 shrink-0 place-items-center rounded-full bg-card-subtle text-foreground transition hover:opacity-80 active:scale-[0.97];
+  }
+  /* A native <dialog> as the design's sheet: a bottom sheet on phones (28 px top corners, a 1px top line, full width,
+     grab handle), a centred 28 px dialog from md up. The dialog element is only the backdrop's hit area: its content sits
+     in one padded child, so a click whose target is the dialog is a click on the dim area. ConfirmSubmit and FilterSheet
+     use it: class "sheet-dialog" on the dialog, then a "sheet-grab" span and an h2 with "sheet-title" inside. */
+  .sheet-dialog {
+    @apply m-auto w-[min(26rem,calc(100%-2rem))] rounded-[28px] border border-line bg-card p-0 text-foreground backdrop:bg-overlay max-md:mb-0 max-md:w-full max-md:max-w-none max-md:rounded-b-none max-md:border-b-0;
+  }
+  .sheet-grab {
+    @apply mx-auto mb-3 block h-1 w-10 rounded-sm bg-line md:hidden;
+  }
+  .sheet-title {
+    @apply font-display text-lg font-semibold leading-tight tracking-[-0.01em];
+  }
+
+  /* Field label: 11 px, bold, upper case, wide tracking. */
   .label {
-    @apply mb-1.5 block text-[11px] font-extrabold text-muted;
+    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-[0.1em] text-muted;
   }
   /* A card's title and the small grey line under a page title. */
   .h2 {
@@ -289,11 +339,21 @@ html.swipe-tabs body {
   }
   /* 16px on phones (iOS zooms the page when a smaller input is focused), 14px from md up. */
   .input {
-    @apply w-full rounded-[14px] border-[1.5px] border-line bg-background px-3.5 py-2.5 text-base font-semibold outline-none transition focus:border-accent-strong md:text-sm;
+    @apply min-h-[46px] w-full rounded-2xl border border-line bg-card px-3.5 py-2.5 text-base font-semibold outline-none transition focus:border-accent-strong md:text-sm;
   }
-  /* Secondary button: a white pill with a hairline. */
+  /* Focus: the gold edge plus a soft 3 px glow (the glow is extra, the edge and the outline ring carry the signal). */
+  .input:focus {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 28%, transparent);
+  }
+  /* Secondary button: a card-coloured pill with a hairline, 44 px tall. `.btn-sm` is the 36 px variant for tight
+     places (a button beside a row of text); give it a 44 px hit area some other way when it is a lone tap target. */
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-xs font-extrabold transition hover:bg-card-subtle active:scale-[0.98] disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-line bg-card px-4 py-2 text-xs font-extrabold transition hover:bg-card-subtle active:scale-[0.98] disabled:opacity-50;
+  }
+  .btn.btn-sm,
+  .btn-primary.btn-sm,
+  .btn-danger.btn-sm {
+    @apply min-h-9 px-3 py-1.5 text-xs;
   }
   .btn-primary {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-[18px] py-3 text-sm font-extrabold text-accent-fg transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50;
@@ -304,13 +364,68 @@ html.swipe-tabs body {
   .pill {
     @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-extrabold;
   }
+  /* A status tag (Paid, Owes, Failed, Learned): the tone's text on a 16% tint of the tone over the card, with a word
+     (and optionally a 14 px icon) so it is never colour alone. Use with .pill: `pill tag-good`. */
+  .tag-good,
+  .tag-warn,
+  .tag-danger,
+  .tag-info {
+    color: var(--t);
+    background: color-mix(in srgb, var(--t) 16%, var(--card));
+  }
+  .tag-good {
+    --t: var(--good);
+  }
+  .tag-warn {
+    --t: var(--warn);
+  }
+  .tag-danger {
+    --t: var(--danger);
+  }
+  .tag-info {
+    --t: var(--info);
+  }
+
+  /* A switch (Toggle.tsx): a 48 x 28 track, gold when on, with the thumb on the right. The real checkbox sits before it
+     (visually hidden, role="switch"); the thumb's position says on/off as well as the colour. */
+  .tgl {
+    @apply relative block h-7 w-12 shrink-0 rounded-[14px] border border-line bg-card-subtle transition;
+  }
+  .tgl::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--muted);
+    transition: left 0.15s;
+  }
+  input:checked + .tgl,
+  .tgl.on {
+    border-color: var(--accent-strong);
+    background: var(--accent);
+  }
+  input:checked + .tgl::after,
+  .tgl.on::after {
+    left: 23px;
+    background: var(--accent-fg);
+  }
+  input:focus-visible + .tgl {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  input:disabled + .tgl {
+    opacity: 0.5;
+  }
 
   /* A chip (filters, Settings tabs) and a segmented control (Expense/Income/Transfer, Plan tabs, Cycle/Month). The chosen
      one is solid gold with dark text and a deep-gold edge (bright gold alone is 1.8:1 on paper): selection is never
      colour alone, it is also the heavier weight and the filled pill. Both
      work as links (aria-current), buttons (aria-selected) or the .on class. */
   .chip {
-    @apply inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] border-line bg-card px-3.5 py-[7px] text-xs font-bold text-muted transition hover:text-foreground;
+    @apply inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-card px-3.5 py-[7px] text-xs font-bold text-muted transition hover:text-foreground;
   }
   .chip.on,
   .chip[aria-current="page"],
@@ -321,7 +436,7 @@ html.swipe-tabs body {
     @apply border-accent-strong bg-accent font-extrabold text-accent-fg hover:text-accent-fg;
   }
   .seg {
-    @apply flex gap-1 rounded-full border-[1.5px] border-line bg-card p-[3px];
+    @apply flex gap-0.5 rounded-full border border-line bg-card p-1;
   }
   .seg-item {
     @apply flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-full px-2.5 py-[7px] text-center text-xs font-bold text-muted transition hover:text-foreground;
@@ -336,59 +451,54 @@ html.swipe-tabs body {
 
   /* A page's <h1>: the title above the page, on phones too (the v2 phone has no app bar). */
   .h-page {
-    @apply font-display text-[26px] font-semibold leading-[1.05] tracking-[-0.02em] md:text-[30px];
+    @apply font-display text-[22px] font-semibold leading-[1.1] tracking-[-0.02em] md:text-[30px];
   }
 
-  /* Banners: an icon-led message in one of four tones. */
+  /* Banners: an icon-led message in one of four tones, as the design draws them: a 14% tint of the tone over the card, a
+     1px border in a 40% tint, INK text (never the tone colour, so every tone reads at full contrast) with an optional
+     bold lead-in (<b>), and only the 18 px icon (a direct svg child) in the tone. */
   .banner {
-    @apply flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-bold;
+    @apply flex items-start gap-2.5 rounded-2xl border px-3 py-2.5 text-[13px] font-semibold leading-snug text-foreground;
+    background: color-mix(in srgb, var(--t) 14%, var(--card));
+    border-color: color-mix(in srgb, var(--t) 40%, var(--card));
+  }
+  .banner > svg {
+    @apply mt-px size-[18px] shrink-0;
+    color: var(--t);
+  }
+  .banner b,
+  .banner strong {
+    @apply font-extrabold;
   }
   .banner-warn {
-    @apply bg-warn-soft text-warn;
+    --t: var(--warn);
   }
   .banner-danger {
-    @apply bg-danger-soft text-danger;
+    --t: var(--danger);
   }
   .banner-good {
-    @apply bg-good-soft text-good;
+    --t: var(--good);
   }
   .banner-info {
-    @apply bg-info-soft text-info;
+    --t: var(--info);
   }
 
-  /* The big card at the top of a page: the coin rim. A card with a gold edge and a second hairline ring just outside it;
-     danger instead of gold when it is bad news (negative left-to-spend). The pale circle is decoration: its children
-     sit above it. The key figure and the bar are styled below, outside the layers (see "Hero figure"). */
+  /* The big card at the top of a page: the coin rim. The design draws a 1px gold outer ring, a 4 px gap and an inner card
+     with a 1px hairline: the card's own border is the hairline, a 1px outline 4 px outside it is the gold ring. Danger
+     instead of gold when it is bad news (negative left-to-spend). No decoration. The key figure and the bar are styled
+     below, outside the layers (see "Hero figure"). */
   .hero,
   .hero-danger {
-    @apply relative overflow-hidden rounded-3xl border-[1.5px] p-5;
+    @apply relative rounded-[20px] border border-line p-4 md:p-5;
     outline: 1px solid var(--hero-rim);
-    outline-offset: 3px;
+    outline-offset: 4px;
   }
   .hero {
     @apply bg-hero-bg text-hero-fg;
-    border-color: var(--hero-rim);
   }
   .hero-danger {
     @apply bg-hero-danger-bg text-hero-danger-fg;
-    border-color: var(--hero-danger-rim);
     outline-color: var(--hero-danger-rim);
-  }
-  .hero::before,
-  .hero-danger::before {
-    content: "";
-    position: absolute;
-    top: -40px;
-    right: -40px;
-    width: 150px;
-    height: 150px;
-    border-radius: 999px;
-    background: var(--hero-circle);
-    pointer-events: none;
-  }
-  .hero > *,
-  .hero-danger > * {
-    position: relative;
   }
 }
 
@@ -603,5 +713,41 @@ body[data-navigating] [data-dim-on-pending] {
   /* Tailwind 4 scales with the "scale" property, so only that is switched off (a transform would also undo centring). */
   *:active {
     scale: none !important;
+  }
+}
+
+/* The Activity list sits on a sheet of warm paper in BOTH themes (the design draws it so in Dark): inside it the colour
+   tokens take their Light values, so every token-coloured thing in the sheet (text, rows, amounts, the cents) stays
+   readable on paper. In Light it needs no rule. Written twice like the dark theme itself (forced and system). */
+:root[data-theme="dark"] .paper-sheet {
+  --background: #f7f1e1;
+  --foreground: #12241f;
+  --card: #fffaf0;
+  --card-subtle: #efe7d2;
+  --muted: #4f5d57;
+  --ink-muted: #56625b;
+  --line: #ddd3ba;
+  --accent-strong: #7a5810;
+  --good: #1d6b45;
+  --good-soft: #dcefe2;
+  --warn: #8a5a06;
+  --danger: #a8322a;
+  --danger-soft: #f8e1dc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .paper-sheet {
+    --background: #f7f1e1;
+    --foreground: #12241f;
+    --card: #fffaf0;
+    --card-subtle: #efe7d2;
+    --muted: #4f5d57;
+    --ink-muted: #56625b;
+    --line: #ddd3ba;
+    --accent-strong: #7a5810;
+    --good: #1d6b45;
+    --good-soft: #dcefe2;
+    --warn: #8a5a06;
+    --danger: #a8322a;
+    --danger-soft: #f8e1dc;
   }
 }

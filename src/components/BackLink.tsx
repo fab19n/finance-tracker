@@ -44,7 +44,7 @@ export function BackLink({ href, label }: { href: string; label: string }) {
           sessionStorage.setItem(BACK_MARK_KEY, String(Date.now()));
         } catch {}
       }}
-      className="grid size-11 shrink-0 place-items-center rounded-full bg-card text-foreground transition hover:bg-card-subtle">
+      className="grid size-11 shrink-0 place-items-center rounded-full bg-card-subtle text-foreground transition hover:bg-line">
       <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
     </Link>
   );

@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  budgetAmounts,
   budgetLabel,
+  budgetNote,
+  daysLeftText,
   heroSizeClass,
   kpiSizeClass,
+  leftToSpendCaption,
   meterAria,
+  overBudgetBanner,
   periodName,
   periodSubtitle,
   praiseWants,
-  ringPill,
   shareLabel,
 } from "@/lib/analytics/dashboard-text";
 import { detectLeaks, headlineSavings, slugId, type LeakInput } from "@/lib/analytics/leakage";
@@ -45,11 +49,33 @@ describe("row names carry the figures", () => {
   it("category and account", () => {
     expect(plain(shareLabel("Eating Out", 44_000, 0.131))).toMatch(/^Eating Out: RM 440\.00 spent, 13(\.\d)?%\. See its entries$/);
   });
-  it("the phone ring says the same as the list", () => {
-    expect(plain(ringPill({ ...b, status: "watch" }))).toBe("On pace for RM 480");
-    expect(plain(ringPill({ ...b, status: "over", spent: 60_000 }))).toBe("Over by RM 100");
-    expect(ringPill({ ...b, settled: true })).toBe("Bills paid");
-    expect(ringPill(b)).toBe("On track");
+  it("a budget row says what is spent of the limit, and only adds a note when there is a fact", () => {
+    expect(plain(budgetAmounts(64_000, 70_000))).toBe("RM 640 of 700");
+    expect(budgetNote(b)).toBeNull();
+    expect(plain(budgetNote({ ...b, status: "watch" })!)).toBe("On pace to reach RM 480.00");
+    expect(plain(budgetNote({ ...b, status: "over", spent: 60_000 })!)).toBe("Over budget by RM 100.00");
+    expect(budgetNote({ ...b, settled: true })).toBe("Bills paid: nothing more due");
+    expect(plain(budgetNote({ ...b, billsDue: 5_000 })!)).toBe("On track · RM 50.00 in bills still due");
+  });
+
+});
+
+describe("left to spend wording", () => {
+  it("counts days to payday, and says when payday is due", () => {
+    expect(daysLeftText(12, "payday")).toBe("12 days to payday");
+    expect(daysLeftText(1, "payday")).toBe("1 day to payday");
+    expect(daysLeftText(5, "payday", true)).toBe("Payday due");
+    expect(daysLeftText(3, "month")).toBe("3 days left this month");
+  });
+  it("gives a daily figure, or says nothing is left", () => {
+    expect(plain(leftToSpendCaption(124_000, 10_333, 12))).toBe("RM 103.33 a day for the next 12 days");
+    expect(leftToSpendCaption(-34_000, null, 4)).toBe("Nothing left for the next 4 days");
+    expect(leftToSpendCaption(-100, -25, 1)).toBe("Nothing left for the next 1 day");
+    expect(leftToSpendCaption(5_000, null, 0, true)).toBe("after the bills still to pay");
+  });
+  it("names the worst over-budget category in a sentence", () => {
+    expect(plain(overBudgetBanner({ name: "Eating Out", spent: 58_000, budget: 50_000 }, 4))).toBe("Eating Out is RM 80.00 over its budget with 4 days to payday.");
+    expect(plain(overBudgetBanner({ name: "Eating Out", spent: 58_000, budget: 50_000 }, null, true))).toBe("Eating Out is RM 80.00 over its budget and payday is due.");
   });
 });
 
@@ -69,11 +95,11 @@ describe("wording", () => {
     expect(praiseWants(false, 30, 30)).toBe(true);
   });
   it("steps a long figure down so it fits", () => {
-    expect(kpiSizeClass("RM 1,234")).toContain("text-base");
-    expect(kpiSizeClass("RM 123,456")).toContain("text-sm");
-    expect(kpiSizeClass("RM 1,234,567")).toContain("text-xs");
-    expect(heroSizeClass("RM 1,234")).toContain("54px");
-    expect(heroSizeClass("RM 1,234,567")).toContain("34px");
+    expect(kpiSizeClass("RM 1,234")).toContain("17px");
+    expect(kpiSizeClass("RM 123,456")).toContain("15px");
+    expect(kpiSizeClass("RM 1,234,567")).toContain("13px");
+    expect(heroSizeClass("RM 1,234")).toContain("38px");
+    expect(heroSizeClass("RM 1,234,567")).toContain("26px");
   });
 });
 

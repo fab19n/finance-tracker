@@ -14,7 +14,8 @@ export default async function CardSettingsPage({ params, searchParams }: { param
   if (!account) notFound();
   return (
     <div className="max-w-2xl space-y-4">
-      <PageHeader title="Card settings" subtitle={account.name} back={{ href: `/accounts/${id}`, label: `Back to ${account.name}` }} />
+      {/* Back disc and title only, as the board draws it; the back link's label names the account. */}
+      <PageHeader title="Card settings" back={{ href: `/accounts/${id}`, label: `Back to ${account.name}` }} />
       {error && (
         <p role="alert" className="banner banner-danger">
           {error}

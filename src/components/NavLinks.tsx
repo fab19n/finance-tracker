@@ -85,11 +85,11 @@ function SideLink({ href, active, icon, pathname, children }: { href: string; ac
     <Link
       href={href}
       aria-current={current(href, pathname, active)}
-      className={`flex items-center gap-2.5 rounded-full px-3.5 py-[11px] text-[13px] font-extrabold transition ${
-        active ? "bg-accent text-accent-fg" : "text-muted hover:bg-card-subtle hover:text-foreground"
+      className={`flex min-h-11 items-center gap-3 rounded-full px-3.5 text-sm transition ${
+        active ? "bg-accent font-extrabold text-accent-fg" : "font-bold text-nav-fg hover:bg-nav-strong/10 hover:text-nav-strong"
       }`}
     >
-      <DuoIcon name={icon} size={18} aria-hidden />
+      <DuoIcon name={icon} size={22} aria-hidden />
       {children}
     </Link>
   );
@@ -103,9 +103,9 @@ export function SidebarNavView({ pathname }: { pathname: string }) {
       <Link
         href="/"
         aria-current={lit === "/" ? "page" : undefined}
-        className={`btn-primary mb-2 w-full ${lit === "/" ? "outline-2 outline-offset-2 outline-accent-strong" : ""}`}
+        className={`btn-primary mb-2 min-h-[50px] w-full !text-sm !font-extrabold ${lit === "/" ? "outline-2 outline-offset-2 outline-nav-focus" : ""}`}
       >
-        <Plus size={18} strokeWidth={2.6} aria-hidden />
+        <Plus size={22} strokeWidth={2.6} aria-hidden />
         Add entry
       </Link>
       {[...LEFT, ...RIGHT].map(({ href, label, icon }) => (
@@ -117,17 +117,18 @@ export function SidebarNavView({ pathname }: { pathname: string }) {
   );
 }
 
-/** Settings is pinned at the bottom of the sidebar, below the sync chip: plain text, accent when it is the current page. */
+/**
+ * Settings is pinned at the bottom of the sidebar, below the sync chip and a hairline: a 44 px row with its icon, the same
+ * gold pill as the other links when it is the current page (so the current page is never shown by colour alone).
+ */
 export function SidebarSettingsView({ pathname }: { pathname: string }) {
   const active = isActive(pathname, "/settings");
   return (
-    <Link
-      href="/settings"
-      aria-current={active ? "page" : undefined}
-      className={`rounded-full px-3.5 py-[11px] text-[13px] font-bold transition ${active ? "text-accent-strong" : "text-muted hover:text-foreground"}`}
-    >
-      Settings
-    </Link>
+    <div className="mt-1 border-t border-nav-fg/25 pt-2">
+      <SideLink href="/settings" active={active} icon="settings" pathname={pathname}>
+        Settings
+      </SideLink>
+    </div>
   );
 }
 

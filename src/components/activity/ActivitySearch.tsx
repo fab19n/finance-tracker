@@ -64,7 +64,7 @@ export function ActivitySearch({ q, others }: { q: string; others: Record<string
         aria-label="Search entries"
         aria-busy={pending}
         autoComplete="off"
-        className="input !rounded-full !bg-card !pl-10"
+        className="input !min-h-11 !rounded-full !bg-card !pl-10 !font-medium"
       />
     </form>
   );

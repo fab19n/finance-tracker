@@ -117,6 +117,35 @@ describe("design tokens", () => {
     });
   }
 
+  // The status tags and banners tint a tone over the card with color-mix (a 16% tint for a tag, 14% for a banner). Mix it the
+  // same way (sRGB, tone weight p) and hold the text on it: a tag's text is the tone itself (4.5:1), a banner's text is the
+  // ink (4.5:1) and its icon the tone (3:1, non-text).
+  const mix = (tone: string, over: string, p: number) =>
+    "#" +
+    [1, 3, 5]
+      .map((i) => Math.round(parseInt(tone.slice(i, i + 2), 16) * p + parseInt(over.slice(i, i + 2), 16) * (1 - p)))
+      .map((v) => v.toString(16).padStart(2, "0"))
+      .join("");
+  for (const [themeName, theme] of [
+    ["Light", light],
+    ["Dark", dark],
+  ] as const) {
+    it(`${themeName}: tags and banners (a tone tinted over the card) stay readable`, () => {
+      const failures: string[] = [];
+      const card = colour(theme, "--card");
+      for (const tone of ["--good", "--warn", "--danger", "--info"]) {
+        const t = colour(theme, tone);
+        const tag = contrast(t, mix(t, card, 0.16));
+        if (tag < 4.5) failures.push(`${tone} tag text: ${tag.toFixed(2)}:1`);
+        const ink = contrast(colour(theme, "--foreground"), mix(t, card, 0.14));
+        if (ink < 4.5) failures.push(`ink on ${tone} banner: ${ink.toFixed(2)}:1`);
+        const icon = contrast(t, mix(t, card, 0.14));
+        if (icon < 3) failures.push(`${tone} banner icon: ${icon.toFixed(2)}:1`);
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+
   it("keeps the logo's orange the same in both themes", () => {
     expect(light.get("--brand")).toBe("#ff8f39");
     expect(dark.get("--brand")).toBe("#ff8f39");

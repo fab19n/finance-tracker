@@ -1,6 +1,9 @@
 import { ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { deleteTransaction } from "@/app/actions/transactions";
+import { DuoIcon } from "@/components/DuoIcon";
+import { categoryIconName } from "@/components/entry/entry-logic";
+import { bareRM } from "@/components/activity/filter-logic";
 import type { TxRow } from "@/lib/queries/transactions";
 import { shortDate } from "@/lib/dates";
 import { initials } from "@/lib/initials";
@@ -10,10 +13,12 @@ import { transferView } from "@/lib/transfer-view";
 import { DeleteButton } from "./DeleteButton";
 
 /**
- * One entry, as a row on a card. The initials tile is tinted with the category's own colour (user data); the letters stay
- * the normal text colour, so they are readable on any colour. Tapping the row opens the entry (that is the one way to edit:
- * a second pencil link to the same place only doubled the tab stops); Delete is a plain visible 44 px button whose label
- * names the entry, so a screen reader hears WHICH one.
+ * One entry, as a flat row of the day's list (the design's row: a 40 px round disc, the title over "Category · Account", the
+ * signed amount; a 1px divider between rows, at least 56 px tall). The disc holds the category's dual-tone icon (the same
+ * mapping as the Add screen) tinted with the category's own colour (user data); a category no icon fits shows its initials
+ * (never a wrong picture), the letters in the normal text colour. Tapping the row opens the entry (that is the one way to
+ * edit); Delete is a plain visible 44 px button whose label names the entry, so a screen reader hears WHICH one. The amount
+ * has no "RM": the list says "amounts in RM" once (a screen reader still hears it).
  */
 export function TransactionRow({ tx, showDate = false, viewing = null, backHref }: { tx: TxRow; showDate?: boolean; viewing?: number | null; /** The list this row is on: the entry's page returns there after Save, Delete and Back. */ backHref?: string }) {
   const entryHref = backHref ? withBack(`/transactions/${tx.id}`, backHref) : `/transactions/${tx.id}`;
@@ -28,24 +33,28 @@ export function TransactionRow({ tx, showDate = false, viewing = null, backHref 
     : [when, tx.item ? tx.categoryName : null, tx.accountName].filter(Boolean).join(" · ");
   const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : transfer.sign === "-" ? "−" : transfer.sign;
   const color = tx.type === "income" ? "text-good" : isTransfer ? "text-muted" : "";
+  const icon = !isTransfer && tx.categoryName ? categoryIconName(tx.categoryName) : null;
 
   return (
-    <li className="flex items-center gap-0.5 rounded-2xl bg-card py-0.5 pl-1.5 pr-1">
-      <Link href={entryHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-2">
-        <span
-          className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card-subtle text-xs font-black"
-          style={tx.categoryColor && !isTransfer ? { backgroundColor: `${tx.categoryColor}26` } : undefined}
-          aria-hidden
-        >
-          {isTransfer ? <ArrowRightLeft size={16} className="text-muted" /> : initials(tx.categoryName)}
+    <li className="flex min-h-14 items-center gap-0.5 border-t border-line first:border-t-0">
+      <Link href={entryHref} className="flex min-h-14 min-w-0 flex-1 items-center gap-2.5 rounded-xl py-2">
+        <span className="disc" style={tx.categoryColor && !isTransfer ? { backgroundColor: `${tx.categoryColor}26` } : undefined} aria-hidden>
+          {isTransfer ? (
+            <ArrowRightLeft size={18} className="text-muted" />
+          ) : icon ? (
+            <DuoIcon name={icon} size={20} aria-hidden />
+          ) : (
+            <span className="text-xs font-extrabold">{initials(tx.categoryName)}</span>
+          )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-extrabold">{title}</p>
-          <p className="truncate text-[11px] font-bold text-muted">{subtitle}</p>
+          <p className="truncate text-[13.5px] font-bold">{title}</p>
+          <p className="truncate text-[11.5px] font-medium text-muted">{subtitle}</p>
         </div>
-        <p className={`num shrink-0 text-[13px] font-black ${color}`}>
+        <p className={`num shrink-0 text-[13px] font-bold ${color}`}>
           {sign}
-          {formatRM(tx.amount)}
+          <span className="sr-only">RM </span>
+          {bareRM(formatRM(tx.amount))}
         </p>
       </Link>
       <form action={deleteTransaction} className="shrink-0">

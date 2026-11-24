@@ -21,12 +21,13 @@ export function flowBarMode(o: { narrowed: boolean; income: number; spent: numbe
  * Income against spending as one pill: the filled part is the share of the income that went out. Past 100% the pill is
  * full and turns danger. Pure presentation; both sides are in the text too (colour is never the only signal).
  */
-export function FlowBar({ income, spent, expectedIncome, narrowed }: { income: number; spent: number; expectedIncome: number; narrowed: boolean }) {
+export function FlowBar({ income, spent, expectedIncome, narrowed, flat = false }: { income: number; spent: number; expectedIncome: number; narrowed: boolean; /** Inside the list sheet: a raised block, not a card of its own. */ flat?: boolean }) {
   const mode = flowBarMode({ narrowed, income, spent, expectedIncome });
   if (mode === "hidden") return null;
+  const frame = flat ? "rounded-2xl bg-card-subtle px-3 py-2.5" : "card";
   if (mode === "no-pay") {
     return (
-      <section className="card" aria-label="Income against spending">
+      <section className={frame} aria-label="Income against spending">
         <p className="text-sm font-extrabold">
           <span className="num">{formatRM(spent)}</span> spent, no pay recorded in this period
         </p>
@@ -36,12 +37,12 @@ export function FlowBar({ income, spent, expectedIncome, narrowed }: { income: n
   const over = spent > income;
   const pct = Math.min(100, Math.round((spent / income) * 100));
   return (
-    <section className="card" aria-label="Income against spending">
+    <section className={frame} aria-label="Income against spending">
       <div className="flex items-baseline justify-between gap-3">
         <p className="label">Spent against income</p>
         <p className={`text-xs font-extrabold ${over ? "text-danger" : "text-muted"}`}>{Math.round((spent / income) * 100)}% used</p>
       </div>
-      <div className="mt-2 h-3 overflow-hidden rounded-full bg-card-subtle" role="img" aria-label={`${formatRMWhole(spent)} spent of ${formatRMWhole(income)} income`}>
+      <div className="mt-2 h-3 overflow-hidden rounded-full bg-background" role="img" aria-label={`${formatRMWhole(spent)} spent of ${formatRMWhole(income)} income`}>
         <div className={`h-3 rounded-full ${over ? "bg-danger" : "bg-accent-strong"}`} style={{ width: `${pct}%` }} />
       </div>
       <div className="num mt-2 flex justify-between text-xs font-extrabold">

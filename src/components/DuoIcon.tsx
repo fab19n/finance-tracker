@@ -157,6 +157,80 @@ const SHAPES = {
       <path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H19v13.5H6.5A1.5 1.5 0 0 0 5 19zM5 19a1.5 1.5 0 0 0 1.5 1.5H19v-3" />
     </>
   ),
+  // Interface symbols the shared shapes need (banners, buttons, headers, empty and error states).
+  search: (
+    <>
+      <circle className="duo-fill" cx="10.5" cy="10.5" r="6.5" />
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m15.5 15.5 4.5 4.5" />
+    </>
+  ),
+  filter: (
+    <>
+      <path className="duo-fill" d="M4 5.5h16L14 13v5.5l-4 1.5v-7z" />
+      <path d="M4 5.5h16L14 13v5.5l-4 1.5v-7z" />
+    </>
+  ),
+  shield: (
+    <>
+      <path className="duo-fill" d="M12 3.5 5 6v5.5c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6z" />
+      <path d="M12 3.5 5 6v5.5c0 4.2 2.8 7.4 7 9 4.2-1.6 7-4.8 7-9V6zM9 12l2.2 2.2L15.2 10" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect className="duo-fill" x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+      <path d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5M7.5 10.5h9M5 13a2.5 2.5 0 0 1 2.5-2.5h9A2.5 2.5 0 0 1 19 13v4.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 17.5z" />
+    </>
+  ),
+  check: (
+    <>
+      <circle className="duo-fill" cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.5 12.3 2.3 2.3 4.7-5" />
+    </>
+  ),
+  alert: (
+    <>
+      <path className="duo-fill" d="M12 4 3.8 18.5a1 1 0 0 0 .9 1.5h14.6a1 1 0 0 0 .9-1.5z" />
+      <path d="M12 4 3.8 18.5a1 1 0 0 0 .9 1.5h14.6a1 1 0 0 0 .9-1.5zM12 10v4M12 17h.01" />
+    </>
+  ),
+  info: (
+    <>
+      <circle className="duo-fill" cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5M12 8h.01" />
+    </>
+  ),
+  refresh: (
+    <>
+      <circle className="duo-fill" cx="12" cy="12" r="7" />
+      <path d="M19 12a7 7 0 0 1-12 4.9M5 12a7 7 0 0 1 12-4.9M17 4v3.5h-3.5M7 20v-3.5h3.5" />
+    </>
+  ),
+  trash: (
+    <>
+      <path className="duo-fill" d="M6 8h12l-.9 10.2a2 2 0 0 1-2 1.8H8.9a2 2 0 0 1-2-1.8z" />
+      <path d="M4 7.5h16M9.5 7.5V5.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2M6 8l.9 10.2a2 2 0 0 0 2 1.8h6.2a2 2 0 0 0 2-1.8L18 8M10 11.5v5M14 11.5v5" />
+    </>
+  ),
+  cloudoff: (
+    <>
+      <path className="duo-fill" d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.5 9.5a4.5 4.5 0 0 1 .5 9z" />
+      <path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.5 9.5a4.5 4.5 0 0 1 .5 9zM4 4l16 16" />
+    </>
+  ),
+  plus: (
+    <>
+      <circle className="duo-fill" cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5v9M7.5 12h9" />
+    </>
+  ),
+  arrow: <path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5" />,
+  "chevron-right": <path d="m9.5 5.5 6.5 6.5-6.5 6.5" />,
+  "chevron-left": <path d="m14.5 5.5-6.5 6.5 6.5 6.5" />,
+  "chevron-down": <path d="m5.5 9.5 6.5 6.5 6.5-6.5" />,
 } satisfies Record<string, ReactNode>;
 
 export type DuoName = keyof typeof SHAPES;

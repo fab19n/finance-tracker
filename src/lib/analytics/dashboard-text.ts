@@ -1,4 +1,4 @@
-import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
+import { formatPct, formatRM, formatRMWhole, formatRMWholeBare } from "@/lib/money";
 import { shortMonthLabel } from "@/lib/dates";
 import type { BudgetRow } from "./summary";
 
@@ -37,26 +37,54 @@ export function shareLabel(name: string, total: number, share: number): string {
   return `${name}: ${formatRM(total)} spent, ${formatPct(share)}. See its entries`;
 }
 
-/** The pill under a phone budget ring: same facts as the list from md up, shorter. */
-export function ringPill(b: Pick<BudgetRow, "status" | "settled" | "spent" | "budget" | "projected">): string {
-  if (b.status === "over") return `Over by ${formatRMWhole(b.spent - b.budget)}`;
-  if (b.settled) return "Bills paid";
-  if (b.status === "watch") return `On pace for ${formatRMWhole(b.projected)}`;
-  return "On track";
+/** "RM 640 of 700": what was spent against the limit, the way the design writes a budget row. */
+export function budgetAmounts(spent: number, budget: number): string {
+  return `${formatRMWhole(spent)} of ${formatRMWholeBare(budget)}`;
 }
 
-/** Font size classes for a big figure: a long amount steps down so it never clips (375 px phones, three tiles to a row). */
+/**
+ * The one extra fact a budget row can carry under its bar (nothing when all is simply well): over by how much, the pace it
+ * is on, bills still due, or that the bills are paid. Null means no pill.
+ */
+export function budgetNote(b: Pick<BudgetRow, "status" | "settled" | "spent" | "budget" | "projected" | "billsDue">): string | null {
+  if (b.status === "over") return `Over budget by ${formatRM(b.spent - b.budget)}`;
+  if (b.settled) return "Bills paid: nothing more due";
+  if (b.status === "watch") return `On pace to reach ${formatRM(b.projected)}`;
+  if (b.billsDue > 0) return `On track · ${formatRM(b.billsDue)} in bills still due`;
+  return null;
+}
+
+/** "12 days to payday" / "Payday due" (the expected day has come and no salary is recorded) / "3 days left this month". */
+export function daysLeftText(days: number, mode: "payday" | "month", overdue = false): string {
+  if (overdue) return "Payday due";
+  return `${days} ${days === 1 ? "day" : "days"} ${mode === "payday" ? "to payday" : "left this month"}`;
+}
+
+/** The caption under the Left to spend figure: a daily allowance, or the plain fact that nothing is left. */
+export function leftToSpendCaption(safe: number, perDay: number | null, days: number, overdue = false): string {
+  if (safe < 0) return overdue ? "Nothing left until payday" : `Nothing left for the next ${days} ${days === 1 ? "day" : "days"}`;
+  if (overdue || perDay === null || days <= 0) return "after the bills still to pay";
+  return `${formatRM(perDay)} a day for the next ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** The warning between the hero and the controls: the budget that is furthest over, and how long until payday. */
+export function overBudgetBanner(b: Pick<BudgetRow, "name" | "spent" | "budget">, daysLeft: number | null, overdue = false): string {
+  const tail = overdue ? " and payday is due" : daysLeft === null ? "" : ` with ${daysLeft} ${daysLeft === 1 ? "day" : "days"} to payday`;
+  return `${b.name} is ${formatRM(b.spent - b.budget)} over its budget${tail}.`;
+}
+
+/** Font size classes for a big figure: a long amount steps down so it never clips (375 px phones, two tiles to a row). */
 export function kpiSizeClass(value: string): string {
-  if (value.length > 11) return "text-xs md:text-lg";
-  if (value.length > 9) return "text-sm md:text-xl";
-  return "text-base md:text-2xl";
+  if (value.length > 11) return "text-[13px] md:text-lg";
+  if (value.length > 9) return "text-[15px] md:text-xl";
+  return "text-[17px] md:text-2xl";
 }
 
-/** The hero figure: 54 px on a phone while it fits, smaller as it grows. */
+/** The hero figure: 38 px on a phone (34 on desktop) while it fits, smaller as it grows. */
 export function heroSizeClass(value: string): string {
-  if (value.length > 11) return "text-[34px] md:text-[28px]";
-  if (value.length > 9) return "text-[42px] md:text-[34px]";
-  return "text-[54px] md:text-[44px]";
+  if (value.length > 11) return "text-[26px] md:text-[24px]";
+  if (value.length > 9) return "text-[32px] md:text-[28px]";
+  return "text-[38px] md:text-[34px]";
 }
 
 /** The ARIA numbers for a meter: the value is clamped to the scale, and the text says the real figure and the pace. */

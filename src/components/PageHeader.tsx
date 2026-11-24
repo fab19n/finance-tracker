@@ -1,4 +1,5 @@
 import { BackLink } from "@/components/BackLink";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { SyncChip } from "@/components/offline/SyncChip";
 
@@ -6,7 +7,8 @@ import { SyncChip } from "@/components/offline/SyncChip";
  * The top of a page: the title and a grey line under it on the left, optional actions on the right. The phone has no
  * app bar, so this is what says where you are. It also carries the sync chip on phones (the desktop sidebar has its own),
  * so "can't reach your PC" and "3 entries waiting" are never out of sight; the chip renders nothing when all is well.
- * The title is the page's one <h1>.
+ * The title is the page's one <h1>. `actions` is the right-hand slot: the design puts one or two round 44 px icon buttons there
+ * (see HeaderIconLink), but any buttons fit.
  *
  * `back` puts a round back link before the title: pages reached from the More menu (Plan, Insights, Invest, Settings)
  * return to where you came from (More when nothing else is remembered; see BackLink), since they no longer have a tab of
@@ -14,7 +16,7 @@ import { SyncChip } from "@/components/offline/SyncChip";
  */
 export function PageHeader({ title, subtitle, actions, back }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {back && <BackLink href={back.href} label={back.label} />}
         <div className="min-w-0 flex-1">
@@ -32,3 +34,12 @@ export function PageHeader({ title, subtitle, actions, back }: { title: ReactNod
 
 /** The back link every page behind the More menu carries. */
 export const BACK_TO_MORE = { href: "/more", label: "Back to More" } as const;
+
+/** A round 44 px icon link for the header's right-hand slot (search, filter, notifications): the raised colour, named for screen readers. */
+export function HeaderIconLink({ href, label, children }: { href: string; label: string; children: ReactNode }) {
+  return (
+    <Link href={href} aria-label={label} title={label} className="ib">
+      {children}
+    </Link>
+  );
+}

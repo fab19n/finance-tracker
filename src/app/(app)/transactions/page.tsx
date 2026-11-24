@@ -1,4 +1,4 @@
-import { Download, Plus, X } from "lucide-react";
+import { Download, Plus, Search, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -6,6 +6,7 @@ import { AccountChips } from "@/components/AccountChips";
 import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ActivitySearch } from "@/components/activity/ActivitySearch";
 import { FilterSheet } from "@/components/activity/FilterSheet";
+import { appliedCount, bareRM, typeText } from "@/components/activity/filter-logic";
 import { MonthNav } from "@/components/MonthNav";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,7 +14,7 @@ import { PendingMark } from "@/components/PendingMark";
 import { TransactionRow } from "@/components/TransactionRow";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
-import { formatRM, formatRMWhole, parseSen } from "@/lib/money";
+import { formatRM, formatRMWholeBare, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { datePresets, parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
 import { FlowBar } from "@/components/FlowBar";
@@ -29,22 +30,19 @@ const PAGE_SIZE = 100;
 /** A removable filter pill: a 44 px target, with a visible x and a spoken "Remove". */
 const PILL = "pill min-h-11 bg-accent-soft px-3.5 text-accent-strong";
 
-const TYPES = [
-  ["", "All"],
-  ["expense", "Expense"],
-  ["income", "Income"],
-  ["transfer", "Transfer"],
-] as const;
-
 /** Drop empty values so the rest can be written into hidden form fields or a query string. */
 const present = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== ""));
 
-/** A figure tile (label over a whole-ringgit value in the display face). */
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "good" | "danger" }) {
+/**
+ * A totals tile on the list sheet (the design's `.tots`): a small upper-case label over the figure in the display face, on
+ * the raised colour. Whole ringgit with no "RM" (the caption under the tiles says "amounts in RM" once). `gold` is the Net
+ * tile, solid gold with dark text; its figure keeps its + or − sign, so the direction is never the colour alone.
+ */
+function Tile({ label, value, tone, gold = false }: { label: string; value: string; tone?: "good"; gold?: boolean }) {
   return (
-    <div className="min-w-0 rounded-[20px] bg-card px-3 py-4 md:p-[22px]">
-      <p className="text-xs font-extrabold text-muted">{label}</p>
-      <p className={`num figure mt-1 text-[17px] leading-tight tracking-[-0.02em] md:text-[26px] ${tone === "good" ? "text-good" : tone === "danger" ? "text-danger" : ""}`}>{value}</p>
+    <div className={`min-w-0 rounded-2xl px-2.5 py-2 ${gold ? "bg-accent text-accent-fg" : "bg-card-subtle"}`}>
+      <p className={`whitespace-nowrap text-[10.5px] font-extrabold uppercase tracking-[0.06em] ${gold ? "" : "text-muted"}`}>{label}</p>
+      <p className={`num figure mt-0.5 whitespace-nowrap text-[19px] font-semibold leading-tight tracking-[-0.02em] ${tone === "good" ? "text-good" : ""}`}>{value}</p>
     </div>
   );
 }
@@ -118,15 +116,16 @@ export default async function TransactionsPage({
   // This list as it is on screen (filters and page), so an entry opened from it can come back here.
   const listHref = `/transactions${qs({ ...base, page: view.page > 1 ? view.page : undefined })}`;
   // Settings the Filter sheet edits itself; "Clear" in it removes exactly these.
-  const sheetKeys = { category: undefined, from: undefined, to: undefined, min: undefined, max: undefined, sort: undefined, page: undefined };
+  const sheetKeys = { type: undefined, category: undefined, from: undefined, to: undefined, min: undefined, max: undefined, sort: undefined, page: undefined };
   const amount = amountText(view.raw.min, view.raw.max);
   const sortText = SORT_TEXT[view.raw.sort] ?? null;
   const byAmount = view.raw.sort === "largest" || view.raw.sort === "smallest";
-  const applied = (view.raw.category ? 1 : 0) + (range ? 1 : 0) + (amount ? 1 : 0) + (sortText ? 1 : 0);
-  const presets = datePresets(today).map((p) => ({ label: p.label, href: `/transactions${qs({ ...base, month: "all", from: p.from, to: p.to, page: undefined })}` }));
+  const { q, category, account, type } = view.raw;
+  const typeName = typeText(type);
+  const applied = appliedCount({ type: Boolean(type), category: Boolean(category), range: Boolean(range), amount: Boolean(amount), sort: Boolean(sortText) });
+  const presets = datePresets(today);
   // A date range from a link (the Dashboard's pay cycle) replaces the month navigator; otherwise a month, or all time.
   const monthNav = view.month !== "all" && !range;
-  const { q, category, account, type } = view.raw;
   const categoryChoice = categories.find((c) => String(c.id) === category);
   const accountChoice = accounts.find((a) => String(a.id) === account);
   const filtered = Boolean(category || account || q.trim() || amount || range || type);
@@ -149,20 +148,35 @@ export default async function TransactionsPage({
 
   // Nothing recorded anywhere (first run), as opposed to an empty month or a filter that matches nothing.
   const nothingAtAll = groups.length === 0 && !filtered ? (await sumTransactions({})).count === 0 : false;
+  const signed = (n: number) => `${n < 0 ? "−" : "+"}${formatRMWholeBare(Math.abs(n))}`;
+  const caption = [accountChoice?.name, periodText, `${totals.count} ${totals.count === 1 ? "entry" : "entries"}`, "amounts in RM"].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-3">
       <PageHeader
         title="Activity"
-        subtitle={`${accountChoice ? `${accountChoice.name} · ` : ""}${periodText} · ${totals.count} ${totals.count === 1 ? "entry" : "entries"}`}
         actions={
-          <Link href={`/transactions/export${qs(base)}`} className="btn" prefetch={false}>
-            <Download size={14} strokeWidth={2.5} aria-hidden />
-            <span className="md:hidden">CSV</span>
-            <span className="hidden md:inline">Export CSV</span>
+          <Link href={`/transactions/export${qs(base)}`} className="ib" prefetch={false} aria-label="Export CSV" title="Export CSV">
+            <Download size={18} strokeWidth={2} aria-hidden />
           </Link>
         }
       />
+
+      {/* Search and Filter in one row (the two ways to narrow the list): the search takes the room, Filter is a 100 px pill. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_100px] items-center gap-2 md:max-w-xl">
+        <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort })} />
+        <FilterSheet
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          values={{ type, category, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort }}
+          presets={presets}
+          others={present({ month: view.month, q: base.q, account })}
+          clearHref={qs({ ...base, ...sheetKeys })}
+          applied={applied}
+        />
+      </div>
+
+      {/* Which account: one tap. Each shows its balance now (always the real balance, whatever period is on screen). */}
+      <AccountChips label="Filter by account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={qs({ ...base, account: undefined, page: undefined })} />
 
       {monthNav ? (
         <MonthNav
@@ -177,49 +191,40 @@ export default async function TransactionsPage({
           }
           className="max-w-sm"
         />
+      ) : range ? (
+        // A date range (from the sheet or a pay-cycle link) is a gold chip you can remove: that brings the month back.
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip on">
+            {periodText} <X size={13} strokeWidth={3} aria-label="Remove date range, back to monthly" />
+            <PendingMark />
+          </Link>
+        </div>
       ) : (
-        <div className="max-w-sm rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-center">
-          <p className="text-xs font-extrabold">{periodText}</p>
-          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined })} className="inline-flex min-h-11 items-center text-[11px] font-extrabold text-accent-strong hover:underline">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="chip on" aria-current="true">
+            All time
+          </span>
+          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip">
             Back to monthly
+            <PendingMark />
           </Link>
         </div>
       )}
 
-      {/* Which account: one tap. Each shows its balance now (always the real balance, whatever period is on screen). */}
-      <AccountChips label="Filter by account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={qs({ ...base, account: undefined, page: undefined })} />
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        {/* Search and Filter side by side: they are the two ways to narrow the list, so they sit together. */}
-        <div className="flex items-center gap-2 md:w-[27rem] md:shrink-0">
-          <div className="min-w-0 flex-1">
-            <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort })} />
-          </div>
-          <FilterSheet
-            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-            values={{ category, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort }}
-            presets={presets}
-            others={present({ month: view.month, type, q: base.q, account })}
-            clearHref={qs({ ...base, ...sheetKeys })}
-            applied={applied}
-          />
-        </div>
-        <div className="no-scrollbar -mx-5 flex items-center gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Type">
-          {TYPES.map(([value, label]) => (
-            <Link key={label} href={qs({ ...base, type: value })} aria-current={type === value ? "true" : undefined} className="chip">
-              {label}
-              <PendingMark />
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {(q.trim() || categoryChoice || amount || sortText) && (
+      {(q.trim() || typeName || categoryChoice || amount || sortText) && (
         <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
           {q.trim() && (
             <li>
               <Link href={qs({ ...base, q: undefined })} className={PILL}>
                 Search: {q.trim()} <X size={12} aria-label="Remove" />
+                <PendingMark />
+              </Link>
+            </li>
+          )}
+          {typeName && (
+            <li>
+              <Link href={qs({ ...base, type: undefined, page: undefined })} className={PILL}>
+                {typeName} only <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
             </li>
@@ -251,41 +256,6 @@ export default async function TransactionsPage({
         </ul>
       )}
 
-      {/* Only transfers on screen: income and spending would all read zero, so say what moved instead. */}
-      {type === "transfer" ? (
-        flow ? (
-          <div className="grid grid-cols-3 gap-2.5">
-            <Tile label="Moved out" value={formatRMWhole(flow.out)} />
-            <Tile label="Moved in" value={formatRMWhole(flow.in)} tone="good" />
-            {/* Neutral on purpose: money moved between your own accounts is not a loss, whichever way it went. */}
-            <Tile label="Net moved" value={`${flow.in - flow.out < 0 ? "−" : "+"}${formatRMWhole(Math.abs(flow.in - flow.out))}`} />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1">
-            <Tile label="Moved between accounts" value={formatRMWhole(totals.transfer)} />
-          </div>
-        )
-      ) : (
-        <div className="grid grid-cols-3 gap-2.5">
-          <Tile label="Income" value={formatRMWhole(totals.income)} tone="good" />
-          <Tile label="Spent" value={formatRMWhole(totals.expense)} />
-          <Tile label="Net" value={`${net < 0 ? "−" : "+"}${formatRMWhole(Math.abs(net))}`} tone={net < 0 ? "danger" : "good"} />
-        </div>
-      )}
-      {type !== "transfer" && (
-        <FlowBar
-          income={totals.income}
-          spent={totals.expense}
-          expectedIncome={settings.expectedIncome}
-          narrowed={Boolean(account || category || q.trim() || amount || type)}
-        />
-      )}
-      {accountChoice && flow && type !== "transfer" && (
-        <p className="sub px-1">
-          Transfers in this period: {formatRM(flow.out)} out, {formatRM(flow.in)} in. Income and spending above leave them out; a transfer shows on this account with a − (out) or + (in).
-        </p>
-      )}
-
       {accountChoice && history && (
         <BalanceHistory
           name={accountChoice.name}
@@ -293,7 +263,6 @@ export default async function TransactionsPage({
           period={periodText}
           statementHref={`/transactions/export${qs({ ...base, format: "statement" })}`}
           note={narrowed ? "This is the whole account's balance, not only the entries listed below." : undefined}
-          collapsible
         />
       )}
 
@@ -305,40 +274,91 @@ export default async function TransactionsPage({
           primary={{ label: "Add your first entry", href: "/" }}
           secondary={{ label: "Import a statement", href: "/import" }}
         />
-      ) : groups.length === 0 ? (
-        <div className="card py-10 text-center">
-          <p className="text-sm font-black">No entries match.</p>
-          <p className="sub mt-1">{filtered ? "Try clearing the filters or searching all time." : "Nothing has been recorded for this period yet."}</p>
-        </div>
-      ) : byAmount ? (
-        // Ordered by amount, the days are all mixed up, so no day headings: one list, each row says its date.
-        <section data-dim-on-pending>
-          <div className="px-1 pb-2 pt-1">
-            <h2 className="text-[13px] font-black">{sortText}</h2>
-          </div>
-          <ul className="space-y-1.5">
-            {pageRows.map((t) => (
-              <TransactionRow key={t.id} tx={t} showDate viewing={viewing} backHref={listHref} />
-            ))}
-          </ul>
-        </section>
       ) : (
-        groups.map((g) => {
-          const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);
-          return (
-            <section key={g.date} data-dim-on-pending>
-              <div className="flex items-baseline justify-between px-1 pb-2 pt-1">
-                <h2 className="text-[13px] font-black">{dayLabel(g.date)}</h2>
-                {spent > 0 && <span className="num sub !text-[11px]">Spent {formatRM(spent)}</span>}
+        // The list sheet: totals and the day-by-day list on one paper-coloured surface with a 28 px rounded top (the
+        // `paper-sheet` class re-points the colour tokens to paper in Dark; in Light it is simply the card colour).
+        <div className="paper-sheet space-y-2 rounded-b-[20px] rounded-t-[28px] border border-line bg-card px-3.5 pb-2 pt-3.5 text-foreground md:p-5">
+          {/* Only transfers on screen: income and spending would all read zero, so say what moved instead. */}
+          {type === "transfer" ? (
+            flow ? (
+              <div className="grid grid-cols-3 gap-1.5">
+                <Tile label="Moved out" value={formatRMWholeBare(flow.out)} />
+                <Tile label="Moved in" value={formatRMWholeBare(flow.in)} tone="good" />
+                {/* Neutral on purpose: money moved between your own accounts is not a loss, whichever way it went. */}
+                <Tile label="Net moved" value={signed(flow.in - flow.out)} gold />
               </div>
-              <ul className="space-y-1.5">
-                {g.items.map((t) => (
-                  <TransactionRow key={t.id} tx={t} viewing={viewing} backHref={listHref} />
+            ) : (
+              <div className="grid grid-cols-1">
+                <Tile label="Moved between accounts" value={formatRMWholeBare(totals.transfer)} />
+              </div>
+            )
+          ) : (
+            <div className="grid grid-cols-3 gap-1.5">
+              <Tile label="Money in" value={formatRMWholeBare(totals.income)} tone="good" />
+              <Tile label="Money out" value={formatRMWholeBare(totals.expense)} />
+              <Tile label="Net" value={signed(net)} gold />
+            </div>
+          )}
+          <p className="sub text-right">{caption}</p>
+          {type !== "transfer" && (
+            <FlowBar
+              income={totals.income}
+              spent={totals.expense}
+              expectedIncome={settings.expectedIncome}
+              narrowed={Boolean(account || category || q.trim() || amount || type)}
+              flat
+            />
+          )}
+          {accountChoice && flow && type !== "transfer" && (
+            <p className="sub">
+              Transfers in this period: {formatRM(flow.out)} out, {formatRM(flow.in)} in. Income and spending above leave them out; a transfer shows on this account with a − (out) or + (in).
+            </p>
+          )}
+
+          {groups.length === 0 ? (
+            <EmptyState
+              className="!border-0 !bg-transparent !px-2"
+              icon={<Search size={28} strokeWidth={2} />}
+              title="No entries match"
+              text={
+                q.trim()
+                  ? `Nothing in ${periodText} matches "${q.trim()}"${category || amount || type || account ? " with the other filters" : ""}. Try another word, or clear the search.`
+                  : filtered
+                    ? `Nothing in ${periodText} fits these filters. Try clearing them or looking at all time.`
+                    : `Nothing has been recorded for ${periodText} yet.`
+              }
+              primary={q.trim() ? { label: "Clear search", href: qs({ ...base, q: undefined, page: undefined }) } : filtered ? { label: "Clear filters", href: qs({ month: view.month }) } : undefined}
+              secondary={!monthNav ? { label: "Back to monthly", href: qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined }) } : q.trim() && filtered && (category || amount || type || account) ? { label: "Clear all filters", href: qs({ month: view.month }) } : undefined}
+            />
+          ) : byAmount ? (
+            // Ordered by amount, the days are all mixed up, so no day headings: one list, each row says its date.
+            <section data-dim-on-pending>
+              <h2 className="pb-1 pt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{sortText}</h2>
+              <ul>
+                {pageRows.map((t) => (
+                  <TransactionRow key={t.id} tx={t} showDate viewing={viewing} backHref={listHref} />
                 ))}
               </ul>
             </section>
-          );
-        })
+          ) : (
+            groups.map((g) => {
+              const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);
+              return (
+                <section key={g.date} data-dim-on-pending>
+                  <div className="flex items-baseline justify-between gap-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted">
+                    <h2 className="font-bold">{dayLabel(g.date)}</h2>
+                    {spent > 0 && <span className="num">Spent RM {bareRM(formatRM(spent))}</span>}
+                  </div>
+                  <ul>
+                    {g.items.map((t) => (
+                      <TransactionRow key={t.id} tx={t} viewing={viewing} backHref={listHref} />
+                    ))}
+                  </ul>
+                </section>
+              );
+            })
+          )}
+        </div>
       )}
 
       {(view.page > 1 || hasNext) && (
@@ -354,6 +374,7 @@ export default async function TransactionsPage({
           {hasNext && (
             <Link href={qs({ ...base, page: view.page + 1 })} className="btn">
               {sortText ? "Next ›" : "Older ›"}
+              <PendingMark />
             </Link>
           )}
         </div>

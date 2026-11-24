@@ -1,20 +1,35 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
+import { AccountCard } from "@/components/account/AccountCard";
 import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ChartTable } from "@/components/ChartTable";
-import { BudgetRing } from "@/components/charts/BudgetRing";
 import { CumulativeSpendChart } from "@/components/charts/CumulativeSpendChart";
 import { IncomeExpenseChart } from "@/components/charts/IncomeExpenseChart";
 import { NeedWantDonut } from "@/components/charts/NeedWantDonut";
+import { DuoIcon } from "@/components/DuoIcon";
+import { EmptyState } from "@/components/EmptyState";
 import { Kpi } from "@/components/Kpi";
 import { Meter } from "@/components/Meter";
+import { Money } from "@/components/Money";
 import { MonthNav } from "@/components/MonthNav";
 import { PageHeader } from "@/components/PageHeader";
 import { PeriodToggle } from "@/components/PeriodToggle";
-import { budgetLabel, heroSizeClass, periodName, periodSubtitle, praiseWants, ringPill, shareLabel } from "@/lib/analytics/dashboard-text";
+import {
+  budgetAmounts,
+  budgetLabel,
+  budgetNote,
+  daysLeftText,
+  heroSizeClass,
+  leftToSpendCaption,
+  overBudgetBanner,
+  periodName,
+  periodSubtitle,
+  praiseWants,
+  shareLabel,
+} from "@/lib/analytics/dashboard-text";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { payCyclePeriods, periodDay, rekeyRows } from "@/lib/analytics/periods";
 import {
@@ -39,9 +54,12 @@ import {
   monthLabel,
   monthStart,
   shiftMonth,
+  shortDate,
   todayISO,
 } from "@/lib/dates";
-import { formatPct, formatRM, formatRMWhole, formatRMWholeBare } from "@/lib/money";
+import { cardLook } from "@/lib/card";
+import { initials } from "@/lib/initials";
+import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { asBillTxs, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { currentCycle, cycleLabel } from "@/lib/plan/cycle";
 import { getAccountBalances } from "@/lib/queries/accounts";
@@ -50,7 +68,9 @@ import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getNetWorth } from "@/lib/queries/investments";
 import { getAccountLedger } from "@/lib/queries/ledger";
 import { listBills, listSalaries } from "@/lib/queries/plan";
+import { getPlan } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
+import { sumTransferFlow } from "@/lib/queries/transactions";
 import { getSettings } from "@/lib/settings";
 
 export const metadata: Metadata = { title: "Home" };
@@ -59,6 +79,8 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 const VISIBLE_CATEGORIES = 8;
 
 const BUDGET_PILL = { ok: "bg-good-soft text-good", watch: "bg-warn-soft text-warn", over: "bg-danger-soft text-danger" } as const;
+/** A card title as the design draws it: 11 px, bold, uppercase, tracked, muted. */
+const EYEBROW = "text-[11px] font-bold uppercase tracking-[0.1em] text-muted";
 const BUDGET_TEXT = { ok: "text-good", watch: "text-warn", over: "text-danger" } as const;
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -91,7 +113,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const nameOf = (m: string) => periodName(m, month, !!period);
 
   const months6 = lastMonths(month, 6);
-  const [raw, categories, worth, accounts, billDefs] = await Promise.all([
+  const [raw, categories, worth, accounts, billDefs, plan] = await Promise.all([
     periods && period
       ? listFlowRows((periods.find((p) => p.key === shiftMonth(month, -6)) ?? periods[periods.length - 1]).start, period.end)
       : listFlowRows(monthStart(shiftMonth(month, -6)), monthEnd(month)),
@@ -99,6 +121,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     getNetWorth(today),
     getAccountBalances(true),
     listBills(),
+    // What is left to spend (the Plan's own maths) is only the answer for the period in progress, for the whole book.
+    isCurrent && !Number(first(sp.account)) ? getPlan(today) : Promise.resolve(null),
   ]);
   // One account on its own (?account=): the same page over just the money that came into / went out of it. The pay cycles
   // above were cut from ALL salaries first, so a cycle means the same thing whichever account you look at.
@@ -129,11 +153,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const accountQuery = accountChoice ? `&account=${accountChoice.id}` : "";
   const chips = accounts
     .filter((a) => !a.archived || a.id === accountChoice?.id)
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: accountHref(a.id) }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: accountHref(a.id), dot: cardLook(a).bg }));
   // The balance through the period (never past today), from the account's whole history.
-  const ledger = accountChoice ? await getAccountLedger(accountChoice.id) : null;
   const historyFrom = period ? period.start : monthStart(month);
   const historyTo = period ? period.end : monthEnd(month);
+  const [ledger, moved] = accountChoice
+    ? await Promise.all([getAccountLedger(accountChoice.id), sumTransferFlow({ from: historyFrom, to: historyTo }, accountChoice.id)])
+    : [null, null];
   const history =
     accountChoice && ledger
       ? balanceHistory(ledger.opening, ledger.entries, accountChoice.id, { from: historyFrom, to: historyTo < today ? historyTo : today })
@@ -157,20 +183,48 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const hasHistory = series.some((p) => p.income > 0 || p.expense > 0);
 
   const wantsOver = split.vsIncome ? split.want - Math.round(split.base * 0.3) : 0;
-  // The lower row is three cards when there are budgets, else two that share the width.
-  const third = budgets.length > 0 ? "lg:col-span-4" : "lg:col-span-6";
   const latestPair = series.length > 0 ? series[series.length - 1] : null;
 
-  // The hero: what is left of this period's income (or, with no pay logged yet, the plain running net). For one account it is
-  // plainly the money in minus the money out: never "overspent" (a cash wallet only ever has money going out), and with no
-  // "income used" bar, since the pay is not what lands in every account.
-  const overspent = !accountChoice && hasPay && totals.net < 0;
+  // The hero. Whole book, period in progress, with a spending account and a recorded salary: LEFT TO SPEND, the Plan's own
+  // safe-to-spend (the spending account's balance less the bills it still has to pay before payday). Otherwise, and for
+  // past periods, the honest fallback: what is left of this period's income (or, with no pay logged yet, the plain running
+  // net), and the caption says why it is not the other. For one account it is plainly the money in minus the money out:
+  // never "overspent" (a cash wallet only ever has money going out), with no "income used" bar, since the pay is not what
+  // lands in every account.
+  // The Plan's "left to spend" is about the PAY CYCLE: in calendar-month view the hero stays "Left over" for that month.
+  const left = plan && plan.safe.configured && plan.hasSalary && view === "cycle" ? plan : null;
+  const leftShort = left !== null && left.safe.safe < 0;
+  const overspent = left ? leftShort : !accountChoice && hasPay && totals.net < 0;
   const used = !accountChoice && hasPay && totals.income > 0 ? totals.expense / totals.income : null;
-  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? (isCurrent ? "Net so far" : "Net") : totals.net >= 0 ? `Left over this ${unit}` : "Overspent";
-  // Days until this period ends (the day before the next payday for a pay cycle), counting today. Only for the one in progress.
+  const heroLabel = accountChoice
+    ? `Net in ${accountChoice.name}`
+    : left
+      ? "Left to spend"
+      : !hasPay
+        ? isCurrent
+          ? "Net so far"
+          : "Net"
+        : totals.net >= 0
+          ? `Left over this ${unit}`
+          : "Overspent";
+  // Days until this period ends (the day before the next payday for a pay cycle), counting today. Only for the one in
+  // progress. When the expected payday has come and no salary is recorded, the cycle just runs to today: say "Payday due".
+  const payOverdue = !!period && isCurrent && cycleNow.paydayOverdue;
   const daysLeft = isCurrent ? Math.max(1, daysBetween(today, period ? period.end : monthEnd(month)) + 1) : null;
-  const heroFigure = formatRMWhole(Math.abs(totals.net));
-  const heroSign = (accountChoice || !hasPay) && totals.net < 0 ? "−" : "";
+  const heroSen = left ? left.safe.safe : totals.net;
+  const heroFigure = formatRMWhole(Math.abs(heroSen));
+  const heroSign = heroSen < 0 && (left || accountChoice || !hasPay) ? "−" : accountChoice && heroSen > 0 ? "+" : "";
+  const overBudget = !accountChoice && isCurrent ? [...budgets].filter((b) => b.status === "over").sort((a, b) => b.spent - b.budget - (a.spent - a.budget))[0] : undefined;
+  const budgetDaysLeft = isCurrent && !payOverdue ? daysLeft : null;
+
+  // The accounts beside the hero from md up: Main first, then Savings, then the rest; investments have their own page.
+  const rank = (a: { purpose: string | null }) => (a.purpose === "spending" ? 0 : a.purpose === "savings" ? 1 : 2);
+  const heroCards = accountChoice
+    ? []
+    : accounts
+        .filter((a) => !a.archived && a.type !== "investment")
+        .sort((a, b) => rank(a) - rank(b))
+        .slice(0, 3);
 
   // "Slower than Sep": this period's running total against last period's at the same day.
   const latest = [...cumulative].reverse().find((p) => p.current !== null);
@@ -185,54 +239,46 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ? { cls: "bg-warn-soft text-warn", text: `Faster than ${prevName}` }
           : { cls: "bg-card-subtle text-muted", text: `On par with ${prevName}` };
 
-  return (
-    <div className="space-y-3 md:space-y-4">
-      <PageHeader
-        title={
-          <>
-            <span className="sr-only">Home: </span>
-            {monthLabel(month).split(" ")[0]}
-          </>
-        }
-        subtitle={periodSubtitle({ account: accountChoice?.name, cycle: view === "cycle", isCurrent, dayNow, daysTotal })}
-      />
-
-      <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
-        <PeriodToggle view={view} account={accountChoice?.id} month={month} />
-        <MonthNav
-          month={month}
-          maxMonth={nowMonth}
-          minMonth={oldestMonth}
-          path="/dashboard"
-          sublabel={period ? cycleLabel(period) : undefined}
-          query={`view=${view}${accountQuery}`}
-          className="md:w-72"
-        />
+  const heroDays = left
+    ? daysLeftText(left.cycle.daysLeft, "payday", left.cycle.paydayOverdue)
+    : !accountChoice && daysLeft !== null
+      ? daysLeftText(daysLeft, period ? "payday" : "month", payOverdue)
+      : null;
+  const hero = (
+    <div className={`flex flex-col ${accountChoice ? "" : "md:min-h-[200px]"} ${overspent ? "hero-danger" : "hero"}`}>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <p className={`${EYEBROW} !text-current`}>{heroLabel}</p>
+        {heroDays && <p className="shrink-0 text-xs font-extrabold">{heroDays}</p>}
       </div>
-
-      {/* Which account: the whole book, or one account on its own (each chip shows its real balance now). */}
-      <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={accountHref(null)} />
-      {accountChoice && (
-        <p className="sub px-1">
-          Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out, and budgets and net worth
-          cover every account, so they step aside.{" "}
-          <Link href={entries({})} className="font-extrabold text-accent-strong underline underline-offset-2">
-            See its entries
-          </Link>
-        </p>
-      )}
-
-      <section className="grid grid-cols-3 gap-2.5 md:grid-cols-[1.5fr_1fr_1fr_1fr] md:gap-3" aria-label="Key figures">
-        <div className={`col-span-3 md:col-span-1 ${overspent ? "hero-danger" : "hero"}`}>
-          <p className="mb-1.5 text-xs font-extrabold">{heroLabel}</p>
-          <p className={`num break-words font-black leading-[0.95] tracking-[-0.03em] ${heroSizeClass(heroFigure)}`}>
-            {heroSign}
-            {heroFigure}
+      <p className={`num break-words font-black leading-none tracking-[-0.03em] ${heroSizeClass(heroFigure)}`}>
+        {heroSign}
+        <Money sen={Math.abs(heroSen)} />
+      </p>
+      {left ? (
+        <>
+          <p className="mt-2.5 text-[13px] font-extrabold">{leftToSpendCaption(left.safe.safe, left.safe.perDay, left.cycle.daysLeft, left.cycle.paydayOverdue)}</p>
+          <p className="mt-0.5 text-xs font-bold">
+            in {left.safe.accountName}, after {left.safe.unpaidCount === 0 ? "bills (all paid)" : `${left.safe.unpaidCount} ${left.safe.unpaidCount === 1 ? "bill" : "bills"} still to pay`}
           </p>
-          {accountChoice ? (
-            <p className="mt-3 text-xs font-extrabold">money in minus money out, {isCurrent ? `${unit} so far` : `this ${unit}`}</p>
-          ) : used !== null ? (
-            <div className="mt-4 flex items-center gap-2.5">
+          <div className="mt-auto pt-4">
+            <div className="h-2 rounded-full bg-hero-track">
+              <div className="h-2 rounded-full bg-current" style={{ width: `${Math.min(100, Math.round((left.cycle.dayNumber / left.cycle.daysTotal) * 100))}%` }} />
+            </div>
+            <p className="mt-2 flex justify-between gap-2 text-xs font-extrabold">
+              <span>
+                Day {left.cycle.dayNumber} of {left.cycle.daysTotal}
+              </span>
+              <span>{left.cycle.paydayOverdue ? `Payday was ${shortDate(left.cycle.nextPayday)}` : `Payday ${shortDate(left.cycle.nextPayday)}`}</span>
+            </p>
+          </div>
+        </>
+      ) : accountChoice ? (
+        <p className="mt-3 text-xs font-extrabold">money in minus money out, {isCurrent ? `${unit} so far` : `this ${unit}`}</p>
+      ) : (
+        <>
+          {overspent && daysLeft !== null && !payOverdue && <p className="mt-2.5 text-[13px] font-extrabold">{leftToSpendCaption(-1, null, daysLeft)}</p>}
+          {used !== null ? (
+            <div className="mt-auto flex items-center gap-2.5 pt-4">
               <div className="h-2 flex-1 rounded-full bg-hero-track">
                 <div className="h-2 rounded-full bg-current" style={{ width: `${Math.min(100, Math.round(used * 100))}%` }} />
               </div>
@@ -241,25 +287,67 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ) : (
             <p className="mt-3 text-xs font-extrabold">no pay in this {unit} yet</p>
           )}
-          {!accountChoice && daysLeft !== null && (
-            <p className="mt-2.5 text-xs font-extrabold">
-              {daysLeft} {daysLeft === 1 ? "day" : "days"} {period ? "to payday" : "left this month"}
+          {isCurrent && plan && (
+            <p className="mt-2 text-xs font-bold">
+              {plan.safe.configured ? "Record your salary" : "Choose your spending account"} to see what is left to spend before payday.{" "}
+              <Link href={plan.safe.configured ? "/plan" : "/settings?tab=accounts"} className="font-extrabold underline underline-offset-2">
+                {plan.safe.configured ? "Open the Plan" : "Set it in Settings"}
+              </Link>
             </p>
           )}
-        </div>
-        <Kpi
-          label="Income"
-          value={formatRMWhole(totals.income)}
-          delta={{ ratio: changeRatio(totals.income, prevTotals.income), upIsGood: true, vs: vsLabel, prevName: prevPeriodName }}
-        />
-        <Kpi
-          label="Spent"
-          value={formatRMWhole(totals.expense)}
-          delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel, prevName: prevPeriodName }}
-        />
-        {accountChoice ? (
+        </>
+      )}
+    </div>
+  );
+
+  const periodControls = (
+    <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
+      <PeriodToggle view={view} account={accountChoice?.id} month={month} />
+      <MonthNav
+        month={month}
+        maxMonth={nowMonth}
+        minMonth={oldestMonth}
+        path="/dashboard"
+        sublabel={period ? cycleLabel(period) : undefined}
+        query={`view=${view}${accountQuery}`}
+        className="md:w-72"
+      />
+    </div>
+  );
+  // Which account: the whole book, or one account on its own (each chip's link names its real balance).
+  const accountRow = <AccountChips compact label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={accountHref(null)} />;
+
+  const kpiGrid = (
+    <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3" aria-label="Key figures">
+      {accountChoice ? (
+        <>
+          <Kpi
+            label="Money in"
+            value={formatRMWhole(totals.income)}
+            tone="good"
+            delta={{ ratio: changeRatio(totals.income, prevTotals.income), upIsGood: true, vs: vsLabel, prevName: prevPeriodName, diff: totals.income - prevTotals.income }}
+          />
+          <Kpi
+            label="Money out"
+            value={formatRMWhole(totals.expense)}
+            delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel, prevName: prevPeriodName, diff: totals.expense - prevTotals.expense }}
+          />
+          <Kpi label="Moved out" value={formatRMWhole(moved?.out ?? 0)} hint="transfers to your other accounts" />
           <Kpi label="Balance now" value={formatRMWhole(accountChoice.balance)} hint={accountChoice.name} tone={accountChoice.balance < 0 ? "bad" : "default"} />
-        ) : (
+        </>
+      ) : (
+        <>
+          <Kpi label={hasPay ? "Left over" : "Net so far"} value={formatRMWhole(totals.net)} hint={hasPay ? "income minus spent" : "no pay recorded yet"} tone={hasPay && totals.net < 0 ? "bad" : "default"} />
+          <Kpi
+            label="Spent"
+            value={formatRMWhole(totals.expense)}
+            delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel, prevName: prevPeriodName, diff: totals.expense - prevTotals.expense }}
+          />
+          <Kpi
+            label="Income"
+            value={formatRMWhole(totals.income)}
+            delta={{ ratio: changeRatio(totals.income, prevTotals.income), upIsGood: true, vs: vsLabel, prevName: prevPeriodName, diff: totals.income - prevTotals.income }}
+          />
           <Kpi
             label="Net worth"
             value={formatRMWhole(netWorth)}
@@ -272,118 +360,196 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </>
             }
           />
-        )}
-      </section>
+        </>
+      )}
+    </section>
+  );
+
+  return (
+    <div className="space-y-3 md:space-y-4">
+      <PageHeader title="Home" subtitle={periodSubtitle({ account: accountChoice?.name, cycle: view === "cycle", isCurrent, dayNow, daysTotal })} />
+
+      {/* The whole book opens on the hero (and, from md up, the accounts beside it); one account keeps its controls first. */}
+      {accountChoice ? (
+        <>
+          {periodControls}
+          {accountRow}
+          <section aria-label="Net in this account">{hero}</section>
+        </>
+      ) : (
+        <>
+          <section className="grid gap-3 md:grid-cols-[250px_minmax(0,1fr)] md:gap-4" aria-label="Left to spend and your accounts">
+            {hero}
+            {heroCards.length > 0 && (
+              <ul className="hidden auto-cols-fr grid-flow-col gap-3 md:grid" aria-label="Accounts">
+                {heroCards.map((a) => (
+                  <li key={a.id} className="min-w-0">
+                    <Link href={`/accounts/${a.id}`} className="block rounded-[24px]">
+                      <AccountCard account={a} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          {overBudget && <p className="banner banner-warn">{overBudgetBanner(overBudget, payOverdue ? null : daysLeft, payOverdue)}</p>}
+          {periodControls}
+          {accountRow}
+        </>
+      )}
+      {kpiGrid}
 
       {accountChoice && history && (
         <BalanceHistory name={accountChoice.name} history={history} period={rangeLabel} statementHref={`/transactions/export${entryQuery({ format: "statement" })}`} />
       )}
+      {accountChoice && (
+        <p className="banner banner-info">
+          <span>
+            Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out. Budgets and &quot;By account&quot; measure the whole book, so one account would
+            be misleading: they step aside.{" "}
+            <Link href={entries({})} className="font-extrabold underline underline-offset-2">
+              See its entries
+            </Link>
+          </span>
+        </p>
+      )}
 
       {!hasData && (
-        <div className="card py-10 text-center">
-          <p className="text-sm font-black">
-            Nothing recorded for {rangeLabel}
-            {accountChoice ? ` in ${accountChoice.name}` : ""} yet.
-          </p>
-          <p className="sub mt-1">Add entries on the Add tab and the charts fill in.</p>
-        </div>
+        <EmptyState
+          icon={<Wallet size={28} />}
+          title={`Nothing recorded for ${rangeLabel}${accountChoice ? ` in ${accountChoice.name}` : ""} yet`}
+          text="Add entries, or import a statement, and the charts fill in."
+          primary={{ label: "Add your first entry", href: "/" }}
+          secondary={{ label: "Import a statement", href: "/import" }}
+        />
       )}
 
       {(hasData || hasHistory) && (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-12">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
           {hasData && (
-            <>
-          <section className="card lg:order-1 lg:col-span-7" aria-labelledby="pace">
-            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="pace" className="h2">
-                {isCurrent ? "Spent so far" : "Spent"}
+            <section className={`card lg:order-1 ${budgets.length === 0 && accountChoice ? "lg:col-span-2" : ""}`} aria-labelledby="pace">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 id="pace" className={EYEBROW}>
+                  {isCurrent ? "Spent so far" : "Spent"}
+                </h2>
+                <span className="num font-display text-base font-semibold">
+                  <Money sen={totals.expense} />
+                </span>
+              </div>
+              <p className="sub mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>
+                  Running total through the {unit}
+                  {period && <> · day 1 is payday, {cycleLabel(period).split(" - ")[0]}</>}
+                </span>
+                {pacePill && <span className={`pill ${pacePill.cls}`}>{pacePill.text}</span>}
+              </p>
+              <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} partial={isCurrent} />
+              <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
+                <li className="flex items-center gap-1.5">
+                  <span className="h-[3px] w-3.5 rounded bg-series-2" aria-hidden /> This {unit}
+                </li>
+                {cumulative.some((p) => p.previous !== null && p.previous > 0) && (
+                  <li className="flex items-center gap-1.5 text-muted">
+                    <span className="w-3.5 border-t-2 border-dotted border-ink-muted" aria-hidden /> Last {unit}
+                  </li>
+                )}
+              </ul>
+              <ChartTable
+                caption={`Cumulative spending by day of the ${unit}`}
+                columns={["Day", nameOf(month), nameOf(prev)]}
+                rows={cumulative.map((p) => [
+                  p.day,
+                  p.current === null ? "–" : formatRM(p.current),
+                  p.previous === null ? "–" : formatRM(p.previous),
+                ])}
+              />
+            </section>
+          )}
+
+          <section className="card lg:order-4 lg:col-span-3" aria-labelledby="monthly">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 id="monthly" className={EYEBROW}>
+                Income and spending
               </h2>
-              <span className="num font-display text-base font-semibold">{formatRM(totals.expense)}</span>
+              <span className="sub">Last 6 {unit}s</span>
             </div>
-            <p className="sub mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>
-                Running total through the {unit}
-                {period && <> · day 1 is payday, {cycleLabel(period).split(" - ")[0]}</>}
-              </span>
-              {pacePill && <span className={`pill ${pacePill.cls}`}>{pacePill.text}</span>}
-            </p>
-            <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} partial={isCurrent} />
+            <p className="sub mb-1">{period ? "Each one is named after the month most of it falls in" : "One column pair per month"}</p>
+            <IncomeExpenseChart data={series} cycle={!!period} partial={isCurrent} />
             <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
               <li className="flex items-center gap-1.5">
-                <span className="h-[3px] w-3.5 rounded bg-series-2" aria-hidden /> This {unit}
+                <span className="size-2.5 rounded-[3px] bg-series-3" aria-hidden /> Income
               </li>
-              {cumulative.some((p) => p.previous !== null && p.previous > 0) && (
-                <li className="flex items-center gap-1.5 text-muted">
-                  <span className="w-3.5 border-t-2 border-dotted border-ink-muted" aria-hidden /> Last {unit}
-                </li>
-              )}
+              <li className="flex items-center gap-1.5">
+                <span
+                  className="size-2.5 rounded-[3px] bg-series-2"
+                  style={{ backgroundImage: "repeating-linear-gradient(45deg, var(--card) 0 1.5px, transparent 1.5px 3.5px)" }}
+                  aria-hidden
+                />{" "}
+                Spent (striped)
+              </li>
+              <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} {isCurrent ? "is so far" : "is complete"}</li>
             </ul>
+            {latestPair && (
+              <p className="num mt-1 text-xs font-bold">
+                {nameOf(latestPair.month)}: income {formatRM(latestPair.income)} · spent {formatRM(latestPair.expense)}
+              </p>
+            )}
             <ChartTable
-              caption={`Cumulative spending by day of the ${unit}`}
-              columns={["Day", nameOf(month), nameOf(prev)]}
-              rows={cumulative.map((p) => [
-                p.day,
-                p.current === null ? "–" : formatRM(p.current),
-                p.previous === null ? "–" : formatRM(p.previous),
-              ])}
+              caption={`Income and spending by ${unit}`}
+              columns={[period ? "Cycle" : "Month", "Income", "Spent", "Net"]}
+              rows={series.map((p) => [nameOf(p.month), formatRM(p.income), formatRM(p.expense), formatRM(p.net)])}
             />
           </section>
 
+          {hasData && (
+            <>
           {budgets.length > 0 && (
-            <section className="card lg:order-3 lg:col-span-4" aria-labelledby="budgets">
+            <section className="card lg:order-2" aria-labelledby="budgets">
               <div className="mb-3 flex items-baseline justify-between gap-2">
-                <h2 id="budgets" className="h2">
+                <h2 id="budgets" className={EYEBROW}>
                   Budgets
                 </h2>
-                <span className="sub !text-[11px]">The tick marks an even pace</span>
+                {budgetDaysLeft !== null && (
+                  <span className="text-xs font-extrabold">
+                    {budgetDaysLeft} {budgetDaysLeft === 1 ? "day" : "days"} left
+                  </span>
+                )}
               </div>
-              {/* Phone: rings, three to a row. From md: bars. Same facts, once in the page for each size. */}
-              <ul className="grid grid-cols-3 gap-2 md:hidden">
-                {budgets.map((b) => (
-                  <li key={b.categoryId}>
-                    <Link href={entries({ category: b.categoryId })} className="flex min-h-11 flex-col items-center gap-1.5 text-center" aria-label={budgetLabel(b)}>
-                      <BudgetRing used={b.used} status={b.status} pace={b.settled ? undefined : b.pace} />
-                      <p className="text-xs font-extrabold leading-tight">{b.name}</p>
-                      <p className="num text-[11px] font-bold text-muted">
-                        {formatRMWholeBare(b.spent)} / {formatRMWholeBare(b.budget)}
-                      </p>
-                      <span className={`pill !px-2 !py-0.5 text-center ${BUDGET_PILL[b.status]}`}>{ringPill(b)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              <ul className="hidden space-y-3.5 md:block">
-                {budgets.map((b) => (
-                  <li key={b.categoryId}>
-                    <Link href={entries({ category: b.categoryId })} className="block rounded-xl hover:bg-nav-active" aria-label={budgetLabel(b)}>
-                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                        <span className="truncate text-[13px] font-extrabold">{b.name}</span>
-                        <span className={`num text-xs font-extrabold ${BUDGET_TEXT[b.status]}`}>
-                          {formatRM(b.spent)} <span className="text-muted">/ {formatRM(b.budget)}</span>
+              {/* One list on every size: a round disc, the name and "RM 640 of 700", a thin bar with the even-pace tick. */}
+              <ul className="space-y-3.5">
+                {budgets.map((b) => {
+                  const tint = colorOf.get(b.categoryId);
+                  const note = budgetNote(b);
+                  return (
+                    <li key={b.categoryId}>
+                      <Link href={entries({ category: b.categoryId })} className="flex min-h-11 items-center gap-3 rounded-xl hover:bg-nav-active" aria-label={budgetLabel(b)}>
+                        <span
+                          aria-hidden
+                          className="grid size-9 shrink-0 place-items-center rounded-full bg-card-subtle text-[11px] font-extrabold"
+                          style={tint ? { backgroundColor: `${tint}26` } : undefined}
+                        >
+                          {initials(b.name)}
                         </span>
-                      </div>
-                      {/* A category that is all bills has no "even pace": the tick would only suggest it is ahead. */}
-                      <Meter used={b.used} pace={b.settled ? undefined : b.pace} status={b.status} label={`${b.name} budget`} />
-                      <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.status]}`}>
-                        {b.status === "over"
-                          ? `Over budget by ${formatRM(b.spent - b.budget)}`
-                          : b.settled
-                            ? "Bills paid: nothing more due"
-                            : b.status === "watch"
-                              ? `On pace to reach ${formatRM(b.projected)}`
-                              : b.billsDue > 0
-                                ? `On track · ${formatRM(b.billsDue)} in bills still due`
-                                : "On track"}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                        <span className="min-w-0 flex-1">
+                          <span className="mb-1.5 flex items-baseline justify-between gap-2">
+                            <span className="truncate text-[13px] font-extrabold">{b.name}</span>
+                            <span className={`num shrink-0 text-xs font-extrabold ${b.status === "ok" ? "" : BUDGET_TEXT[b.status]}`}>{budgetAmounts(b.spent, b.budget)}</span>
+                          </span>
+                          {/* A category that is all bills has no "even pace": the tick would only suggest it is ahead. */}
+                          <Meter used={b.used} pace={b.settled ? undefined : b.pace} status={b.status} settled={b.settled} thin label={`${b.name} budget`} />
+                          {note && <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.settled && b.status === "ok" ? "ok" : b.status]}`}>{note}</span>}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
+              <p className="sub mt-3 !text-[11px]">The small tick is where you would be today at an even pace.</p>
             </section>
           )}
 
           {!accountChoice && budgets.length === 0 && (
-            <p className="sub card lg:order-3 lg:col-span-12">
+            <p className="sub card lg:order-2">
               No budgets yet. Give a category a monthly limit and this page shows how each one is going.{" "}
               <Link href="/settings?tab=categories" className="font-extrabold text-accent-strong underline underline-offset-2">
                 Set a budget
@@ -391,11 +557,50 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </p>
           )}
 
-          <section className={`card lg:order-4 ${third}`} aria-labelledby="where">
-            <h2 id="where" className="h2">
+          <section className="card lg:order-3" aria-labelledby="split">
+            <h2 id="split" className={EYEBROW}>
+              50 / 30 / 20
+            </h2>
+            <p className="sub mb-3 mt-1">
+              {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
+            </p>
+            <p className="sub -mt-2 mb-3">
+              The guide: about half your income for needs, 30% for wants and 20% kept. &quot;Not spent&quot; is what is left of your income, not money moved to savings.
+            </p>
+            <div className="flex items-center gap-4">
+              <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
+              <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
+                {[
+                  { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
+                  { label: "Wants", v: split.want, p: split.wantPct, c: "bg-series-2", guide: "30%" },
+                  { label: split.vsIncome ? "Not spent" : "Not spent (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
+                ].map((r) => (
+                  <li key={r.label}>
+                    <div className="flex items-center gap-2">
+                      <span className={`size-2.5 shrink-0 rounded-full ${r.c}`} />
+                      <span className="font-extrabold">{r.label}</span>
+                      <span className="num ml-auto font-black">{formatPct(r.p)}</span>
+                    </div>
+                    <p className="num pl-[18px] text-[11px] text-muted">
+                      {formatRM(r.v)} · guide {r.guide}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {split.vsIncome && wantsOver > 0 && (
+              <p className="banner banner-warn mt-3 !text-xs">Wants are {formatRM(wantsOver)} over the 30% guide this {unit}.</p>
+            )}
+            {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && praiseWants(isCurrent, dayNow, daysTotal) && (
+              <p className="banner banner-good mt-3 !text-xs">Wants are within the 30% guide. Nice.</p>
+            )}
+          </section>
+
+          <section className="card lg:order-5" aria-labelledby="where">
+            <h2 id="where" className={EYEBROW}>
               Where it went
             </h2>
-            <p className="sub mb-3">Spending by category, {rangeLabel} · tap one to see its entries</p>
+            <p className="sub mb-3 mt-1">Spending by category, {rangeLabel} · tap one to see its entries</p>
             {byCategory.length === 0 ? (
               <p className="sub">No spending this {unit}.</p>
             ) : (
@@ -458,82 +663,50 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 )}
               </>
             )}
+          </section>
 
-            {!accountChoice && byAccount.length > 0 && (
-              <div className="mt-5 border-t-[1.5px] border-line pt-4">
-                <h3 className="h2">By account</h3>
-                <p className="sub mb-3">Where the spending was paid from · tap one to see its entries</p>
-                <ul className="space-y-2.5">
-                  {byAccount.map((a) => (
-                    <li key={a.accountId}>
-                      <Link
-                        href={entries({ account: a.accountId })}
-                        className="block rounded-lg hover:bg-nav-active"
-                        aria-label={shareLabel(accountName.get(a.accountId) ?? "Account", a.total, a.share)}
-                      >
-                        <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
+          {!accountChoice && byAccount.length > 0 && (
+            <section className="card lg:order-6" aria-labelledby="by-account">
+              <h2 id="by-account" className={EYEBROW}>
+                By account
+              </h2>
+              <p className="sub mb-3 mt-1">Where the spending was paid from · tap one to see its entries</p>
+              <ul className="space-y-2.5">
+                {byAccount.map((a) => (
+                  <li key={a.accountId}>
+                    <Link
+                      href={entries({ account: a.accountId })}
+                      className="flex min-h-11 items-center gap-3 rounded-lg hover:bg-nav-active"
+                      aria-label={shareLabel(accountName.get(a.accountId) ?? "Account", a.total, a.share)}
+                    >
+                      <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent-strong">
+                        <DuoIcon name="accounts" size={18} aria-hidden />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
                           <span className="truncate">
                             {accountName.get(a.accountId) ?? "Account"}
                             <span className="ml-1.5 font-bold text-muted">{formatPct(a.share)}</span>
                           </span>
                           <span className="num shrink-0">{formatRM(a.total)}</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-line md:h-1.5">
-                          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, a.share * 100)}%` }} />
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <section className="card lg:order-2 lg:col-span-5" aria-labelledby="split">
-            <h2 id="split" className="h2">
-              50 / 30 / 20
-            </h2>
-            <p className="sub mb-3">
-              {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
-            </p>
-            <p className="sub -mt-2 mb-3">
-              The guide: about half your income for needs, 30% for wants and 20% kept. &quot;Not spent&quot; is what is left of your income, not money moved to savings.
-            </p>
-            <div className="flex items-center gap-4">
-              <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
-              <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
-                {[
-                  { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
-                  { label: "Wants", v: split.want, p: split.wantPct, c: "bg-series-2", guide: "30%" },
-                  { label: split.vsIncome ? "Not spent" : "Not spent (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
-                ].map((r) => (
-                  <li key={r.label}>
-                    <div className="flex items-center gap-2">
-                      <span className={`size-2.5 shrink-0 rounded-full ${r.c}`} />
-                      <span className="font-extrabold">{r.label}</span>
-                      <span className="num ml-auto font-black">{formatPct(r.p)}</span>
-                    </div>
-                    <p className="num pl-[18px] text-[11px] text-muted">
-                      {formatRM(r.v)} · guide {r.guide}
-                    </p>
+                        </span>
+                        <span className="block h-2 w-full rounded-full bg-line md:h-1.5">
+                          <span className="block h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, a.share * 100)}%` }} />
+                        </span>
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
-            </div>
-            {split.vsIncome && wantsOver > 0 && (
-              <p className="banner banner-warn mt-3 !text-xs">Wants are {formatRM(wantsOver)} over the 30% guide this {unit}.</p>
-            )}
-            {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && praiseWants(isCurrent, dayNow, daysTotal) && (
-              <p className="banner banner-good mt-3 !text-xs">Wants are within the 30% guide. Nice.</p>
-            )}
-          </section>
+            </section>
+          )}
 
           {items.length > 0 && (
-            <section className={`card lg:order-5 ${third}`} aria-labelledby="items">
-              <h2 id="items" className="h2">
+            <section className="card lg:order-7" aria-labelledby="items">
+              <h2 id="items" className={EYEBROW}>
                 What you buy most
               </h2>
-              <p className="sub mb-3">Specific items by total this {unit} - small and frequent adds up</p>
+              <p className="sub mb-3 mt-1">Specific items by total this {unit} - small and frequent adds up</p>
               <ul className="space-y-2">
                 {items.map((i) => (
                   <li key={i.item}>
@@ -554,41 +727,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
             </>
           )}
-
-          <section className="card lg:order-6 lg:col-span-12" aria-labelledby="monthly">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 id="monthly" className="h2">
-                Income and spending
-              </h2>
-              <span className="sub">Last 6 {unit}s</span>
-            </div>
-            <p className="sub mb-1">{period ? "Each one is named after the month most of it falls in" : "One column pair per month"}</p>
-            <IncomeExpenseChart data={series} cycle={!!period} partial={isCurrent} />
-            <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
-              <li className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-[3px] bg-series-3" aria-hidden /> Income
-              </li>
-              <li className="flex items-center gap-1.5">
-                <span
-                  className="size-2.5 rounded-[3px] bg-series-2"
-                  style={{ backgroundImage: "repeating-linear-gradient(45deg, var(--card) 0 1.5px, transparent 1.5px 3.5px)" }}
-                  aria-hidden
-                />{" "}
-                Spent (striped)
-              </li>
-              <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} {isCurrent ? "is so far" : "is complete"}</li>
-            </ul>
-            {latestPair && (
-              <p className="num mt-1 text-xs font-bold">
-                {nameOf(latestPair.month)}: income {formatRM(latestPair.income)} · spent {formatRM(latestPair.expense)}
-              </p>
-            )}
-            <ChartTable
-              caption={`Income and spending by ${unit}`}
-              columns={[period ? "Cycle" : "Month", "Income", "Spent", "Net"]}
-              rows={series.map((p) => [nameOf(p.month), formatRM(p.income), formatRM(p.expense), formatRM(p.net)])}
-            />
-          </section>
         </div>
       )}
     </div>
