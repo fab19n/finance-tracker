@@ -31,14 +31,13 @@ import {
   shareLabel,
 } from "@/lib/analytics/dashboard-text";
 import { balanceHistory } from "@/lib/analytics/ledger";
-import { payCyclePeriods, periodDay, rekeyRows } from "@/lib/analytics/periods";
+import { rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
 import {
   accountBreakdown,
   budgetProgress,
   categoryBreakdown,
   changeRatio,
   cumulativeSpend,
-  daysInMonthOf,
   monthlySeries,
   monthTotals,
   needWantSplit,
@@ -46,9 +45,7 @@ import {
   topItems,
 } from "@/lib/analytics/summary";
 import {
-  currentMonth,
   daysBetween,
-  isMonth,
   lastMonths,
   monthEnd,
   monthLabel,
@@ -92,22 +89,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Your money moves payday to payday: the salary on 26 Sep is what you live on until 25 Oct. So once a salary has been
   // recorded (the Plan page's own test) a "month" here is a pay cycle, named after the month most of it falls in;
   // otherwise, or when you ask for it, a calendar month.
-  const asked = first(sp.view);
+  // (Insights asks the same question of the same function, so both pages cut the same periods.)
   const cycleNow = currentCycle({ today, salaryDates, paydayDay: settings.paydayDay });
-  const view: "cycle" | "month" = asked === "cycle" || asked === "month" ? asked : cycleNow.source === "salary" ? "cycle" : "month";
-  const periods = view === "cycle" ? payCyclePeriods({ today, salaryDates, paydayDay: settings.paydayDay }) : null;
-
-  const nowMonth = periods ? periods[0].key : currentMonth();
-  const oldestMonth = periods ? periods[periods.length - 1].key : undefined;
-  const param = first(sp.month);
-  const month = isMonth(param) && param <= nowMonth && (oldestMonth === undefined || param >= oldestMonth) ? param : nowMonth;
-  const period = periods?.find((p) => p.key === month) ?? null;
-  const prev = shiftMonth(month, -1);
-  const isCurrent = month === nowMonth;
-  const dayNow = period ? periodDay(period, today) : isCurrent ? Number(today.slice(8, 10)) : daysInMonthOf(month);
-  const unit = period ? "cycle" : "month";
+  const choice = resolvePeriod({ today, salaryDates, paydayDay: settings.paydayDay, view: first(sp.view), month: first(sp.month) });
+  const { view, periods, period, month, prev, nowMonth, oldestMonth, isCurrent, dayNow, unit } = choice;
   const rangeLabel = period ? cycleLabel(period) : monthLabel(month);
-  const daysTotal = period ? daysBetween(period.start, period.end) + 1 : daysInMonthOf(month);
+  const daysTotal = choice.total;
   // "Oct 26" reads as the 26th of October: a period is called by its month ("Oct"), a cycle by its month too ("Oct cycle").
   const nameOf = (m: string) => periodName(m, month, !!period);
 
@@ -170,7 +157,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // money that is simply paid from somewhere else. So they sit out an account view.
   // The pace is against the period's real length (a cycle named after a 30-day month can run 31 days), and a bill is not a
   // drip: the Plan's own checklist (same `findPayment`) says which are paid this period, so they are never extrapolated.
-  const budgetElapsed = period ? (isCurrent ? daysBetween(period.start, today) + 1 : daysTotal) : dayNow;
+  const budgetElapsed = choice.elapsed;
   const budgetBills = toBudgetBills(
     evaluateBills(billDefs, period ? { start: period.start, end: period.end } : { start: monthStart(month), end: monthEnd(month) }, asBillTxs(raw), today),
   );
@@ -311,6 +298,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         query={`view=${view}${accountQuery}`}
         className="md:w-72"
       />
+      <Link
+        href={`/insights${qs({ view, month, account: accountChoice?.id })}`}
+        className="inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-extrabold text-accent-strong underline underline-offset-2 md:ml-auto"
+      >
+        What Insights found for {nameOf(month)} <ChevronRight size={14} aria-hidden />
+      </Link>
     </div>
   );
   // Which account: the whole book, or one account on its own (each chip's link names its real balance).

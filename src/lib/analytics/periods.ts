@@ -80,3 +80,64 @@ export function rekeyRows(rows: FlowRow[], periods: Period[]): FlowRow[] {
 export function periodDay(p: Period, today: string): number {
   return Math.min(daysBetween(p.start, p.current ? today : p.end) + 1, daysInMonthOf(p.key));
 }
+
+/** What "a month" means on Home and Insights: payday to payday, or a calendar month. */
+export type PeriodView = "cycle" | "month";
+
+export type PeriodChoice = {
+  view: PeriodView;
+  /** The pay cycles (newest first) in cycle view; null in calendar view. */
+  periods: Period[] | null;
+  /** The cycle on screen; null in calendar view. */
+  period: Period | null;
+  /** 'YYYY-MM': the period on screen (a cycle is named after its month). */
+  month: string;
+  prev: string;
+  /** The newest and oldest period you can go to (`oldestMonth` is undefined in calendar view). */
+  nowMonth: string;
+  oldestMonth: string | undefined;
+  /** The period on screen is the one in progress. */
+  isCurrent: boolean;
+  unit: "cycle" | "month";
+  /** First and last day of the period on screen, inclusive. */
+  start: string;
+  end: string;
+  /** Its length in days. */
+  total: number;
+  /** The day number reached (so far for the one in progress, the whole length for a finished one): the "day" the analytics take. */
+  dayNow: number;
+  /** Days of the real calendar that have passed in it, for a budget's pace (a cycle named after a 30-day month can run 31 days). */
+  elapsed: number;
+};
+
+/**
+ * Which period are we looking at? ONE answer for Home and Insights, so a budget cannot be "over" on one and fine on the other.
+ * The view is the one asked for (`view=cycle|month`), else a pay cycle when a salary was recorded recently (the Plan's own
+ * test: `currentCycle().source === "salary"`), else the calendar month. `month` is `?month=`; anything outside the periods
+ * on offer falls back to the newest.
+ */
+export function resolvePeriod(opts: {
+  today: string;
+  salaryDates: string[];
+  paydayDay: number;
+  view?: string;
+  month?: string;
+}): PeriodChoice {
+  const { today } = opts;
+  const cycleNow = currentCycle({ today, salaryDates: opts.salaryDates, paydayDay: opts.paydayDay });
+  const view: PeriodView = opts.view === "cycle" || opts.view === "month" ? opts.view : cycleNow.source === "salary" ? "cycle" : "month";
+  const periods = view === "cycle" ? payCyclePeriods({ today, salaryDates: opts.salaryDates, paydayDay: opts.paydayDay }) : null;
+  const nowMonth = periods ? periods[0].key : today.slice(0, 7);
+  const oldestMonth = periods ? periods[periods.length - 1].key : undefined;
+  const asked = opts.month;
+  const isMonthKey = !!asked && /^\d{4}-\d{2}$/.test(asked);
+  const month = isMonthKey && asked! <= nowMonth && (oldestMonth === undefined || asked! >= oldestMonth) ? asked! : nowMonth;
+  const period = periods?.find((p) => p.key === month) ?? null;
+  const isCurrent = month === nowMonth;
+  const start = period ? period.start : `${month}-01`;
+  const end = period ? period.end : `${month}-${String(daysInMonthOf(month)).padStart(2, "0")}`;
+  const total = daysBetween(start, end) + 1;
+  const dayNow = period ? periodDay(period, today) : isCurrent ? Number(today.slice(8, 10)) : daysInMonthOf(month);
+  const elapsed = period ? (isCurrent ? daysBetween(period.start, today) + 1 : total) : dayNow;
+  return { view, periods, period, month, prev: shiftMonth(month, -1), nowMonth, oldestMonth, isCurrent, unit: period ? "cycle" : "month", start, end, total, dayNow, elapsed };
+}

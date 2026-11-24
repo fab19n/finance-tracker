@@ -8,6 +8,7 @@ import { SavedNotice } from "@/components/settings/SavedNotice";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { ShareForm } from "@/components/plan/ShareForm";
 import { SharedBillCard } from "@/components/plan/SharedBillCard";
+import type { PayContext } from "@/components/plan/SharePay";
 import { UNCLAIMED_SHOWN, UnassignedPayments } from "@/components/plan/UnassignedPayments";
 import { shortMonthLabel, todayISO } from "@/lib/dates";
 import { initials } from "@/lib/initials";
@@ -42,7 +43,8 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
   // A new person starts this month. (Starting in January made everyone owe for months before they joined; set an earlier month by hand when they did.)
   const defaultStart = today.slice(0, 7);
   // The "not counted yet" card only shows when somebody is still sharing, so the prompt that points at it does too.
-  const hasActivePeople = page.people.some((p) => p.active);
+  const pay: PayContext = { accounts: page.accounts, defaultAccountId: page.defaultAccountId, payments: page.payments, today };
+  const hasActivePeople =page.people.some((p) => p.active);
 
   // Everyone who owes you something, biggest first: the people to chase. (Equal monthly parts, or a turn that has come round.)
   const owing = page.bills
@@ -67,7 +69,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
       <div className="px-1">
         <h2 className="h2">Shared subscriptions</h2>
         <details className="group">
-          <summary className="mt-0.5 inline-flex cursor-pointer list-none items-center gap-1 py-1.5 text-xs font-extrabold text-accent-strong md:text-[13px] [&::-webkit-details-marker]:hidden">
+          <summary className="mt-0.5 inline-flex min-h-11 cursor-pointer list-none items-center gap-1 py-1.5 text-xs font-extrabold text-accent-strong md:text-[13px] [&::-webkit-details-marker]:hidden">
             How shared bills work
             <ChevronDown size={14} strokeWidth={2.5} className="transition group-open:rotate-180" aria-hidden />
           </summary>
@@ -78,6 +80,19 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
           </p>
         </details>
       </div>
+
+      {page.bills.length > 0 && (
+        <p className="banner banner-info">
+          <Info aria-hidden />
+          <span className="min-w-0">
+            <b>To count a payment:</b> tap <b>Mark paid</b> on the person, or claim money you already recorded{" "}
+            <a href="#unassigned" className="font-extrabold text-accent-strong underline underline-offset-2">
+              below
+            </a>
+            .
+          </span>
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="banner banner-danger">
@@ -155,13 +170,13 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
       )}
 
       {page.bills.map((view) => (
-        <SharedBillCard key={view.bill.id} view={view} people={page.people} bills={billOptions} defaultStart={defaultStart} today={today} />
+        <SharedBillCard key={view.bill.id} view={view} people={page.people} bills={billOptions} defaultStart={defaultStart} today={today} pay={pay} />
       ))}
 
-      <UnassignedPayments credits={page.unassigned} people={page.people} />
+      <UnassignedPayments credits={page.unassigned} other={page.unassignedOther} people={page.people} />
 
       <details className="card group" open={page.bills.length === 0}>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="h2">Add someone</span>
           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-card-subtle text-muted" aria-hidden>
             <Plus size={14} strokeWidth={3} className="transition group-open:rotate-45" />

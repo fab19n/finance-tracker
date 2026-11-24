@@ -16,7 +16,23 @@ export function safeBackPath(raw: unknown): string | null {
   if (v.length === 0 || v.length > 600) return null;
   if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\")) return null;
   if (/[\u0000-\u001f\u007f\\]/.test(v)) return null;
+  // A #fragment (the row to land on, `#tx-123`) is kept only when it is plain letters, digits, `_` and `-`; anything else
+  // after a `#` is dropped, and the path itself is still returned.
+  const hash = v.indexOf("#");
+  if (hash >= 0) {
+    const fragment = v.slice(hash + 1);
+    const path = v.slice(0, hash);
+    return FRAGMENT.test(fragment) ? v : path.length > 0 ? path : null;
+  }
   return v;
+}
+
+const FRAGMENT = /^[A-Za-z0-9_-]{1,40}$/;
+
+/** `path` pointing at one element of the page (`#tx-123`), replacing any fragment it had. A fragment that isn't plain is ignored. */
+export function withFragment(path: string, id: string): string {
+  const bare = path.split("#")[0] ?? path;
+  return FRAGMENT.test(id) ? `${bare}#${id}` : bare;
 }
 
 /** `href` with the page to come back to. */

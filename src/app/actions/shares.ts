@@ -1,14 +1,16 @@
 "use server";
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
-import { billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
+import { accounts, billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
+import { isRealDate } from "@/lib/dates";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
+import { ALREADY_RECORDED } from "@/lib/plan/messages";
 import { pickShare, SHARE_CANDIDATE_CATEGORIES } from "@/lib/plan/shares";
 import { selectShares } from "@/lib/queries/shares";
 import { withParams, type SavedKey } from "@/lib/saved-notice";
@@ -29,8 +31,10 @@ function claim(db: DB, txId: number, share: { id: number; billName: string }): v
   // A salary or interest line stays what it is; only the vague money-in categories are re-filed.
   const refile = reimb && tx.categoryId && db.select().from(categories).where(eq(categories.id, tx.categoryId)).get();
   const vague = refile && SHARE_CANDIDATE_CATEGORIES.includes(refile.name);
+  // Counting rewrites the item and may move the category: keep what it was (once) so "Not theirs" can put it back.
+  const keep = tx.sharePrevItem === null && tx.sharePrevCategoryId === null ? { sharePrevItem: tx.item, sharePrevCategoryId: tx.categoryId } : {};
   db.update(transactions)
-    .set({ shareId: share.id, ...(vague ? { categoryId: reimb!.id } : {}), item: `${share.billName} share` })
+    .set({ shareId: share.id, ...(vague ? { categoryId: reimb!.id } : {}), item: `${share.billName} share`, ...keep })
     .where(eq(transactions.id, txId))
     .run();
 }
@@ -232,11 +236,78 @@ export async function assignPayment(formData: FormData): Promise<void> {
   done(undefined, undefined, "counted");
 }
 
-/** Undo an assignment (it stays recorded as money in). */
+/**
+ * "Not theirs": undo an assignment. The entry stays recorded as money in, with the item and category it had before it was
+ * counted (when they were saved). An entry that was never counted towards anybody is left exactly as it is.
+ */
 export async function unassignPayment(formData: FormData): Promise<void> {
   const txId = Number(formData.get("txId"));
   if (!txId) done();
   const db = await getDb();
-  db.update(transactions).set({ shareId: null }).where(eq(transactions.id, txId)).run();
+  db.transaction((t) => {
+    const row = t.select().from(transactions).where(eq(transactions.id, txId)).get();
+    if (!row || row.shareId === null) return;
+    const prevCategory = row.sharePrevCategoryId === null ? undefined : t.select({ id: categories.id }).from(categories).where(eq(categories.id, row.sharePrevCategoryId)).get();
+    // Put back only what COUNTING changed: an item or category the user has edited since is theirs and stays as it is.
+    const nowCategory = row.categoryId === null ? undefined : t.select({ name: categories.name }).from(categories).where(eq(categories.id, row.categoryId)).get();
+    const itemStillCounted = / share$/.test(row.item ?? "");
+    const categoryStillCounted = nowCategory?.name === "Reimbursements";
+    t.update(transactions)
+      .set({
+        shareId: null,
+        ...(row.sharePrevItem !== null && itemStillCounted ? { item: row.sharePrevItem } : {}),
+        ...(prevCategory && categoryStillCounted ? { categoryId: prevCategory.id } : {}),
+        sharePrevItem: null,
+        sharePrevCategoryId: null,
+      })
+      .where(eq(transactions.id, txId))
+      .run();
+  });
   done();
+}
+
+const PayInput = z.object({
+  shareId: z.string().min(1, "Choose who paid"),
+  amount: z.string(),
+  date: z.string().refine((s) => isRealDate(s), "Pick a valid date"),
+  accountId: z.string().min(1, "Choose the account it went into"),
+});
+
+/** The same double-tap guard as paying a bill: a twin made in the last minute is a double tap or a retry, not a second payment. */
+const justNow = () => sql`${transactions.createdAt} >= datetime('now', '-60 seconds')`;
+
+/**
+ * "Mark paid": this person paid their share. Records it as money in (category Reimbursements, linked to them) in one write,
+ * so the ledger fills their oldest unpaid months at the price in force. No need to add it by hand first.
+ */
+export async function recordSharePayment(formData: FormData): Promise<void> {
+  const p = PayInput.safeParse(Object.fromEntries(formData));
+  if (!p.success) done(p.error.issues[0]?.message);
+  const amount = parseSen(p.data!.amount);
+  if (amount === null || amount <= 0) done("Enter the amount they paid");
+  if (!withinLimit(amount!)) done(MAX_AMOUNT_MESSAGE);
+  const db = await getDb();
+  const who = selectShares(db).find((s) => s.id === Number(p.data!.shareId));
+  if (!who) done("That person is no longer on a shared bill");
+  if (!who!.active) done("They have left this bill: switch them back on in their settings to count a payment");
+  const account = db.select().from(accounts).where(eq(accounts.id, Number(p.data!.accountId))).get();
+  if (!account || account.archived) done("Choose the account it went into");
+  if (account!.type === "investment") done("A friend's payment can't go into an investment account");
+  const reimb = db.select().from(categories).where(eq(categories.name, "Reimbursements")).get();
+  if (!reimb || reimb.type !== "income") done('This needs an income category named "Reimbursements". Add or restore it in Settings > Categories');
+
+  const duplicate = db.transaction((t) => {
+    const twin = t
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(and(eq(transactions.shareId, who!.id), eq(transactions.type, "income"), eq(transactions.date, p.data!.date), eq(transactions.amount, amount!), eq(transactions.accountId, account!.id), justNow()))
+      .get();
+    if (twin) return true;
+    t.insert(transactions)
+      .values({ date: p.data!.date, type: "income", amount: amount!, accountId: account!.id, categoryId: reimb!.id, item: `${who!.billName} share`, shareId: who!.id })
+      .run();
+    return false;
+  });
+  if (duplicate) done(ALREADY_RECORDED);
+  done(undefined, undefined, "counted");
 }

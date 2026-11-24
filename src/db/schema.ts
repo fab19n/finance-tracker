@@ -75,6 +75,10 @@ export const transactions = sqliteTable(
     clientId: text("client_id"),
     // The statement import that wrote this entry (import_batches.id), so the whole import can be undone. Null for entries typed by hand.
     importBatch: text("import_batch"),
+    // What a shared-bill payment looked like BEFORE it was counted towards a person (counting rewrites the item and may move
+    // the category to Reimbursements): kept so that un-counting can put them back. Null when it was never counted.
+    sharePrevItem: text("share_prev_item"),
+    sharePrevCategoryId: integer("share_prev_category_id"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [
@@ -153,6 +157,11 @@ export const recurringBills = sqliteTable("recurring_bills", {
   // How a shared bill is split. 'monthly': everyone owes an equal part of every month (Netflix). 'turns': ONE person pays
   // the whole bill each month, in rotation, with you taking some months yourself (Spotify); see bill_turns.
   sharing: text("sharing", { enum: ["monthly", "turns"] }).notNull().default("monthly"),
+  // How often it falls due. 'monthly' is every month (the default and everything before this column); 'quarterly' every three
+  // months and 'yearly' once a year, in the months given by `dueMonth` (a month number 1-12: for yearly the one month, for
+  // quarterly the first of the four, then +3, +6, +9). A bill that is not due in a cycle is not reserved for in that cycle.
+  frequency: text("frequency", { enum: ["monthly", "quarterly", "yearly"] }).notNull().default("monthly"),
+  dueMonth: integer("due_month"),
 });
 
 /**

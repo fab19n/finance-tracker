@@ -235,3 +235,19 @@ pnpm run db:generate # after editing src/db/schema.ts, creates a migration in dr
 Stack: Next.js (App Router, Cache Components) · TypeScript · SQLite (better-sqlite3) + Drizzle · Tailwind · Recharts · Vitest.
 All database access goes through `getDb()` in `src/db/client.ts`, which defers reads to request time (required by Cache Components)
 and enforces the PIN lock. The analytics and investing maths live in `src/lib/analytics` and `src/lib/investing` as pure, tested functions.
+
+## Browser checks
+
+`pnpm run e2e` drives headless Edge or Chrome (found automatically, or pass `--browser <path>`) over the DevTools protocol with Node's built-in WebSocket and fetch: no extra packages. It never starts or builds the app, so start a throwaway one first, on its own build folder and a demo database, with the PIN off:
+
+```powershell
+pnpm run seed:demo
+$env:NEXT_DIST_DIR=".next-test"; $env:DB_PATH="data/demo.db"; $env:APP_PIN=""
+pnpm run build
+pnpm exec next start -H 127.0.0.1 -p 3210      # leave it running, then in another terminal:
+pnpm run e2e -- --base http://127.0.0.1:3210   # add --pages plan,/settings, or --warn-only to keep exit code 0
+```
+
+Afterwards stop that server, delete `.next-test`, restore `tsconfig.json` (`git show HEAD:tsconfig.json > tsconfig.json`) and point the git-ignored `next-env.d.ts` back at `./.next/dev/types/...`.
+
+Each page (Home, Activity, Accounts, Plan, Bills, Shared, Insights, Invest, every Settings tab, Import, More) is opened at 390x844 and 1280x900, in light and dark, and checked for: script errors and `console.error`, a real title, exactly one `h1`, a name on every button and link, duplicate ids, sideways scroll on the phone, controls under 40 px, text contrast below 4.5:1 (3:1 for large text) and a visible focus ring on the first five Tab stops. It also checks the back-link route More > Plan > Import > Back > Back, the left swipe on Plan, and (only when the app has a PIN) that a forged cookie is sent to `/login`. Failures print as a table per page; the exit code is 1 on any failure.

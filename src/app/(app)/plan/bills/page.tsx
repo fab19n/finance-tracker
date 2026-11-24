@@ -69,7 +69,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
       </summary>
       <div className="card mt-2.5 space-y-3">
         <p className="sub leading-relaxed">
-          Everything that leaves your account every month. For a bill that varies (rent 950-980, electricity), give the lowest amount and the &quot;up to&quot; amount.
+          Everything that leaves your account regularly: every month, every 3 months or once a year (only cycles where a bill falls due hold money back for it). For a bill that varies (rent 950-980, electricity), give the lowest amount and the &quot;up to&quot; amount.
         </p>
         <BillForm categories={expenseCategories} accounts={accountOptions} defaultAccountId={accountChoice?.id} returnAccount={accountChoice?.id} prefill={prefill} />
       </div>
@@ -143,7 +143,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                 item={inCycle.get(b.id) ?? null}
                 today={today}
                 account={accountChoice?.id}
-                caption={billCaption(b, { account: accountChoice ? null : b.accountName, dueDate: inCycle.get(b.id)?.dueDate ?? null, people: usage.get(b.id)?.people })}
+                caption={billCaption(b, { account: accountChoice ? null : b.accountName, dueDate: inCycle.get(b.id)?.dueDate ?? null, nextDue: inCycle.get(b.id)?.nextDue ?? null, people: usage.get(b.id)?.people })}
                 editForm={<BillForm bill={b} usage={usage.get(b.id)} returnAccount={accountChoice?.id} categories={expenseCategories} accounts={accountOptions} />}
               />
             ))}

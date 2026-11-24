@@ -42,3 +42,77 @@ export function deleteSheet(e: DeletableEntry): { title: string; body: string; w
     warnings: deleteWarnings(e),
   };
 }
+
+/* ---------- Undo after deleting one entry ---------- */
+
+/** How long the "Entry deleted. Undo" notice stays. */
+export const UNDO_MS = 8000;
+
+/** Every column of a transaction: what is kept so a deleted entry can be put back exactly as it was. */
+export type RestorableRow = {
+  id: number;
+  date: string;
+  type: "income" | "expense" | "transfer";
+  amount: number;
+  accountId: number;
+  toAccountId: number | null;
+  categoryId: number | null;
+  item: string | null;
+  merchant: string | null;
+  note: string | null;
+  billId: number | null;
+  shareId: number | null;
+  importKey: string | null;
+  clientId: string | null;
+  importBatch: string | null;
+  sharePrevItem: string | null;
+  sharePrevCategoryId: number | null;
+  createdAt: string;
+};
+
+function toBase64Url(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(token: string): string {
+  const padded = token.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+/** The deleted row as one URL-safe token (nulls left out). The client keeps it for 8 seconds and hands it back to restore. */
+export function encodeUndo(row: RestorableRow): string {
+  const compact = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== null));
+  return toBase64Url(JSON.stringify(compact));
+}
+
+/** Whatever a token holds (unchecked: the restore action validates it), or null when it is not a token at all. */
+export function decodeUndo(token: unknown): unknown {
+  if (typeof token !== "string" || token.length === 0 || token.length > 4000 || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
+  try {
+    return JSON.parse(fromBase64Url(token));
+  } catch {
+    return null;
+  }
+}
+
+/** `path` (a same-site path, maybe with a #fragment) with `?deleted=<token>` added before the fragment. */
+export function withDeleted(path: string, token: string): string {
+  const hash = path.indexOf("#");
+  const base = hash >= 0 ? path.slice(0, hash) : path;
+  const frag = hash >= 0 ? path.slice(hash) : "";
+  return `${base}${base.includes("?") ? "&" : "?"}deleted=${token}${frag}`;
+}
+
+/** The token in an address's query string, and that query string without it. Null when there is none. */
+export function takeDeleted(search: string): { token: string; rest: string } | null {
+  const params = new URLSearchParams(search);
+  const token = params.get("deleted");
+  if (!token) return null;
+  params.delete("deleted");
+  const rest = params.toString();
+  return { token, rest: rest ? `?${rest}` : "" };
+}

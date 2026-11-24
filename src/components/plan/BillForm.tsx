@@ -3,6 +3,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Toggle } from "@/components/Toggle";
+import { FrequencyFields } from "@/components/plan/FrequencyFields";
 import { senToInput } from "@/lib/money";
 import { deleteBillBody, NO_USAGE, type BillUsage } from "@/lib/plan/bill-delete";
 import type { BillRow } from "@/lib/queries/plan";
@@ -89,6 +90,7 @@ export function BillForm({
           </label>
           <input id={`${f}-due`} name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="1-31" className="input" />
         </div>
+        <FrequencyFields idPrefix={f} frequency={bill?.frequency} dueMonth={bill?.dueMonth} />
         <div className="col-span-2 min-w-0 md:col-span-2">
           <label className="label" htmlFor={`${f}-keywords`}>
             Words on the bank statement

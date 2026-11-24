@@ -17,7 +17,8 @@
     "backup": "tsx scripts/backup.ts",
     "dev:lan": "next dev -H 0.0.0.0",
     "start:lan": "next start -H 0.0.0.0",
-    "start:phone": "next start -H 127.0.0.1 -p 3100"
+    "start:phone": "next start -H 127.0.0.1 -p 3100",
+    "e2e": "node scripts/e2e/run.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

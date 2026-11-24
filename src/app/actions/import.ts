@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
+import { deleteLearnedRule, updateLearnedRuleCategory } from "@/lib/import/rules";
+import { settingsHref } from "@/lib/settings-tabs";
 import { getDb } from "@/db/client";
 import type { CommitInput, CommitResult, PreviewResult } from "@/lib/import/api-types";
 import { commitRows, MAX_DESCRIPTION_LENGTH, rowShapeProblem } from "@/lib/import/commit";
@@ -98,4 +101,25 @@ export async function commitImport(input: CommitInput): Promise<CommitResult> {
   const result = commitRows(await getDb(), parsed.data);
   if (result.ok) revalidatePath("/", "layout");
   return result;
+}
+
+/** Back to Settings > Appearance & data, with the rule notice (or an error) shown there. */
+function backToRules(error?: string, rule?: "saved" | "deleted"): never {
+  revalidatePath("/", "layout");
+  const base = settingsHref("data", error);
+  redirect(rule && !error ? `${base}&rule=${rule}` : base);
+}
+
+/** Forget one learned import rule. Lines already imported are not touched; the next statement is simply sorted without it. */
+export async function deleteImportRule(formData: FormData): Promise<void> {
+  const result = deleteLearnedRule(await getDb(), Number(formData.get("id")));
+  if (!result.ok) backToRules(result.error);
+  backToRules(undefined, "deleted");
+}
+
+/** Change the category an import rule files its payee under. */
+export async function updateImportRule(formData: FormData): Promise<void> {
+  const result = updateLearnedRuleCategory(await getDb(), Number(formData.get("id")), Number(formData.get("categoryId")));
+  if (!result.ok) backToRules(result.error);
+  backToRules(undefined, "saved");
 }

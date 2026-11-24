@@ -52,6 +52,12 @@ export function BillRow({ bill, categoryName, item, caption, today, account, edi
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 pl-[52px]">
         {!item && <span className="pill tag-warn">Paused</span>}
+        {item?.status === "not_due" && (
+          <span className="pill">
+            <DuoIcon name="repeat" size={14} aria-hidden />
+            Not due this cycle
+          </span>
+        )}
         {tag && (
           <span className={`pill tag-${tag.tone}`}>
             <DuoIcon name={tag.tone === "good" ? "check" : "alert"} size={14} aria-hidden />
@@ -70,16 +76,16 @@ export function BillRow({ bill, categoryName, item, caption, today, account, edi
               <input type="hidden" name="billId" value={bill.id} />
               {account && <input type="hidden" name="account" value={account} />}
               <div>
-                <label className="label" htmlFor={`bill-${bill.id}-amount`}>
+                <label className="label" htmlFor={`bill-${bill.id}-paid-amount`}>
                   Amount paid (RM)
                 </label>
-                <input id={`bill-${bill.id}-amount`} name="amount" inputMode="decimal" defaultValue={senToInput(item.expected)} required className="input" />
+                <input id={`bill-${bill.id}-paid-amount`} name="amount" inputMode="decimal" defaultValue={senToInput(item.expected)} required className="input" />
               </div>
               <div>
-                <label className="label" htmlFor={`bill-${bill.id}-date`}>
+                <label className="label" htmlFor={`bill-${bill.id}-paid-date`}>
                   Paid on
                 </label>
-                <input id={`bill-${bill.id}-date`} name="date" type="date" defaultValue={today} required className="input" />
+                <input id={`bill-${bill.id}-paid-date`} name="date" type="date" defaultValue={today} required className="input" />
               </div>
               <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2 self-end md:col-span-1">
                 Record

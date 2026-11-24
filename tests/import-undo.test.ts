@@ -105,7 +105,7 @@ describe("migration 0009: import batches", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mig-"));
     fs.mkdirSync(path.join(dir, "meta"));
     const journal = JSON.parse(fs.readFileSync(path.join("drizzle", "meta", "_journal.json"), "utf8")) as { entries: { tag: string }[] };
-    const old = { ...journal, entries: journal.entries.filter((e) => !e.tag.startsWith("0009")) };
+    const old = { ...journal, entries: journal.entries.filter((e) => e.tag.slice(0, 4) < "0009") };
     fs.writeFileSync(path.join(dir, "meta", "_journal.json"), JSON.stringify(old));
     for (const e of old.entries) fs.copyFileSync(path.join("drizzle", `${e.tag}.sql`), path.join(dir, `${e.tag}.sql`));
     const sqlite = new Database(":memory:");

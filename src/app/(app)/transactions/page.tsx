@@ -1,11 +1,14 @@
-import { Download, Plus, Search, X } from "lucide-react";
+import { CheckSquare, Download, Plus, Search, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
 import { BalanceHistory } from "@/components/account/BalanceHistory";
 import { ActivitySearch } from "@/components/activity/ActivitySearch";
+import { BulkBar } from "@/components/activity/BulkBar";
 import { FilterSheet } from "@/components/activity/FilterSheet";
+import { ScrollToHash } from "@/components/activity/ScrollToHash";
+import { TransactionTable } from "@/components/activity/TransactionTable";
 import { appliedCount, bareRM, typeText } from "@/components/activity/filter-logic";
 import { MonthNav } from "@/components/MonthNav";
 import { EmptyState } from "@/components/EmptyState";
@@ -75,7 +78,10 @@ export default async function TransactionsPage({
 }) {
   // parseTxSearch defaults the month to "now", so the render must already be at request time (see src/lib/dates.ts).
   await connection();
-  const view = parseTxSearch(await searchParams);
+  const sp = await searchParams;
+  const view = parseTxSearch(sp);
+  // Select mode (`?select=1`): rows get checkboxes and a sticky action bar; every other link on the page leaves it.
+  const select = (Array.isArray(sp.select) ? sp.select[0] : sp.select) === "1";
   const viewing = view.filters.accountId ?? null;
   const today = todayISO();
   const [accounts, categories, rows, totals, flow, ledger, settings] = await Promise.all([
@@ -115,6 +121,7 @@ export default async function TransactionsPage({
   };
   // This list as it is on screen (filters and page), so an entry opened from it can come back here.
   const listHref = `/transactions${qs({ ...base, page: view.page > 1 ? view.page : undefined })}`;
+  const selectHref = (on: boolean) => `/transactions${qs({ ...base, page: view.page > 1 ? view.page : undefined, select: on ? "1" : undefined })}`;
   // Settings the Filter sheet edits itself; "Clear" in it removes exactly these.
   const sheetKeys = { type: undefined, category: undefined, from: undefined, to: undefined, min: undefined, max: undefined, sort: undefined, page: undefined };
   const amount = amountText(view.raw.min, view.raw.max);
@@ -156,9 +163,17 @@ export default async function TransactionsPage({
       <PageHeader
         title="Activity"
         actions={
-          <Link href={`/transactions/export${qs(base)}`} className="ib" prefetch={false} aria-label="Export CSV" title="Export CSV">
-            <Download size={18} strokeWidth={2} aria-hidden />
-          </Link>
+          <>
+            {!select && groups.length > 0 && (
+              <Link href={selectHref(true)} className="btn min-h-11">
+                <CheckSquare size={16} aria-hidden /> Select
+                <PendingMark />
+              </Link>
+            )}
+            <Link href={`/transactions/export${qs(base)}`} className="ib" prefetch={false} aria-label="Export CSV" title="Export CSV">
+              <Download size={18} strokeWidth={2} aria-hidden />
+            </Link>
+          </>
         }
       />
 
@@ -330,13 +345,17 @@ export default async function TransactionsPage({
               primary={q.trim() ? { label: "Clear search", href: qs({ ...base, q: undefined, page: undefined }) } : filtered ? { label: "Clear filters", href: qs({ month: view.month }) } : undefined}
               secondary={!monthNav ? { label: "Back to monthly", href: qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined }) } : q.trim() && filtered && (category || amount || type || account) ? { label: "Clear all filters", href: qs({ month: view.month }) } : undefined}
             />
-          ) : byAmount ? (
+          ) : (
+            <>
+          {/* Phone: the day-by-day rows. From md up the same entries are the table below. */}
+          <div className="space-y-2 md:hidden">
+          {byAmount ? (
             // Ordered by amount, the days are all mixed up, so no day headings: one list, each row says its date.
             <section data-dim-on-pending>
               <h2 className="pb-1 pt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{sortText}</h2>
               <ul>
                 {pageRows.map((t) => (
-                  <TransactionRow key={t.id} tx={t} showDate viewing={viewing} backHref={listHref} />
+                  <TransactionRow key={t.id} tx={t} showDate viewing={viewing} backHref={listHref} select={select} />
                 ))}
               </ul>
             </section>
@@ -351,20 +370,27 @@ export default async function TransactionsPage({
                   </div>
                   <ul>
                     {g.items.map((t) => (
-                      <TransactionRow key={t.id} tx={t} viewing={viewing} backHref={listHref} />
+                      <TransactionRow key={t.id} tx={t} viewing={viewing} backHref={listHref} select={select} />
                     ))}
                   </ul>
                 </section>
               );
             })
           )}
+          </div>
+          <TransactionTable rows={pageRows} viewing={viewing} backHref={listHref} sort={view.raw.sort} select={select} hrefFor={(next) => `/transactions${qs({ ...base, sort: next, page: undefined, select: select ? "1" : undefined })}`} />
+            </>
+          )}
         </div>
       )}
+
+      {select && groups.length > 0 && <BulkBar categories={categories.filter((c) => !c.archived).map((c) => ({ id: c.id, name: c.name, type: c.type }))} doneHref={selectHref(false)} />}
+      <ScrollToHash />
 
       {(view.page > 1 || hasNext) && (
         <div className="flex items-center justify-between">
           {view.page > 1 ? (
-            <Link href={qs({ ...base, page: view.page - 1 })} className="btn">
+            <Link href={qs({ ...base, page: view.page - 1, select: select ? "1" : undefined })} className="btn">
               <PendingMark />
               {sortText ? "‹ Previous" : "‹ Newer"}
             </Link>
@@ -372,7 +398,7 @@ export default async function TransactionsPage({
             <span />
           )}
           {hasNext && (
-            <Link href={qs({ ...base, page: view.page + 1 })} className="btn">
+            <Link href={qs({ ...base, page: view.page + 1, select: select ? "1" : undefined })} className="btn">
               {sortText ? "Next ›" : "Older ›"}
               <PendingMark />
             </Link>

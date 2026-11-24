@@ -23,6 +23,7 @@ import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import { CategoryFields } from "@/components/settings/CategoryFields";
 import { ColorField } from "@/components/settings/ColorField";
 import { RestoreSwitch } from "@/components/settings/RestoreSwitch";
+import { RulesManager } from "@/components/settings/RulesManager";
 import { SavedNotice } from "@/components/settings/SavedNotice";
 import { pinEnabled } from "@/lib/auth";
 import { todayISO } from "@/lib/dates";
@@ -463,7 +464,7 @@ function DataRow({ title, caption, children }: { title: string; caption: React.R
   );
 }
 
-function DataTab() {
+function DataTab({ ruleNotice }: { ruleNotice?: string }) {
   const locked = pinEnabled();
   return (
     <div className="space-y-3 md:space-y-4">
@@ -517,6 +518,8 @@ function DataTab() {
 
       <RecentImports />
 
+      <RulesManager notice={ruleNotice} />
+
       <ThisPhoneCard pinOn={locked} />
     </div>
   );
@@ -551,7 +554,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "categories" && <CategoriesTab categories={categories} kind={kind} />}
       {tab === "payday" && <PaydayTab settings={settings} accounts={accounts} />}
       {tab === "investing" && <InvestingTab settings={settings} />}
-      {tab === "data" && <DataTab />}
+      {tab === "data" && <DataTab ruleNotice={Array.isArray(sp.rule) ? sp.rule[0] : sp.rule} />}
     </div>
     </SwipeTabs>
   );

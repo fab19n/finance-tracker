@@ -9,6 +9,7 @@ import { monthRange, rotationWindow, type TurnCell, type TurnPerson } from "@/li
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
 import { MonthBadge, NoMonth, StatusTag } from "./MonthBadge";
 import { ShareActions } from "./ShareForm";
+import { CountedPayments, MarkPaid, type PayContext } from "./SharePay";
 import { SharingToggle } from "./SharingToggle";
 
 /** "Oct 26", "Nov 26 to Feb 27", or "Oct 26, Dec 26" for months that aren't back to back. */
@@ -63,7 +64,7 @@ function Mark({ cell, name, month }: { cell: TurnCell | undefined; name: string;
  * your two latest cycles as a checklist (a mark only in the months that are THEIRS), who owes you for a month they
  * covered, and, for money that has arrived for a month nobody has been given yet, a one-tap "which month?".
  */
-export function RotationCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string }) {
+export function RotationCard({ view, people, bills, defaultStart, today, pay }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string; pay: PayContext }) {
   const r = view.rotation!;
   const thisMonth = today.slice(0, 7);
   const columns = rotationWindow(r.schedule, thisMonth);
@@ -167,6 +168,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
         {r.people.map((p) => {
           const s = standing(p, thisMonth, cycle);
           const person = mine.find((m) => m.id === p.share.id);
+          // The turn a payment would settle: the oldest one of theirs that has come round and is not paid, else the next.
+          const openTurn = p.turns.find((c) => c.month <= thisMonth && c.state !== "paid") ?? p.turns.find((c) => c.state !== "paid");
           return (
             <li key={p.share.id} className="rounded-2xl bg-card-subtle px-3 py-2.5">
               <details className="group">
@@ -199,6 +202,16 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                   )}
                   {p.leftovers.length > 0 && <p className="text-muted">{formatRM(p.unmatched)} they sent isn&apos;t for a month yet: say which month they covered (above, or in the planner).</p>}
                   {p.lastPayment && <p className="text-muted">Last paid {formatRM(p.lastPayment.amount)} on {p.lastPayment.date}.</p>}
+                  {p.share.active && (
+                    <MarkPaid
+                      shareId={p.share.id}
+                      name={p.share.name}
+                      amount={openTurn ? Math.max(0, openTurn.due - openTurn.paid) : view.bill.amount}
+                      pay={pay}
+                      note={openTurn ? `Settles their ${shortMonthLabel(openTurn.month)} turn.` : "They have no unpaid turn on the plan: it will wait under \"Which month did they cover?\" until you say which month it was."}
+                    />
+                  )}
+                  <CountedPayments name={p.share.name} payments={pay.payments[p.share.id] ?? []} />
                   {person && <ShareActions share={person} bills={bills} defaultStart={defaultStart} />}
                 </div>
               </details>

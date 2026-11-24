@@ -4,7 +4,7 @@ import type { DB } from "@/db/open";
 import { accounts, categories, recurringBills, transactions } from "@/db/schema";
 import type { Account } from "@/db/schema";
 import { mean } from "@/lib/analytics/stats";
-import { evaluateBills, monthlyCommitments, normalizeName, summarizeBills, type BillDef, type BillInCycle, type BillsSummary, type Commitments } from "@/lib/plan/bills";
+import { billsDueMax, evaluateBills, monthlyCommitments, normalizeName, summarizeBills, type BillDef, type BillInCycle, type BillsSummary, type Commitments } from "@/lib/plan/bills";
 import { currentCycle, cycleHistory, normalizeSalaryDates, type Cycle } from "@/lib/plan/cycle";
 import { billsPaidFrom, safeToSpend, type SafeToSpend } from "@/lib/plan/safe";
 import { cycleFlow, estimateAllowance, type CycleFlow } from "@/lib/plan/savings-flow";
@@ -32,6 +32,8 @@ export function selectBills(db: DB): BillRow[] {
       dueDay: recurringBills.dueDay,
       matchKeywords: recurringBills.matchKeywords,
       active: recurringBills.active,
+      frequency: recurringBills.frequency,
+      dueMonth: recurringBills.dueMonth,
       sortOrder: recurringBills.sortOrder,
       categoryName: categories.name,
       categoryIcon: categories.icon,
@@ -147,7 +149,8 @@ export async function getPlan(today: string): Promise<PlanData> {
   const summary = summarizeBills(evaluated);
   const commitments = {
     ...monthlyCommitments(allBills),
-    monthlyMax: allBills.filter((b) => b.active).reduce((s, b) => s + b.amountMax, 0),
+    // What the payday plan sets aside: the bills that fall due in THIS cycle (a yearly bill only in its own).
+    monthlyMax: billsDueMax(allBills, evalCycle),
   };
 
   // Safe to spend: what's in the spending account minus the bills it still has to pay this cycle.

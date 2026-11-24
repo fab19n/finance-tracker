@@ -52,7 +52,7 @@ export function BillChecklist({
             item={i}
             today={today}
             account={account}
-            caption={billCaption(i.bill, { account: accountNames?.get(i.bill.accountId), dueDate: i.dueDate })}
+            caption={billCaption(i.bill, { account: accountNames?.get(i.bill.accountId), dueDate: i.dueDate, nextDue: i.nextDue })}
           />
         ))}
       </ul>

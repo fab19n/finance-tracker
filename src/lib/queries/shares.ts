@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
-import { billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
-import { shiftDays } from "@/lib/dates";
-import { billedMonths, earlierShareAmounts, pickShare, rotationBill, rotationLedger, SHARE_CANDIDATE_CATEGORIES, sharedBill, type ShareDef, type SharedBill, type SharePayment, type TurnSlot } from "@/lib/plan/shares";
+import { accounts, billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
+import { splitClaims, type ClaimCredit } from "@/lib/plan/share-claims";
+import { billedMonths, earlierShareAmounts, rotationBill, rotationLedger, SHARE_CANDIDATE_CATEGORIES, sharedBill, type ShareDef, type SharedBill, type SharePayment, type TurnSlot } from "@/lib/plan/shares";
 
 export type ShareRow = ShareDef & {
   billName: string;
@@ -74,17 +74,25 @@ export async function listShares(): Promise<ShareRow[]> {
   return selectShares(await getDb());
 }
 
-/** The most months anyone is likely to pay in one go (a year). Larger sums are not offered as a share payment. */
-const MAX_MONTHS_PREPAID = 12;
-
 export type SharedBillView = SharedBill<{ id: number; name: string; amount: number; sharing: "monthly" | "turns" }>;
 
 /** Money in that looks like it could be someone's payment but isn't linked to anyone yet. */
-export type UnassignedCredit = { id: number; date: string; amount: number; description: string; suggestedShareId: number | null };
+export type UnassignedCredit = ClaimCredit;
+
+/** A payment already counted towards somebody. */
+export type CountedPayment = { txId: number; date: string; amount: number };
 
 export type SharesPage = {
   bills: SharedBillView[];
   unassigned: UnassignedCredit[];
+  /** Money in that is not a likely payment (an odd amount, an old entry): offered behind "Show all money in". */
+  unassignedOther: UnassignedCredit[];
+  /** Counted payments by person (`bill_shares.id`), newest first. */
+  payments: Record<number, CountedPayment[]>;
+  /** Accounts a payment can be recorded into (no investments). */
+  accounts: { id: number; name: string }[];
+  /** The Main (spending) account, else the first. */
+  defaultAccountId: number | null;
   /** Everyone, to choose from when assigning a payment. */
   people: ShareRow[];
   /** Sen others owe you across every shared bill. */
@@ -123,27 +131,32 @@ export async function getSharedBills(today: string): Promise<SharesPage> {
   }
 
   const rows = db
-    .select({ id: transactions.id, date: transactions.date, amount: transactions.amount, note: transactions.note, item: transactions.item })
+    .select({ id: transactions.id, date: transactions.date, amount: transactions.amount, note: transactions.note, item: transactions.item, categoryName: categories.name })
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))
     .where(and(eq(transactions.type, "income"), isNull(transactions.shareId), inArray(categories.name, SHARE_CANDIDATE_CATEGORIES)))
-    .orderBy(asc(transactions.date))
-    .all()
-    .filter((r) => r.date >= shiftDays(today, -400));
-  // A friend's payment is at least one month of the smallest share and at most about a year of the largest. Anything outside
-  // that (a KWSP credit, a RM 3,000 transfer) can't be one, so it isn't offered.
-  const active = people.filter((p) => p.active && p.share > 0);
-  const lo = Math.min(...active.map((p) => p.share));
-  const hi = Math.max(...active.map((p) => p.share)) * MAX_MONTHS_PREPAID;
-  const unassigned = rows
-    .filter((r) => active.length > 0 && r.amount >= lo && r.amount <= hi)
-    .map((r) => {
-      const matchText = [r.note, r.item].filter(Boolean).join(" ");
-      return { id: r.id, date: r.date, amount: r.amount, description: r.note ?? r.item ?? "", suggestedShareId: pickShare(people, matchText, r.amount)?.id ?? null };
-    })
-    .reverse(); // newest first
-  // Where the app can already tell who it is from, show that first: those are one tap each.
-  unassigned.sort((a, b) => Number(b.suggestedShareId !== null) - Number(a.suggestedShareId !== null));
+    .all();
+  // Reimbursements are always offered; other money in only when it is a plausible payment (see share-claims.ts).
+  const { main: unassigned, other: unassignedOther } = splitClaims(rows, people, today);
 
-  return { bills, unassigned, people, owedToYou: bills.reduce((s, b) => s + b.owedToYou, 0) };
+  // Every counted payment, per person, newest first: the list that carries "Not theirs".
+  const payments: Record<number, CountedPayment[]> = {};
+  const counted = db
+    .select({ shareId: transactions.shareId, id: transactions.id, date: transactions.date, amount: transactions.amount })
+    .from(transactions)
+    .where(and(eq(transactions.type, "income"), inArray(transactions.shareId, people.length ? people.map((p) => p.id) : [-1])))
+    .orderBy(desc(transactions.date), desc(transactions.id))
+    .all();
+  for (const c of counted) (payments[c.shareId!] ??= []).push({ txId: c.id, date: c.date, amount: c.amount });
+
+  // Where a payment can be put: any open account except an investment; the Main (spending) account first.
+  const accts = db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.archived, false), ne(accounts.type, "investment")))
+    .orderBy(asc(accounts.sortOrder), asc(accounts.id))
+    .all();
+  const defaultAccountId = (accts.find((a) => a.purpose === "spending") ?? accts[0])?.id ?? null;
+
+  return { bills, unassigned, unassignedOther, payments, accounts: accts.map((a) => ({ id: a.id, name: a.name })), defaultAccountId, people, owedToYou: bills.reduce((s, b) => s + b.owedToYou, 0) };
 }

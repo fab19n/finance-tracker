@@ -32,6 +32,8 @@ const BillInput = z.object({
   amountMin: z.string(),
   amountMax: z.string().optional(),
   dueDay: z.string().optional(),
+  frequency: z.string().optional(),
+  dueMonth: z.string().optional(),
   matchKeywords: z.string().max(200).optional(),
   active: z.string().optional(), // a ticked checkbox sends a value; unticked sends nothing
 });
@@ -55,6 +57,15 @@ export async function saveBill(formData: FormData): Promise<void> {
     if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) done(back, "Due day must be between 1 and 31");
   }
 
+  // How often: a missing field means monthly (an older form). A yearly or quarterly bill needs its month; a monthly one has none.
+  const frequency = v.frequency?.trim() ? v.frequency.trim() : "monthly";
+  if (frequency !== "monthly" && frequency !== "quarterly" && frequency !== "yearly") done(back, "Pick how often the bill is due");
+  let dueMonth: number | null = null;
+  if (frequency !== "monthly") {
+    dueMonth = v.dueMonth?.trim() ? Number(v.dueMonth) : NaN;
+    if (!Number.isInteger(dueMonth) || dueMonth < 1 || dueMonth > 12) done(back, "Pick the month the bill is due in");
+  }
+
   const db = await getDb();
   const category = db.select().from(categories).where(eq(categories.id, Number(v.categoryId))).get();
   if (!category || category.type !== "expense") done(back, "Pick an expense category");
@@ -68,6 +79,8 @@ export async function saveBill(formData: FormData): Promise<void> {
     amountMin: min!,
     amountMax: max!,
     dueDay,
+    frequency: frequency as "monthly" | "quarterly" | "yearly",
+    dueMonth,
     matchKeywords:
       v.matchKeywords
         ?.split(",")

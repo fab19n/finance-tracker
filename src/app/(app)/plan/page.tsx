@@ -82,7 +82,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         <h2 id="bills-h" className="label !mb-0">
           Bills this cycle{accountChoice && ` · paid from ${accountChoice.name}`}
         </h2>
-        <Link href={`/plan/bills${qs({ account: accountChoice?.id })}`} className="text-xs font-extrabold text-accent-strong hover:underline">
+        <Link href={`/plan/bills${qs({ account: accountChoice?.id })}`} className="inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong hover:underline">
           All bills
         </Link>
       </div>
@@ -118,7 +118,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       {accountChoice ? (
         <div className="space-y-3 md:space-y-4 lg:max-w-3xl">
           {/* The spending account gets the real "safe to spend" card whichever way you reach it (same maths either way). */}
-          {outlook && mine && !isSpending ? <AccountOutlookCard safe={outlook} billCount={mine.length} /> : <SafeToSpendCard safe={safe} cycle={cycle} />}
+          {outlook && mine && !isSpending ? <AccountOutlookCard safe={outlook} billCount={mine.filter((i) => i.status !== "not_due").length} /> : <SafeToSpendCard safe={safe} cycle={cycle} />}
           {unmovedNote && isSpending && <p className="sub px-1 leading-relaxed">{unmovedNote}</p>}
           {/* Recording the salary is an action, not an analysis: it stays available when one account is on screen. */}
           {needsSalary && (

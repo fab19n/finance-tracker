@@ -31,7 +31,8 @@ export function safeToSpend(p: { accountName: string; balance: number; items: Bi
     safe: left,
     perDay: p.daysLeft > 0 ? Math.round(left / p.daysLeft) : null,
     daysLeft: p.daysLeft,
-    unpaidCount: p.items.filter((e) => e.status !== "paid").length,
+    // A bill that is not due this cycle holds nothing back, so it is not "still to pay".
+    unpaidCount: p.items.filter((e) => e.status !== "paid" && e.status !== "not_due").length,
     overdueCount: p.items.filter((e) => e.status === "overdue").length,
   };
 }

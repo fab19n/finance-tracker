@@ -12,6 +12,8 @@ import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
 import { dayLabel } from "@/lib/dates";
 import { clearDraft, fingerprint, lastDraft, loadDraft, saveDraft, type Draft } from "@/lib/import/draft";
 import { IMPORT_TOO_LARGE, MAX_IMPORT_BYTES } from "@/lib/import/limits";
+import { groupByPayee, payeeKey, takesPayeeDecision, type PayeeGroup } from "@/lib/import/payees";
+import { breakDetails, chainMismatches, describeBreak, describeFix, repairCandidates, type ChainRow, type Fix } from "@/lib/import/repair";
 import { confirmEdited, needsLook as rowNeedsLook, rowIncomplete, skippedDrift, watchAfterEdit } from "@/lib/import/review";
 import { formatRM } from "@/lib/money";
 import { ColumnMapper } from "./ColumnMapper";
@@ -37,9 +39,18 @@ type EditRow = ClassifiedRow & {
   confirmed: boolean;
   /** It was flagged when you changed it, so it stays in "Needs a look" until confirmed. */
   watch: boolean;
+  /** A repair of a balance break was applied to this line (what it was before, so it can be undone). `for` = the break an added balancing line covers. */
+  fix?: AppliedFix | null;
+};
+
+type AppliedFix = {
+  type: Fix["kind"];
+  for?: number;
+  was: Pick<EditRow, "amount" | "balance" | "kind" | "categoryId" | "proposal" | "signedBy">;
 };
 
 type Filter = "attention" | "new" | "all" | "skipped";
+type View = "line" | "payee";
 const PAGE = 60;
 
 const KIND_LABEL: Record<ProposalKind, string> = { expense: "Spending", income: "Income", transfer: "Transfer", skip: "Skip" };
@@ -108,6 +119,9 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const [rows, setRows] = useState<EditRow[]>([]);
   const [filter, setFilter] = useState<Filter>("attention");
   const [shown, setShown] = useState(PAGE);
+  // By line (every line its own decision) or by payee (one decision for all of a payee's lines).
+  const [view, setView] = useState<View>("line");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   // A line is compact (name, category, amount) until it is tapped; one that needs a look opens by itself. `true`/`false` here is the person's own choice.
   const [manual, setManual] = useState<Record<string, boolean>>({});
   const [setOpening, setSetOpening] = useState(true);
@@ -291,7 +305,36 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
 
   const catsFor = (kind: ProposalKind) => categories.filter((c) => c.type === (kind === "income" ? "income" : "expense"));
 
-  const mismatch = useMemo(() => new Set(preview?.check.mismatches ?? []), [preview]);
+  // The statement as the balance check sees it, with the repairs you made applied (see lib/import/repair.ts).
+  const chain = useMemo<ChainRow[]>(
+    () =>
+      rows.map((r) => ({
+        index: r.index,
+        date: r.date,
+        description: r.description,
+        amount: r.amount,
+        balance: r.balance,
+        signedBy: r.signedBy,
+        dropped: r.fix?.type === "skip",
+        adjustFor: r.fix?.type === "adjust" ? r.fix.for : undefined,
+      })),
+    [rows],
+  );
+  const repaired = rows.some((r) => r.fix);
+  // Untouched, the server's own check stands; once a repair is made the same check is run again on the repaired lines.
+  const liveMismatches = useMemo(
+    () => (preview && repaired && !preview.check.total ? chainMismatches(chain, preview.openingBalance) : (preview?.check.mismatches ?? [])),
+    [preview, repaired, chain],
+  );
+  const mismatch = useMemo(() => new Set(liveMismatches), [liveMismatches]);
+  // Each break in plain words, with the fixes that provably clear it.
+  const breaks = useMemo(() => {
+    if (!preview || preview.check.total || liveMismatches.length === 0) return [];
+    const locked = new Set(rows.filter((r) => r.kind === "skip").map((r) => r.index));
+    return breakDetails(chain, preview.openingBalance)
+      .filter((d) => mismatch.has(d.index))
+      .map((d) => ({ detail: d, fixes: repairCandidates(chain, preview.openingBalance, d.index, { locked }) }));
+  }, [preview, chain, rows, liveMismatches, mismatch]);
 
   function patch(key: string, change: Partial<EditRow>) {
     setRows((all) => {
@@ -308,11 +351,93 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       merged.watch = watchAfterEdit(target, merged, mismatch);
       return all.map((r) => {
         if (r.key === key) return merged;
-        const alike = r.group === target.group && !r.edited && r.proposal.source !== "duplicate" && r.kind !== "skip" && r.amount < 0 === target.amount < 0;
+        const alike = r.group === target.group && !r.edited && !r.fix && r.proposal.source !== "duplicate" && r.kind !== "skip" && r.amount < 0 === target.amount < 0;
         if (!alike) return r;
         const next = { ...r, ...carried };
         return { ...next, watch: watchAfterEdit(r, next, mismatch) };
       });
+    });
+  }
+
+  /** One decision for every line of a payee (the "By payee" view). Each line is then your choice, flagged like any edit until confirmed. */
+  function patchGroup(gkey: string, change: Partial<EditRow>) {
+    setRows((all) =>
+      all.map((r) => {
+        if (payeeKey(r) !== gkey || !takesPayeeDecision(r)) return r;
+        const merged: EditRow = { ...r, ...change, edited: true, confirmed: false, remember: true };
+        if (change.kind === "transfer") merged.billId = null;
+        if (change.kind && change.kind !== "income") merged.shareId = null;
+        merged.watch = watchAfterEdit(r, merged, mismatch);
+        return merged;
+      }),
+    );
+  }
+
+  const keep = (r: EditRow): AppliedFix["was"] => ({ amount: r.amount, balance: r.balance, kind: r.kind, categoryId: r.categoryId, proposal: r.proposal, signedBy: r.signedBy });
+
+  /** Apply one repair of a balance break. Every one can be undone, and the check is run again on the repaired lines. */
+  function repair(fix: Fix) {
+    setRows((all) => {
+      const at = all.findIndex((r) => r.index === fix.index);
+      if (at < 0) return all;
+      const r = all[at];
+      const was = keep(r);
+      const flagged = { edited: true, confirmed: false, watch: true };
+      setManual((m) => ({ ...m, [r.key]: true }));
+      if (fix.kind === "balance") return all.map((x, i) => (i === at ? { ...x, balance: fix.to, fix: { type: "balance" as const, was } } : x));
+      if (fix.kind === "amount") {
+        // A line that changes direction changes what it is (spending <-> income); its category is then to be chosen again.
+        const turned = r.amount < 0 !== fix.to < 0 && (r.kind === "expense" || r.kind === "income");
+        const next: EditRow = {
+          ...r,
+          ...flagged,
+          amount: fix.to,
+          signedBy: "balance",
+          kind: turned ? (fix.to < 0 ? "expense" : "income") : r.kind,
+          categoryId: turned ? null : r.categoryId,
+          shareId: turned && fix.to < 0 ? null : r.shareId,
+          fix: { type: "amount", was },
+        };
+        return all.map((x, i) => (i === at ? next : x));
+      }
+      if (fix.kind === "skip") {
+        const next: EditRow = { ...r, ...flagged, kind: "skip", categoryId: null, proposal: { ...r.proposal, source: "default", reason: "Left out so the balance adds up (your choice)" }, fix: { type: "skip", was } };
+        return all.map((x, i) => (i === at ? next : x));
+      }
+      // A balancing line: its own entry, before the break, with a category to choose (Miscellaneous / Other income when they exist).
+      const kind: ProposalKind = fix.amount < 0 ? "expense" : "income";
+      const category = categories.find((c) => c.name === (kind === "expense" ? "Miscellaneous" : "Other Income") && c.type === (kind === "expense" ? "expense" : "income"));
+      const line: EditRow = {
+        index: -(fix.index + 1),
+        date: r.date,
+        description: "Balancing adjustment",
+        amount: fix.amount,
+        balance: null,
+        signedBy: "guess",
+        key: `adjust-${fix.index}`,
+        group: `adjust-${fix.index}`,
+        proposal: { kind, categoryId: category?.id ?? null, item: "Balancing adjustment", billId: null, shareId: null, transferAccountId: null, source: "default", confidence: "low", reason: "A balancing line you added" },
+        kind,
+        categoryId: category?.id ?? null,
+        item: "Balancing adjustment",
+        billId: null,
+        shareId: null,
+        transferAccountId: null,
+        remember: false,
+        ...flagged,
+        fix: { type: "adjust", for: fix.index, was: keep(r) },
+      };
+      return [...all.slice(0, at), line, ...all.slice(at)];
+    });
+  }
+
+  function undoRepair(key: string) {
+    setRows((all) => {
+      const r = all.find((x) => x.key === key);
+      if (!r?.fix) return all;
+      if (r.fix.type === "adjust") return all.filter((x) => x.key !== key);
+      const { was } = r.fix;
+      return all.map((x) => (x.key === key ? { ...x, ...was, fix: null } : x));
     });
   }
 
@@ -423,7 +548,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     // The statement just imported stays in `preview` until "Import another", so the finish can say where the account now stands.
     const ran = preview;
     const ranTotal = ran?.check.total ?? null;
-    const matches = ran ? (ranTotal ? ranTotal.ok : ran.check.checked > 0 ? ran.check.mismatches.length === 0 : null) : null;
+    // After a repair the statement no longer "matches the bank" by itself, so nothing is claimed either way.
+    const matches = ran ? (ranTotal ? ranTotal.ok : repaired ? null : ran.check.checked > 0 ? ran.check.mismatches.length === 0 : null) : null;
     const opening = ran ? (ran.openingBalance ?? ranTotal?.opening ?? null) : null;
     const closing = ran ? (ran.closingBalance ?? ranTotal?.closing ?? null) : null;
     const range = ran?.dateRange;
@@ -679,7 +805,10 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   }
 
   // ---------------------------------------------------------------- review
-  const { check, stats } = preview;
+  const { stats } = preview;
+  // The server's check, with the breaks that are still open after your repairs.
+  const check = { ...preview.check, mismatches: liveMismatches };
+  const madeFixes = rows.filter((r) => r.fix);
   // A statement with no running balance (a wallet history) is checked as a whole: where it started + its lines = where it ended.
   const total = check.total;
   const allGood = total ? total.ok : check.mismatches.length === 0 && check.checked > 0;
@@ -705,6 +834,271 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     { f: "attention", label: `${lookCount} need${lookCount === 1 ? "s" : ""} a look`, tone: "tag-warn" },
     { f: "all", label: `All ${rows.length}`, tone: "bg-card-subtle text-foreground" },
   ];
+
+  // "By payee": the visible lines grouped, so one decision covers every line of a payee.
+  const groups = view === "payee" ? groupByPayee(visible) : [];
+  const listLength = view === "payee" ? groups.length : visible.length;
+
+  /** One payee: a row (name, count, total, category) that opens to the decision for all its lines and then the lines themselves. */
+  const renderGroup = (g: PayeeGroup<EditRow>) => {
+    const open = openGroups[g.key] ?? false;
+    const needs = g.rows.some((r) => needsLook(r) || mismatch.has(r.index) || problems.has(r.key));
+    const editable = g.editable.length;
+    // Lines the decision would reach that the current filter hides (it reaches every line of the payee, not only the ones shown).
+    const reach = rows.filter((r) => payeeKey(r) === g.key && takesPayeeDecision(r)).length;
+    const onlyKind = g.kind !== "mixed" && g.kind !== null ? g.kind : null;
+    const category = typeof g.categoryId === "number" ? categories.find((c) => c.id === g.categoryId)?.name : null;
+    const other = typeof g.transferAccountId === "number" ? accounts.find((a) => a.id === g.transferAccountId)?.name : null;
+    const caption =
+      editable === 0
+        ? (g.rows[0].proposal.reason ?? "Already settled")
+        : g.kind === "mixed"
+          ? "Different per line"
+          : g.kind === "skip"
+            ? "Skip"
+            : g.kind === "transfer"
+              ? other
+                ? `Transfer ${g.total < 0 ? "to" : "from"} ${other}`
+                : g.transferAccountId === "mixed"
+                  ? "Different accounts"
+                  : "Transfer: pick the other account"
+              : g.categoryId === "mixed"
+                ? "Different per line"
+                : (category ?? "Pick a category");
+    const down = g.total < 0;
+    return (
+      <li key={g.key} className={`min-w-0 ${needs ? "shadow-[inset_3px_0_0_var(--warn)]" : ""}`}>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpenGroups((m) => ({ ...m, [g.key]: !open }))}
+          className="flex min-h-14 w-full items-center gap-3 py-2 text-left"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block break-words text-[13px] font-extrabold">{g.label}</span>
+            <span className="sub block !text-[11px]">
+              {g.rows.length} {g.rows.length === 1 ? "line" : "lines"} · {caption}
+              {needs ? " · needs a look" : ""}
+            </span>
+          </span>
+          <span className={`num shrink-0 text-[13px] font-black ${g.kind === "transfer" || g.kind === "skip" ? "text-muted" : !down ? "text-income" : ""}`}>
+            {down ? "−" : "+"}
+            {formatRM(Math.abs(g.total))}
+          </span>
+          <ChevronDown size={16} strokeWidth={2.4} className={`shrink-0 text-muted transition ${open ? "rotate-180" : ""}`} aria-hidden />
+        </button>
+        {open && (
+          <div className="space-y-2.5 pb-3.5">
+            {editable > 0 ? (
+              <>
+                <p className="sub !text-[11px]">
+                  What you choose here applies to {reach === 1 ? "this payee's one line" : `all ${reach} lines of this payee`}
+                  {reach > g.rows.length ? `, including ${reach - g.rows.length} not shown by this filter` : ""}.
+                </p>
+                <div className="grid grid-cols-5 gap-2 md:grid-cols-4">
+                  <select
+                    aria-label={`What is ${g.label}?`}
+                    className="input col-span-2 py-2 md:col-span-1"
+                    value={g.kind === "mixed" || g.kind === null ? "" : g.kind}
+                    onChange={(e) => patchGroup(g.key, { kind: e.target.value as ProposalKind, categoryId: null })}
+                  >
+                    {g.kind === "mixed" && (
+                      <option value="" disabled>
+                        Different per line
+                      </option>
+                    )}
+                    {(Object.keys(KIND_LABEL) as ProposalKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {KIND_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                  {onlyKind === "transfer" ? (
+                    <select
+                      aria-label={`Other account for ${g.label}`}
+                      className="input col-span-3 py-2 md:col-span-2"
+                      value={typeof g.transferAccountId === "number" ? g.transferAccountId : ""}
+                      onChange={(e) => patchGroup(g.key, { transferAccountId: Number(e.target.value) || null })}
+                    >
+                      <option value="">{down ? "Went to which account?" : "Came from which account?"}</option>
+                      {accounts.filter((a) => a.id !== accountId).map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : onlyKind === "expense" || onlyKind === "income" ? (
+                    <select
+                      aria-label={`Category for ${g.label}`}
+                      className="input col-span-3 py-2 md:col-span-2"
+                      value={typeof g.categoryId === "number" ? g.categoryId : ""}
+                      onChange={(e) => patchGroup(g.key, { categoryId: Number(e.target.value) || null })}
+                    >
+                      <option value="">{g.categoryId === "mixed" ? "Different per line: choose one…" : "Choose a category…"}</option>
+                      {catsFor(onlyKind).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-2">{onlyKind === "skip" ? "These lines will not be imported." : "Choose what these are first."}</p>
+                  )}
+                  {onlyKind !== "skip" && (
+                    <input
+                      aria-label={`Item for ${g.label}`}
+                      className="input col-span-5 py-2 md:col-span-1"
+                      value={g.item === "mixed" ? "" : g.item}
+                      maxLength={120}
+                      placeholder={g.item === "mixed" ? "Different per line" : "Item"}
+                      onChange={(e) => patchGroup(g.key, { item: e.target.value })}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="sub !text-[11px]">These lines are already settled (recorded before, or cancelling out), so there is nothing to decide.</p>
+            )}
+            <ul className="rows">{g.rows.map(renderLine)}</ul>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  /** One line of the review: compact until tapped; one that needs a look opens by itself. */
+  const renderLine = (r: EditRow) => {
+            const off = mismatch.has(r.index);
+            const look = needsLook(r) || off || problems.has(r.key);
+            const expanded = manual[r.key] ?? look;
+            const category = r.categoryId ? categories.find((c) => c.id === r.categoryId)?.name : null;
+            const other = r.transferAccountId ? accounts.find((a) => a.id === r.transferAccountId)?.name : null;
+            const origin = r.edited ? " · your choice" : r.proposal.source === "rule" || r.proposal.source === "history" ? " · learned from you" : "";
+            const caption =
+              r.kind === "skip"
+                ? r.proposal.reason
+                : r.kind === "transfer"
+                  ? other
+                    ? `Transfer ${r.amount < 0 ? "to" : "from"} ${other}${origin}`
+                    : "Transfer: pick the other account"
+                  : category
+                    ? `${category}${origin}`
+                    : "Pick a category";
+            return (
+              <li key={r.key} className={`min-w-0 ${r.kind === "skip" ? "opacity-70" : ""} ${off ? "shadow-[inset_3px_0_0_var(--danger)]" : look ? "shadow-[inset_3px_0_0_var(--warn)]" : ""}`}>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setManual((m) => ({ ...m, [r.key]: !expanded }))}
+                  className="flex min-h-14 w-full items-center gap-3 py-2 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-[13px] font-extrabold">{r.description}</span>
+                    <span className="sub block !text-[11px]">
+                      {dayLabel(r.date)} · {caption}
+                    </span>
+                  </span>
+                  <span className={`num shrink-0 text-[13px] font-black ${r.kind === "transfer" || r.kind === "skip" ? "text-muted" : r.amount > 0 ? "text-income" : ""}`}>
+                    {r.amount > 0 ? "+" : "−"}
+                    {formatRM(Math.abs(r.amount))}
+                  </span>
+                  <ChevronDown size={16} strokeWidth={2.4} className={`shrink-0 text-muted transition ${expanded ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+
+                {expanded && (
+                  <div className="pb-3.5">
+                    <div className="grid grid-cols-5 gap-2 md:grid-cols-4">
+                      <select aria-label="What is this?" className="input col-span-2 py-2 md:col-span-1" value={r.kind} onChange={(e) => patch(r.key, { kind: e.target.value as ProposalKind, categoryId: null })}>
+                        {(Object.keys(KIND_LABEL) as ProposalKind[]).map((k) => (
+                          <option key={k} value={k}>
+                            {KIND_LABEL[k]}
+                          </option>
+                        ))}
+                      </select>
+                      {r.kind === "transfer" ? (
+                        <select aria-label="Other account" className="input col-span-3 py-2 md:col-span-2" value={r.transferAccountId ?? ""} onChange={(e) => patch(r.key, { transferAccountId: Number(e.target.value) || null })}>
+                          <option value="">{r.amount < 0 ? "Went to which account?" : "Came from which account?"}</option>
+                          {accounts.filter((a) => a.id !== accountId).map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : r.kind !== "skip" ? (
+                        <select aria-label="Category" className="input col-span-3 py-2 md:col-span-2" value={r.categoryId ?? ""} onChange={(e) => patch(r.key, { categoryId: Number(e.target.value) || null })}>
+                          <option value="">Choose a category…</option>
+                          {catsFor(r.kind).map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">
+                          {r.proposal.reason}
+                          {r.proposal.source === "duplicate" && r.proposal.matchedId ? (
+                            <>
+                              {" "}
+                              <Link href={`/transactions/${r.proposal.matchedId}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline">
+                                See that entry (opens in a new tab)
+                              </Link>
+                            </>
+                          ) : null}
+                        </p>
+                      )}
+                      {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
+                    </div>
+
+                    {r.kind !== "skip" && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {r.billId && (
+                          <span className="pill tag-info max-w-full">
+                            <span className="min-w-0 truncate">Bill: {bills.find((b) => b.id === r.billId)?.name}</span>
+                            <button type="button" aria-label="Unlink from bill" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { billId: null, remember: r.remember })}>
+                              <X size={12} aria-hidden />
+                            </button>
+                          </span>
+                        )}
+                        {r.shareId && r.kind === "income" && (
+                          <span className="pill tag-info max-w-full">
+                            <span className="min-w-0 truncate">Shared bill: {shares.find((s) => s.id === r.shareId)?.label}</span>
+                            <button type="button" aria-label="Don't count it towards that person" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { shareId: null, remember: r.remember })}>
+                              <X size={12} aria-hidden />
+                            </button>
+                          </span>
+                        )}
+                        <Status tone={r.edited ? "accent" : r.proposal.confidence === "low" ? "warn" : "good"}>{r.edited ? "Your choice" : r.proposal.reason}</Status>
+                        {r.signedBy === "guess" && <Status tone="warn">Direction guessed: check it</Status>}
+                        {off && <Status tone="danger">Doesn&apos;t add up to the running balance</Status>}
+                        {problems.has(r.key) && <Status tone="warn">{r.kind === "transfer" ? "Pick the other account" : "Pick a category"}</Status>}
+                      </div>
+                    )}
+
+                    {r.kind !== "skip" && r.edited && (
+                      <label className="mt-1 flex min-h-11 items-center gap-2 text-[11px] font-bold text-muted">
+                        <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
+                        Remember for next time
+                      </label>
+                    )}
+
+                    {/* A flagged line stays here after you change it, until you say it is right (or leave the tab). Lines that don't add up are cleared by the tick below instead. */}
+                    {needsLook(r) && !off && !problems.has(r.key) && (
+                      <button
+                        type="button"
+                        className="btn mt-2 w-full md:w-auto"
+                        onClick={() => {
+                          setRows((all) => all.map((x) => (x.key === r.key ? { ...x, confirmed: true } : x)));
+                          setManual((m) => ({ ...m, [r.key]: false }));
+                        }}
+                      >
+                        <Check size={14} strokeWidth={3} aria-hidden /> Looks right
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+  };
 
   return page(
     2,
@@ -759,6 +1153,86 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
             <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
             <span>{balanceMessage}</span>
           </p>
+        )}
+        {(breaks.length > 0 || madeFixes.length > 0) && (
+          <div className="space-y-2.5" aria-label="Lines that don't add up">
+            {breaks.slice(0, 5).map(({ detail: d, fixes }) => {
+              const line = rows.find((r) => r.index === d.index);
+              const n = d.index + 1;
+              // Turning a line's direction is proven by the bank's balance, but on a TRANSFER it would reverse which account the money
+              // left, so that one is never offered as a tap: check it against the statement instead.
+              const safeFixes = fixes.filter((f) => !(f.kind === "amount" && line?.kind === "transfer" && line.amount < 0 !== f.to < 0));
+              return (
+                <div key={d.index} className="space-y-2.5 rounded-2xl bg-card-subtle p-3.5">
+                  <p className="text-[13px] font-black">
+                    Line {n}
+                    {line ? ` · ${dayLabel(line.date)} · ${line.description}` : ""}
+                  </p>
+                  <p className="text-xs font-semibold leading-snug">{describeBreak(d, n)}</p>
+                  {safeFixes.length === 0 ? (
+                    <p className="sub !text-xs">There is no safe one-tap fix for this one. Check it against your statement, then tick &ldquo;import anyway&rdquo; below.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {safeFixes.map((f) => {
+                        const { label, detail } = describeFix(f, n);
+                        return (
+                          <li key={f.kind} className="space-y-1">
+                            {f.kind === "adjust" ? (
+                              <form
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  repair(f);
+                                }}
+                              >
+                                <ConfirmSubmit
+                                  trigger={label}
+                                  triggerClassName="btn w-full md:w-auto"
+                                  title="Add a balancing line?"
+                                  body={`${detail} It is saved with the rest of this import, and you can undo it here before then.`}
+                                  confirmLabel="Add the line"
+                                  cancelLabel="Not now"
+                                  tone="neutral"
+                                />
+                              </form>
+                            ) : (
+                              <button type="button" className="btn w-full md:w-auto" onClick={() => repair(f)}>
+                                {label}
+                              </button>
+                            )}
+                            <p className="sub !text-[11px] leading-snug">{detail}</p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+            {breaks.length > 5 && <p className="sub !text-xs">…and {breaks.length - 5} more. Fix these first; the rest are checked again after each fix.</p>}
+            {madeFixes.length > 0 && (
+              <ul className="rows" aria-label="Repairs you made">
+                {madeFixes.map((r) => {
+                  const n = r.fix!.type === "adjust" ? r.fix!.for! + 1 : r.index + 1;
+                  const what =
+                    r.fix!.type === "amount"
+                      ? `Line ${n}: amount set to ${r.amount < 0 ? "−" : "+"}${formatRM(Math.abs(r.amount))}`
+                      : r.fix!.type === "balance"
+                        ? `Line ${n}: the bank's balance read as ${formatRM(r.balance ?? 0)}`
+                        : r.fix!.type === "skip"
+                          ? `Line ${n} left out`
+                          : `Balancing line of ${r.amount < 0 ? "−" : "+"}${formatRM(Math.abs(r.amount))} added before line ${n}`;
+                  return (
+                    <li key={r.key} className="flex min-h-14 items-center justify-between gap-3 py-2">
+                      <span className="min-w-0 text-xs font-bold leading-snug">{what}</span>
+                      <button type="button" className="btn shrink-0" aria-label={`Undo: ${what}`} onClick={() => undoRepair(r.key)}>
+                        Undo
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         )}
         {preview.warnings.filter((w) => !/add up/.test(w)).map((w) => (
           <p key={w} className="banner banner-warn !text-xs">
@@ -890,6 +1364,29 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         ))}
       </div>
 
+      {/* Every line its own decision, or one decision for all of a payee's lines. */}
+      <div className="seg" role="group" aria-label="Group the lines">
+        {(
+          [
+            ["line", "By line"],
+            ["payee", "By payee"],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={view === v}
+            className={`seg-item ${view === v ? "on" : ""}`}
+            onClick={() => {
+              setView(v);
+              setShown(PAGE);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {visible.length === 0 ? (
         <div className="card py-10 text-center">
           {filter === "attention" ? (
@@ -902,145 +1399,12 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           )}
         </div>
       ) : (
-        // One card of compact lines (name, category, amount). A line that needs a look opens by itself; any other opens on a tap.
-        <ul className="rows">
-          {visible.slice(0, shown).map((r) => {
-            const off = mismatch.has(r.index);
-            const look = needsLook(r) || off || problems.has(r.key);
-            const expanded = manual[r.key] ?? look;
-            const category = r.categoryId ? categories.find((c) => c.id === r.categoryId)?.name : null;
-            const other = r.transferAccountId ? accounts.find((a) => a.id === r.transferAccountId)?.name : null;
-            const origin = r.edited ? " · your choice" : r.proposal.source === "rule" || r.proposal.source === "history" ? " · learned from you" : "";
-            const caption =
-              r.kind === "skip"
-                ? r.proposal.reason
-                : r.kind === "transfer"
-                  ? other
-                    ? `Transfer ${r.amount < 0 ? "to" : "from"} ${other}${origin}`
-                    : "Transfer: pick the other account"
-                  : category
-                    ? `${category}${origin}`
-                    : "Pick a category";
-            return (
-              <li key={r.key} className={`min-w-0 ${r.kind === "skip" ? "opacity-70" : ""} ${off ? "shadow-[inset_3px_0_0_var(--danger)]" : look ? "shadow-[inset_3px_0_0_var(--warn)]" : ""}`}>
-                <button
-                  type="button"
-                  aria-expanded={expanded}
-                  onClick={() => setManual((m) => ({ ...m, [r.key]: !expanded }))}
-                  className="flex min-h-14 w-full items-center gap-3 py-2 text-left"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words text-[13px] font-extrabold">{r.description}</span>
-                    <span className="sub block !text-[11px]">
-                      {dayLabel(r.date)} · {caption}
-                    </span>
-                  </span>
-                  <span className={`num shrink-0 text-[13px] font-black ${r.kind === "transfer" || r.kind === "skip" ? "text-muted" : r.amount > 0 ? "text-income" : ""}`}>
-                    {r.amount > 0 ? "+" : "−"}
-                    {formatRM(Math.abs(r.amount))}
-                  </span>
-                  <ChevronDown size={16} strokeWidth={2.4} className={`shrink-0 text-muted transition ${expanded ? "rotate-180" : ""}`} aria-hidden />
-                </button>
-
-                {expanded && (
-                  <div className="pb-3.5">
-                    <div className="grid grid-cols-5 gap-2 md:grid-cols-4">
-                      <select aria-label="What is this?" className="input col-span-2 py-2 md:col-span-1" value={r.kind} onChange={(e) => patch(r.key, { kind: e.target.value as ProposalKind, categoryId: null })}>
-                        {(Object.keys(KIND_LABEL) as ProposalKind[]).map((k) => (
-                          <option key={k} value={k}>
-                            {KIND_LABEL[k]}
-                          </option>
-                        ))}
-                      </select>
-                      {r.kind === "transfer" ? (
-                        <select aria-label="Other account" className="input col-span-3 py-2 md:col-span-2" value={r.transferAccountId ?? ""} onChange={(e) => patch(r.key, { transferAccountId: Number(e.target.value) || null })}>
-                          <option value="">{r.amount < 0 ? "Went to which account?" : "Came from which account?"}</option>
-                          {accounts.filter((a) => a.id !== accountId).map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : r.kind !== "skip" ? (
-                        <select aria-label="Category" className="input col-span-3 py-2 md:col-span-2" value={r.categoryId ?? ""} onChange={(e) => patch(r.key, { categoryId: Number(e.target.value) || null })}>
-                          <option value="">Choose a category…</option>
-                          {catsFor(r.kind).map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">
-                          {r.proposal.reason}
-                          {r.proposal.source === "duplicate" && r.proposal.matchedId ? (
-                            <>
-                              {" "}
-                              <Link href={`/transactions/${r.proposal.matchedId}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline">
-                                See that entry (opens in a new tab)
-                              </Link>
-                            </>
-                          ) : null}
-                        </p>
-                      )}
-                      {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
-                    </div>
-
-                    {r.kind !== "skip" && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {r.billId && (
-                          <span className="pill tag-info max-w-full">
-                            <span className="min-w-0 truncate">Bill: {bills.find((b) => b.id === r.billId)?.name}</span>
-                            <button type="button" aria-label="Unlink from bill" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { billId: null, remember: r.remember })}>
-                              <X size={12} aria-hidden />
-                            </button>
-                          </span>
-                        )}
-                        {r.shareId && r.kind === "income" && (
-                          <span className="pill tag-info max-w-full">
-                            <span className="min-w-0 truncate">Shared bill: {shares.find((s) => s.id === r.shareId)?.label}</span>
-                            <button type="button" aria-label="Don't count it towards that person" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { shareId: null, remember: r.remember })}>
-                              <X size={12} aria-hidden />
-                            </button>
-                          </span>
-                        )}
-                        <Status tone={r.edited ? "accent" : r.proposal.confidence === "low" ? "warn" : "good"}>{r.edited ? "Your choice" : r.proposal.reason}</Status>
-                        {r.signedBy === "guess" && <Status tone="warn">Direction guessed: check it</Status>}
-                        {off && <Status tone="danger">Doesn&apos;t add up to the running balance</Status>}
-                        {problems.has(r.key) && <Status tone="warn">{r.kind === "transfer" ? "Pick the other account" : "Pick a category"}</Status>}
-                      </div>
-                    )}
-
-                    {r.kind !== "skip" && r.edited && (
-                      <label className="mt-1 flex min-h-11 items-center gap-2 text-[11px] font-bold text-muted">
-                        <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
-                        Remember for next time
-                      </label>
-                    )}
-
-                    {/* A flagged line stays here after you change it, until you say it is right (or leave the tab). Lines that don't add up are cleared by the tick below instead. */}
-                    {needsLook(r) && !off && !problems.has(r.key) && (
-                      <button
-                        type="button"
-                        className="btn mt-2 w-full md:w-auto"
-                        onClick={() => {
-                          setRows((all) => all.map((x) => (x.key === r.key ? { ...x, confirmed: true } : x)));
-                          setManual((m) => ({ ...m, [r.key]: false }));
-                        }}
-                      >
-                        <Check size={14} strokeWidth={3} aria-hidden /> Looks right
-                      </button>
-                    )}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        // One card of compact lines (name, category, amount), or of payees when grouped. A line that needs a look opens by itself; any other opens on a tap.
+        <ul className="rows">{view === "payee" ? groups.slice(0, shown).map(renderGroup) : visible.slice(0, shown).map(renderLine)}</ul>
       )}
-      {visible.length > shown && (
+      {listLength > shown && (
         <button type="button" className="btn w-full" onClick={() => setShown((n) => n + PAGE)}>
-          Show {Math.min(PAGE, visible.length - shown)} more
+          Show {Math.min(PAGE, listLength - shown)} more {view === "payee" ? "payees" : "lines"}
         </button>
       )}
 

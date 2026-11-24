@@ -1,4 +1,4 @@
-import { shortDate } from "@/lib/dates";
+import { monthLabel, shortDate } from "@/lib/dates";
 import { futureValueMonthly } from "@/lib/investing/projection";
 import { formatPct, formatRM } from "@/lib/money";
 import { detectRecurring } from "./recurring";
@@ -48,6 +48,34 @@ export type Insight = {
   /** What `monthlySaving` could grow to if invested for the horizon at the assumed return. */
   investedValue: number;
   href?: string;
+  /** The stretch of time the finding was judged over ("Oct cycle so far", "Last 90 days"), so no figure floats free of its period. */
+  scope?: string;
+};
+
+/**
+ * The period the budget, creep and wants rules judge: the one Home is showing. Rows are re-keyed to it (`rekeyRows`), so
+ * a pay cycle reads as a "month" named after its month and the day is counted from payday: exactly Home's numbers.
+ * The rules that look at real dates (habits, spikes, weekends, regular charges) keep reading the real rows.
+ */
+export type LeakPeriod = {
+  /** Rows re-keyed to the periods (calendar rows when the view is calendar months). */
+  rows: FlowRow[];
+  /** 'YYYY-MM': the period judged. */
+  month: string;
+  /** The day number reached (the whole length for a finished period). */
+  day: number;
+  /** Real days passed and total length, for a budget's pace. */
+  elapsed: number;
+  total: number;
+  /** The period is still running. */
+  current: boolean;
+  unit: "cycle" | "month";
+  /** The name Home uses for a period: "Oct cycle", "Oct". */
+  nameOf: (month: string) => string;
+  /** The entries of a category in that period (a pay cycle goes as a date range, a calendar month as the month). */
+  entries: (categoryId: number) => string;
+  /** Home for a period. */
+  home: (month: string) => string;
 };
 
 export type LeakInput = {
@@ -71,6 +99,8 @@ export type LeakInput = {
    * income, the spending/savings routine) would be wrong, not just partial, so the page says which kinds step aside.
    */
   omit?: InsightKind[];
+  /** Judge budgets, creep and wants over Home's period (a pay cycle, or a calendar month). Omitted: the calendar month of `today`. */
+  period?: LeakPeriod;
 };
 
 // --- tunable thresholds (sen unless noted) ------------------------------------
@@ -123,10 +153,19 @@ export function slugId(prefix: string, text: string): string {
 
 export function detectLeaks(input: LeakInput): Insight[] {
   const { rows, today, categories, assumptions, cash } = input;
-  const month = monthOf(today);
-  const day = dayOf(today);
-  const dim = daysInMonthOf(month); // used by the budget rule below
+  const per = input.period;
+  const month = per?.month ?? monthOf(today);
+  const day = per?.day ?? dayOf(today);
+  const dim = per?.total ?? daysInMonthOf(month); // used by the budget rule below
+  const unit = per?.unit ?? "month";
+  const nameOf = (m: string) => per?.nameOf(m) ?? monthLabel(m);
+  const entriesOf = (categoryId: number) => per?.entries(categoryId) ?? `/transactions?month=${month}&category=${categoryId}`;
+  const homeOf = (m: string) => per?.home(m) ?? dashboardMonthHref(m);
+  const current = per?.current ?? true;
   const expenses = rows.filter((r) => r.type === "expense" && !r.isSystem);
+  // The rules judged by period read the period's rows; the rest read real dates.
+  const periodRows = per?.rows ?? rows;
+  const periodExpenses = per ? periodRows.filter((r) => r.type === "expense" && !r.isSystem) : expenses;
 
   const money = (monthly: number) => ({
     monthlySaving: Math.max(0, Math.round(monthly)),
@@ -140,8 +179,8 @@ export function detectLeaks(input: LeakInput): Insight[] {
 
   // Earlier months the data covers from day 1. A month recorded only from the 26th would look like a month in which
   // little was spent, and make this month look like a creep, so a half-recorded month is never a baseline.
-  const dataStart = rows.reduce((first, r) => (r.date < first ? r.date : first), today);
-  const monthsWithData = prevMonths(month, 3).filter((m) => dataStart <= `${m}-01` && rows.some((r) => monthOf(r.date) === m));
+  const dataStart = periodRows.reduce((first, r) => (r.date < first ? r.date : first), `${month}-31`);
+  const monthsWithData = prevMonths(month, 3).filter((m) => dataStart <= `${m}-01` && periodRows.some((r) => monthOf(r.date) === m));
 
   // 1. Category creep ---------------------------------------------------------
   // Like-for-like: spend in days 1..today vs what you usually spent by this day in earlier months.
@@ -149,7 +188,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
   if (day >= CREEP_MIN_DAY && monthsWithData.length >= 2) {
     type Cat = { id: number | null; name: string; icon: string; full: Map<string, number>; toDate: Map<string, number>; now: FlowRow[] };
     const byCat = new Map<string, Cat>();
-    for (const r of expenses) {
+    for (const r of periodExpenses) {
       const c: Cat = byCat.get(r.categoryName) ?? { id: r.categoryId, name: r.categoryName, icon: r.categoryIcon, full: new Map(), toDate: new Map(), now: [] };
       const m = monthOf(r.date);
       c.full.set(m, (c.full.get(m) ?? 0) + r.amount);
@@ -170,7 +209,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
       const endsNear = soFar + Math.max(0, usualFull - usualByNow);
       const biggest = c.now.reduce((a, b) => (b.amount > a.amount ? b : a), c.now[0]);
       const ratio = usualByNow > 0 ? soFar / usualByNow : Infinity;
-      const href = c.id ? `/transactions?month=${month}&category=${c.id}` : undefined;
+      const href = c.id ? entriesOf(c.id) : undefined;
       // One or two entries, one of them dominant: a single big purchase, not a habit. Flag it, but don't
       // annualise it into a "saving" - that would multiply a one-off by twelve.
       if (c.now.length <= 2 && biggest.amount >= soFar * 0.7) {
@@ -180,7 +219,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
           severity: excess >= 20_000 ? "medium" : "low",
           title: `One big ${c.name} purchase: ${biggest.item ?? c.name} ${formatRM(biggest.amount)}`,
           evidence: [
-            `${formatRM(soFar)} in ${c.name} so far this month; you usually spend ${formatRM(Math.round(usualFull))} in a whole month`,
+            `${formatRM(soFar)} in ${c.name} ${current ? "so far " : ""}this ${unit}; you usually spend ${formatRM(Math.round(usualFull))} in a whole ${unit}`,
             "A single large purchase, not a repeating habit",
           ],
           suggestion: "Was it planned? If not, a 24-hour wait rule before big non-essential buys catches most of these.",
@@ -200,11 +239,11 @@ export function detectLeaks(input: LeakInput): Insight[] {
               ? `${c.name} is ${ratio.toFixed(0)}× your usual pace`
               : `${c.name} is ${formatPct(ratio - 1)} above your usual pace`,
         evidence: [
-          `${formatRM(soFar)} spent in the first ${day} days of the month`,
-          `You usually spend ${formatRM(Math.round(usualByNow))} by this point (last ${monthsWithData.length} months)`,
-          `Expect the month to end near ${formatRM(Math.round(endsNear))} vs your usual ${formatRM(Math.round(usualFull))}`,
+          `${formatRM(soFar)} spent in the first ${day} days of the ${unit}`,
+          `You usually spend ${formatRM(Math.round(usualByNow))} by this point (last ${monthsWithData.length} ${unit === "cycle" ? "cycles" : "months"})`,
+          `${current ? `Expect the ${unit} to end near` : `The ${unit} ended near`} ${formatRM(Math.round(endsNear))} vs your usual ${formatRM(Math.round(usualFull))}`,
         ],
-        suggestion: `Look at this month's ${c.name} entries and decide which were one-offs and which are a new habit.`,
+        suggestion: `Look at this ${unit}'s ${c.name} entries and decide which were one-offs and which are a new habit.`,
         ...money(excess),
         href,
       });
@@ -285,7 +324,8 @@ export function detectLeaks(input: LeakInput): Insight[] {
   }
 
   // 4. Over budget ------------------------------------------------------------
-  for (const b of budgetProgress(rows, categories, month, day, { bills: input.budgetBills })) {
+  // The same call, over the same rows and the same pace, as Home's budget card: they cannot disagree.
+  for (const b of budgetProgress(periodRows, categories, month, day, { bills: input.budgetBills, elapsed: per?.elapsed, total: per?.total })) {
     if (b.status === "ok") continue;
     const over = b.status === "over";
     out.push({
@@ -296,38 +336,44 @@ export function detectLeaks(input: LeakInput): Insight[] {
         ? `${b.name} is over budget`
         : `${b.name} is on pace to go over budget`,
       evidence: [
-        `${formatRM(b.spent)} spent of a ${formatRM(b.budget)} budget (${formatPct(b.used)}), this calendar month`,
-        over ? `Over by ${formatRM(b.spent - b.budget)} with ${dim - day} days left in the month` : `Projected to finish at ${formatRM(b.projected)}`,
+        `${formatRM(b.spent)} spent of a ${formatRM(b.budget)} budget (${formatPct(b.used)}), ${per ? nameOf(month) : "this calendar month"}`,
+        over
+          ? current
+            ? `Over by ${formatRM(b.spent - b.budget)} with ${Math.max(0, dim - (per?.elapsed ?? day))} days left in the ${unit}`
+            : `Over by ${formatRM(b.spent - b.budget)}`
+          : `Projected to finish at ${formatRM(b.projected)}`,
       ],
       suggestion: over
-        ? "Pause discretionary spending in this category for the rest of the month."
+        ? current
+          ? `Pause discretionary spending in this category for the rest of the ${unit}.`
+          : "Look at what pushed it over, and whether the budget or the habit should change."
         : "Slow down now and you'll finish inside the budget.",
       // Only a budget that is already broken claims a saving. "On pace to go over" is a projection for one month: turning it into
       // a yearly figure (x12) would annualise a drift that may not repeat, the same reason a one-off purchase is never annualised.
       ...money(over ? b.spent - b.budget : 0),
-      href: `/transactions?month=${month}&category=${b.categoryId}`,
+      href: entriesOf(b.categoryId),
     });
   }
 
   // 5. Wants heavier than the 30% guide (last completed month with income) -----
   const [lastMonth] = prevMonths(month, 1);
-  const lastIncome = monthTotals(rows, lastMonth).income;
+  const lastIncome = monthTotals(periodRows, lastMonth).income;
   if (lastIncome > 0) {
-    const wants = sum(expenses.filter((r) => monthOf(r.date) === lastMonth && r.nature === "want").map((r) => r.amount));
+    const wants = sum(periodExpenses.filter((r) => monthOf(r.date) === lastMonth && r.nature === "want").map((r) => r.amount));
     const excess = wants - lastIncome * WANTS_GUIDE;
     if (excess > 0) {
       out.push({
         id: "wants-heavy",
         kind: "wants_heavy",
         severity: wants / lastIncome > 0.4 ? "high" : "medium",
-        title: `"Wants" took ${formatPct(wants / lastIncome)} of your income last month`,
+        title: `"Wants" took ${formatPct(wants / lastIncome)} of your income last ${unit}`,
         evidence: [
-          `${formatRM(wants)} on wants out of ${formatRM(lastIncome)} income (calendar month ${lastMonth})`,
+          `${formatRM(wants)} on wants out of ${formatRM(lastIncome)} income (${per ? nameOf(lastMonth) : `calendar month ${lastMonth}`})`,
           `The 50/30/20 guide says about ${formatPct(WANTS_GUIDE)} (${formatRM(Math.round(lastIncome * WANTS_GUIDE))})`,
         ],
         suggestion: "Pick the one or two 'want' categories that gave you the least joy and trim those first.",
         ...money(excess),
-        href: dashboardMonthHref(lastMonth),
+        href: homeOf(lastMonth),
       });
     }
   }
@@ -484,8 +530,24 @@ export function detectLeaks(input: LeakInput): Insight[] {
     });
   }
 
+  // Every finding says what stretch of time it was judged over.
+  const judged = `${nameOf(month)}${current ? " so far" : ""}`;
+  const scopes: Record<InsightKind, string> = {
+    category_creep: judged,
+    over_budget: judged,
+    wants_heavy: nameOf(lastMonth),
+    small_frequent: "Last 90 days",
+    subscriptions: "All recorded charges",
+    spike: "Last 60 days",
+    weekend: "Last 60 days",
+    cash_unaccounted: "Last 90 days",
+    planning_gap: `Last ${recent.length} pay ${recent.length === 1 ? "cycle" : "cycles"}`,
+    savings_drawdown: `Last ${recent.length} pay ${recent.length === 1 ? "cycle" : "cycles"}`,
+    savings_spending: `Last ${recent.length} pay ${recent.length === 1 ? "cycle" : "cycles"}`,
+  };
   const omitted = new Set(input.omit ?? []);
   return out
+    .map((i) => ({ ...i, scope: i.scope ?? scopes[i.kind] }))
     .filter((i) => !omitted.has(i.kind))
     .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || b.annualSaving - a.annualSaving);
 }

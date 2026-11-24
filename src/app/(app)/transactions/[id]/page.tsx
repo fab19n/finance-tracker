@@ -1,13 +1,12 @@
-import { Copy, Info, Trash2 } from "lucide-react";
+import { Copy, Info } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteTransaction } from "@/app/actions/transactions";
-import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { DeleteEntryForm } from "@/components/activity/DeleteEntryForm";
 import { PageHeader } from "@/components/PageHeader";
 import { safeBackPath } from "@/lib/back";
-import { deleteSheet } from "@/lib/entry-delete";
 import { TransactionForm } from "@/components/TransactionForm";
+import { deletable } from "@/components/TransactionRow";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { listCategories, listItemHints } from "@/lib/queries/reference";
 import { getTransaction } from "@/lib/queries/transactions";
@@ -37,7 +36,6 @@ export default async function EditTransactionPage({ params, searchParams }: { pa
     listItemHints(),
   ]);
 
-  const sheet = deleteSheet(tx);
   return (
     <div className="mx-auto max-w-md space-y-4">
       <PageHeader title="Edit entry" back={{ href: back, label: backLabel(back) }} />
@@ -75,22 +73,8 @@ export default async function EditTransactionPage({ params, searchParams }: { pa
         <Link href={`/?copy=${tx.id}`} className="btn">
           <Copy size={16} aria-hidden /> Duplicate
         </Link>
-        <form action={deleteTransaction}>
-          <input type="hidden" name="id" value={tx.id} />
-          <input type="hidden" name="next" value={back} />
-          <ConfirmSubmit
-            trigger={
-              <>
-                <Trash2 size={16} aria-hidden /> Delete this entry
-              </>
-            }
-            triggerClassName="btn-danger"
-            title={sheet.title}
-            body={sheet.body}
-            warnings={sheet.warnings}
-            confirmLabel="Delete"
-          />
-        </form>
+        {/* Deleting returns to the list (to the row this entry was opened from) with an "Entry deleted. Undo" notice. */}
+        <DeleteEntryForm id={tx.id} entry={deletable(tx)} next={back} variant="button" />
       </div>
     </div>
   );

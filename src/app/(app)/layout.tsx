@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { KoopangLogo } from "@/components/KoopangLogo";
+import { UndoToast } from "@/components/activity/UndoToast";
 import { NavTracker } from "@/components/NavTracker";
 import { BottomNav, BottomNavView, SidebarNav, SidebarNavView, SidebarSettings, SidebarSettingsView } from "@/components/NavLinks";
 import { OfflineProvider } from "@/components/offline/OfflineProvider";
@@ -28,7 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           Skip to content
         </a>
         <aside className="nav-bar fixed inset-y-4 left-4 z-20 hidden w-49 flex-col rounded-[20px] bg-nav-bg px-3 py-5 text-nav-fg md:flex">
-          <Link href="/dashboard" className="mb-4 block rounded-lg px-2.5 pt-1 text-nav-strong">
+          <Link href="/dashboard" aria-label="Koopang home" className="mb-4 flex min-h-11 items-center rounded-lg px-2.5 text-nav-strong">
             <KoopangLogo height={28} />
           </Link>
           <Suspense fallback={<SidebarNavView pathname="" />}>
@@ -44,6 +45,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl px-5 py-5 outline-none md:px-8 md:py-8">
           <SyncBanner />
+          <Suspense fallback={null}>
+            <UndoToast />
+          </Suspense>
           {children}
         </main>
 

@@ -1,6 +1,6 @@
 import { shortDate } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
-import type { BillInCycle } from "./bills";
+import { dueMonthsText, FREQUENCY_LABEL, MONTH_NAMES, type BillFrequency, type BillInCycle } from "./bills";
 
 /**
  * What the Bills tab and the Overview checklist say about a bill. Pure: bills evaluated for the pay cycle in, words and
@@ -19,7 +19,9 @@ export type BillTiles = {
   next: { name: string; date: string; overdue: boolean } | null;
 };
 
-export function billTiles(items: BillInCycle[], today: string): BillTiles {
+export function billTiles(all: BillInCycle[], today: string): BillTiles {
+  // A yearly or quarterly bill that is not due this cycle is listed, but is not one of "this cycle's bills".
+  const items = all.filter((i) => i.status !== "not_due");
   const paid = items.reduce((s, i) => s + (i.paid?.amount ?? 0), 0);
   const remaining = items.reduce((s, i) => s + i.reserve, 0);
   const unpaid = items.filter((i) => i.status !== "paid" && i.dueDate);
@@ -57,10 +59,21 @@ export function billStatusTag(i: Pick<BillInCycle, "status" | "paid" | "daysUnti
  * The line under a bill's name: "Maybank · due 12 Oct", plus its range when the amount varies and "Shared with 3" when
  * people split it. `account` is left out when the page is already showing one account.
  */
-export function billCaption(b: { amountMin: number; amountMax: number; dueDay: number | null }, opts: { account?: string | null; dueDate?: string | null; people?: number }): string {
+export function billCaption(
+  b: { amountMin: number; amountMax: number; dueDay: number | null; frequency?: BillFrequency; dueMonth?: number | null },
+  opts: { account?: string | null; dueDate?: string | null; nextDue?: string | null; people?: number },
+): string {
   const parts: string[] = [];
   if (opts.account) parts.push(opts.account);
-  parts.push(opts.dueDate ? `due ${shortDate(opts.dueDate)}` : b.dueDay ? `due day ${b.dueDay}` : "no due day");
+  const often = !!b.frequency && b.frequency !== "monthly" && !!b.dueMonth;
+  if (often) parts.push(FREQUENCY_LABEL[b.frequency as BillFrequency]);
+  if (opts.nextDue) {
+    // Not due this cycle: say when it is, and nothing is held back for it.
+    parts.push(`next due in ${MONTH_NAMES[Number(opts.nextDue.slice(5, 7)) - 1]}`);
+  } else {
+    if (often) parts.push(dueMonthsText(b));
+    parts.push(opts.dueDate ? `due ${shortDate(opts.dueDate)}` : b.dueDay ? `due day ${b.dueDay}` : "no due day");
+  }
   if (b.amountMin !== b.amountMax) parts.push(`Range ${formatRM(b.amountMin)} to ${formatRM(b.amountMax)}`);
   if (opts.people && opts.people > 0) parts.push(`Shared with ${opts.people}`);
   return parts.join(" · ");

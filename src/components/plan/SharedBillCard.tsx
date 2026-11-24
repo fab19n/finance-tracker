@@ -3,11 +3,13 @@ import { monthLabel, shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import type { MonthCell, PersonLedger } from "@/lib/plan/shares";
+import { suggestedPayment } from "@/lib/plan/share-claims";
 import { standingText } from "@/lib/plan/shares-text";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
 import { MonthBadge, NoMonth, StatusTag } from "./MonthBadge";
 import { RotationCard } from "./RotationCard";
 import { ShareActions } from "./ShareForm";
+import { CountedPayments, MarkPaid, type PayContext } from "./SharePay";
 import { SharingToggle } from "./SharingToggle";
 
 // Six columns fit a phone beside the name column; older months stay in each person's own list.
@@ -37,8 +39,8 @@ function Cell({ state, name, month, notCharged, detail }: { state: "paid" | "par
  * A shared bill. Split in equal parts every month (Netflix): who owes what, who has paid through when, and a grid of who
  * has covered which month. Paid in turns (Spotify): see RotationCard.
  */
-export function SharedBillCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string }) {
-  if (view.rotation) return <RotationCard view={view} people={people} bills={bills} defaultStart={defaultStart} today={today} />;
+export function SharedBillCard({ view, people, bills, defaultStart, today, pay }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string; pay: PayContext }) {
+  if (view.rotation) return <RotationCard view={view} people={people} bills={bills} defaultStart={defaultStart} today={today} pay={pay} />;
   const shown = view.months.slice(-MONTHS_SHOWN);
   const hidden = view.months.length - shown.length;
   // Months not charged yet that somebody has already paid into follow the charged ones, marked "next".
@@ -79,7 +81,7 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
           return (
             <li key={p.share.id} className="rounded-2xl bg-card-subtle px-3 py-2.5">
               <details className="group">
-                <summary className="flex cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
                   <span className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card text-xs font-black" aria-hidden>
                     {initials(p.share.name)}
                   </span>
@@ -104,18 +106,23 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                     // A stacked list, not a table: four columns do not fit a phone, and the amount to pay must never scroll out of view.
                     <ul className="divide-y divide-line text-xs" aria-label={`What ${p.share.name} still has to pay, month by month`}>
                       {rows.map((c) => (
-                        <li key={c.month} className="flex items-start justify-between gap-3 py-2">
-                          <span className="min-w-0">
-                            <span className="font-extrabold">{shortMonthLabel(c.month)}</span>
-                            {c.upcoming && <span className="font-bold text-muted"> · not charged yet</span>}
-                            <span className="num block text-[11px] font-bold text-muted">
-                              paid {formatRM(c.paid)} of {c.upcoming ? "about " : ""}{formatRM(c.cost)}
+                        <li key={c.month} className="py-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="min-w-0">
+                              <span className="font-extrabold">{shortMonthLabel(c.month)}</span>
+                              {c.upcoming && <span className="font-bold text-muted"> · not charged yet</span>}
+                              <span className="num block text-[11px] font-bold text-muted">
+                                paid {formatRM(c.paid)} of {c.upcoming ? "about " : ""}{formatRM(c.cost)}
+                              </span>
                             </span>
-                          </span>
-                          <span className="shrink-0 text-right">
-                            <span className="num block font-black text-warn">{formatRM(c.remaining)}</span>
-                            <span className="block text-[11px] font-bold text-muted">to pay</span>
-                          </span>
+                            <span className="shrink-0 text-right">
+                              <span className="num block font-black text-warn">{formatRM(c.remaining)}</span>
+                              <span className="block text-[11px] font-bold text-muted">to pay</span>
+                            </span>
+                          </div>
+                          <div className="mt-1">
+                            <MarkPaid shareId={p.share.id} name={p.share.name} amount={c.remaining} pay={pay} label={`Mark ${shortMonthLabel(c.month).split(" ")[0]} paid`} />
+                          </div>
                         </li>
                       ))}
                       <li className="flex items-baseline justify-between gap-3 py-2 font-extrabold">
@@ -130,6 +137,10 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                       )}
                     </ul>
                   )}
+                  {p.share.active && (
+                    <MarkPaid shareId={p.share.id} name={p.share.name} amount={suggestedPayment(p, p.share.share)} pay={pay} label={rows.length > 0 ? "Mark paid" : "Record a payment"} />
+                  )}
+                  <CountedPayments name={p.share.name} payments={pay.payments[p.share.id] ?? []} />
                   {mine.find((m) => m.id === p.share.id) && <ShareActions share={mine.find((m) => m.id === p.share.id)!} bills={bills} defaultStart={defaultStart} />}
                 </div>
               </details>

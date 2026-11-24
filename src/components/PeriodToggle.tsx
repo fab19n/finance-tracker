@@ -4,9 +4,21 @@ import Link from "next/link";
  * Is a "month" a pay cycle (payday to payday: the salary on 26 Sep is October's income) or a calendar month (1 to 31)?
  * Two plain links in a segmented pill; the choice lives in the address, so it survives moving between months.
  */
-export function PeriodToggle({ view, account, month }: { view: "cycle" | "month"; account?: number; /** The month on screen (YYYY-MM), kept when you switch what a month means. */ month?: string }) {
+export function PeriodToggle({
+  view,
+  account,
+  month,
+  path = "/dashboard",
+}: {
+  view: "cycle" | "month";
+  account?: number;
+  /** The month on screen (YYYY-MM), kept when you switch what a month means. */
+  month?: string;
+  /** The page the links go to (Home by default; Insights uses the same toggle). */
+  path?: string;
+}) {
   const item = (v: "cycle" | "month", label: string) => (
-    <Link href={`/dashboard?view=${v}${month ? `&month=${month}` : ""}${account ? `&account=${account}` : ""}`} aria-current={view === v ? "page" : undefined} className="seg-item min-h-11 px-3.5">
+    <Link href={`${path}?view=${v}${month ? `&month=${month}` : ""}${account ? `&account=${account}` : ""}`} aria-current={view === v ? "page" : undefined} className="seg-item min-h-11 px-3.5">
       {label}
     </Link>
   );

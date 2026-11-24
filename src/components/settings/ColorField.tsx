@@ -29,7 +29,7 @@ export function ColorField({ defaultValue = "#64748b" }: { defaultValue?: string
               aria-pressed={on}
               onClick={() => setValue(c)}
               style={{ backgroundColor: c }}
-              className="grid size-9 place-items-center rounded-full text-white ring-offset-2 ring-offset-card aria-pressed:ring-2 aria-pressed:ring-foreground"
+              className="grid size-11 place-items-center rounded-full text-white ring-offset-2 ring-offset-card aria-pressed:ring-2 aria-pressed:ring-foreground"
             >
               {on && <Check size={16} strokeWidth={3} aria-hidden />}
             </button>
@@ -37,7 +37,7 @@ export function ColorField({ defaultValue = "#64748b" }: { defaultValue?: string
         })}
         {/* The browser's own colour picker, behind a "+" swatch (or showing the custom colour once one is chosen). */}
         <label
-          className={`relative grid size-9 cursor-pointer place-items-center rounded-full border border-dashed border-line text-muted ring-offset-2 ring-offset-card focus-within:outline-2 ${custom ? "ring-2 ring-foreground" : ""}`}
+          className={`relative grid size-11 cursor-pointer place-items-center rounded-full border border-dashed border-line text-muted ring-offset-2 ring-offset-card focus-within:outline-2 ${custom ? "ring-2 ring-foreground" : ""}`}
           style={custom ? { backgroundColor: value, borderStyle: "solid" } : undefined}
         >
           {custom ? <Check size={16} strokeWidth={3} className="text-white" aria-hidden /> : <Plus size={16} aria-hidden />}

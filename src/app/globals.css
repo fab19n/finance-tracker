@@ -353,7 +353,7 @@ html.swipe-tabs body {
   .btn.btn-sm,
   .btn-primary.btn-sm,
   .btn-danger.btn-sm {
-    @apply min-h-9 px-3 py-1.5 text-xs;
+    @apply min-h-10 px-3 py-1.5 text-xs;
   }
   .btn-primary {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-[18px] py-3 text-sm font-extrabold text-accent-fg transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50;

@@ -7,15 +7,19 @@ import { AccountChips } from "@/components/AccountChips";
 import { MoreHeader } from "@/components/MoreHeader";
 import { detectLeaks, headlineSavings, slugId, WHOLE_BOOK_FINDINGS, type Insight, type Severity } from "@/lib/analytics/leakage";
 import { detectRecurring, type Recurring } from "@/lib/analytics/recurring";
-import { dashboardLinks } from "@/lib/analytics/insight-links";
-import { daysBetween, monthEnd, monthLabel, monthStart, shiftDays, shortDate, todayISO } from "@/lib/dates";
+import { periodName } from "@/lib/analytics/dashboard-text";
+import { rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
+import { MonthNav } from "@/components/MonthNav";
+import { PeriodToggle } from "@/components/PeriodToggle";
+import { daysBetween, monthLabel, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWhole } from "@/lib/money";
 import { asBillTxs, descriptionMatchesBill, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { listFlowRows } from "@/lib/queries/analytics";
 import { getCashStatus } from "@/lib/queries/cash";
 import { qs, withAccount, type SearchParams } from "@/lib/queries/filters";
-import { getPlan } from "@/lib/queries/plan";
+import { getPlan, listSalaries } from "@/lib/queries/plan";
+import { cycleLabel } from "@/lib/plan/cycle";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 
@@ -46,6 +50,7 @@ function InsightCard({ i, counted }: { i: Insight; counted: boolean }) {
         <span className={`pill ${sev.pill}`}>
           <Icon size={12} aria-hidden /> {sev.label}
         </span>
+        {i.scope && <span className="pill bg-card-subtle text-muted">{i.scope}</span>}
         {counted && (
           <span className="pill bg-card-subtle text-muted">
             <Check size={12} aria-hidden /> In the total above
@@ -117,10 +122,16 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   await connection();
   const sp = await searchParams;
   const today = todayISO();
-  const [allRows, categories, settings, cash, plan, balances] = await Promise.all([
-    listFlowRows(shiftDays(today, -150), today),
+  const [settings, salaries] = await Promise.all([getSettings(), listSalaries()]);
+  // The same period Home is showing: a pay cycle once a salary was recorded (or ?view=), else a calendar month.
+  const choice = resolvePeriod({ today, salaryDates: salaries.map((s) => s.date), paydayDay: settings.paydayDay, view: first(sp.view), month: first(sp.month) });
+  const { view, period, month, isCurrent, unit } = choice;
+  const nameOf = (m: string) => periodName(m, month, !!period);
+  // Three earlier periods are the baseline for "above your usual", so look back past the one on screen.
+  const lookBack = shiftDays(choice.start, -130) < shiftDays(today, -150) ? shiftDays(choice.start, -130) : shiftDays(today, -150);
+  const [allRows, categories, cash, plan, balances] = await Promise.all([
+    listFlowRows(lookBack, today),
     listCategories(),
-    getSettings(),
     getCashStatus(todayISO()),
     getPlan(today),
     getAccountBalances(true),
@@ -131,11 +142,16 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const accountId = Number(first(sp.account)) || null;
   const accountChoice = balances.find((a) => a.id === accountId && a.type !== "investment") ?? null;
   const rows = accountChoice ? allRows.filter((r) => r.accountId === accountChoice.id) : allRows;
+  // Budgets, creep and wants are judged over the period's own rows (Home's re-keying), the rest over real dates.
+  const keyed = choice.periods ? rekeyRows(allRows, choice.periods) : allRows;
+  const periodRows = accountChoice ? keyed.filter((r) => r.accountId === accountChoice.id) : keyed;
+  const accountQuery = accountChoice ? `&account=${accountChoice.id}` : "";
+  const homeHref = (m: string) => `/dashboard${qs({ view, month: m, account: accountChoice?.id })}`;
   // The cash finding is one account's story only when that account is the only cash account (the count adds them all up).
   const cashView = accountChoice?.type === "cash" && cash.accounts.length === 1;
   const chips = balances
     .filter((a) => a.type !== "investment" && (!a.archived || a.id === accountChoice?.id))
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: `/insights${qs({ account: a.id })}` }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: `/insights${qs({ view, month, account: a.id })}` }));
 
   const insights = detectLeaks({
     rows,
@@ -145,15 +161,27 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
     cash: { unaccounted90: cash.unaccounted90, withdrawn90: cash.withdrawn90 },
     flows: plan.flows,
     billItems: plan.bills.map((b) => b.bill.name),
-    // These findings are by calendar month, so which bills are paid is judged for this month too (not the pay cycle).
+    // Which bills are paid is judged for the same period as the findings (Home does the same).
     budgetBills: toBudgetBills(
       evaluateBills(
         plan.bills.map((b) => b.bill),
-        { start: monthStart(today.slice(0, 7)), end: monthEnd(today.slice(0, 7)) },
+        { start: choice.start, end: choice.end },
         asBillTxs(allRows),
         today,
       ),
     ),
+    period: {
+      rows: periodRows,
+      month,
+      day: choice.dayNow,
+      elapsed: choice.elapsed,
+      total: choice.total,
+      current: isCurrent,
+      unit,
+      nameOf,
+      entries: (id) => `/transactions${qs(period ? { month: "all", from: period.start, to: period.end, category: id } : { month, category: id })}`,
+      home: homeHref,
+    },
     // Budgets, wants against total income and the payday/savings routine are about every account at once: wrong, not just
     // partial, on one account's rows.
     omit: accountChoice ? WHOLE_BOOK_FINDINGS.filter((k) => !(k === "cash_unaccounted" && cashView)) : undefined,
@@ -187,35 +215,43 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const heroLead =
     headline.count === 1 ? "If you acted on the 1 finding that carries a saving" : `If you acted on the ${headline.count} findings that carry a saving`;
   const counted = new Set(headline.ids);
-  const homeCycle = plan.cycle.source === "salary";
 
   return (
     <div className="space-y-3 md:space-y-4">
       <MoreHeader title="Insights" subtitle={accountChoice ? `${accountChoice.name} · where it leaks, found from its own entries.` : "Where your money leaks, found from your own entries."} />
 
       {/* Every account together, or one on its own (each chip shows its real balance now). */}
-      <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref="/insights" />
+      <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={`/insights${qs({ view, month })}`} />
       {accountChoice && (
         <p className="sub px-1">
           Showing only what {accountChoice.name}&apos;s own entries can tell. Findings that need every account step aside: budgets, wants against your whole income,
           the payday and savings routine{cashView ? "" : ", the cash count"} and your logging habit.{" "}
-          <Link href="/insights" className="font-extrabold text-accent-strong underline underline-offset-2">
+          <Link href={`/insights${qs({ view, month })}`} className="font-extrabold text-accent-strong underline underline-offset-2">
             See everything
           </Link>
         </p>
       )}
 
+      <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
+        <PeriodToggle view={view} account={accountChoice?.id} month={month} path="/insights" />
+        <MonthNav
+          month={month}
+          maxMonth={choice.nowMonth}
+          minMonth={choice.oldestMonth}
+          path="/insights"
+          sublabel={period ? cycleLabel(period) : undefined}
+          query={`view=${view}${accountQuery}`}
+          className="md:w-72"
+        />
+      </div>
+
       <p className="sub px-1">
-        Judged by calendar month ({monthLabel(today.slice(0, 7))}), over the last few months of entries.
-        {homeCycle && (
-          <>
-            {" "}
-            Your Home page counts pay cycles, so a budget can read differently there.{" "}
-            <Link href={dashboardLinks(today).cycle} className="font-extrabold text-accent-strong underline underline-offset-2">
-              See this pay cycle on Home
-            </Link>
-          </>
-        )}
+        Budgets and spending against your usual are judged over {nameOf(month)}
+        {isCurrent ? " so far" : ""} ({period ? cycleLabel(period) : monthLabel(month)}), the same {unit} Home shows. Habits, spikes, weekends and regular charges look at
+        the last 60 to 90 days, and each finding says which.{" "}
+        <Link href={homeHref(month)} className="font-extrabold text-accent-strong underline underline-offset-2">
+          See {nameOf(month)} on Home
+        </Link>
       </p>
 
       {/* Phone: one column in the order headline, cash, findings, habit, regular payments. From lg: findings on the left,
