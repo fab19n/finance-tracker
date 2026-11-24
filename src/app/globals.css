@@ -715,39 +715,3 @@ body[data-navigating] [data-dim-on-pending] {
     scale: none !important;
   }
 }
-
-/* The Activity list sits on a sheet of warm paper in BOTH themes (the design draws it so in Dark): inside it the colour
-   tokens take their Light values, so every token-coloured thing in the sheet (text, rows, amounts, the cents) stays
-   readable on paper. In Light it needs no rule. Written twice like the dark theme itself (forced and system). */
-:root[data-theme="dark"] .paper-sheet {
-  --background: #f7f1e1;
-  --foreground: #12241f;
-  --card: #fffaf0;
-  --card-subtle: #efe7d2;
-  --muted: #4f5d57;
-  --ink-muted: #56625b;
-  --line: #ddd3ba;
-  --accent-strong: #7a5810;
-  --good: #1d6b45;
-  --good-soft: #dcefe2;
-  --warn: #8a5a06;
-  --danger: #a8322a;
-  --danger-soft: #f8e1dc;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .paper-sheet {
-    --background: #f7f1e1;
-    --foreground: #12241f;
-    --card: #fffaf0;
-    --card-subtle: #efe7d2;
-    --muted: #4f5d57;
-    --ink-muted: #56625b;
-    --line: #ddd3ba;
-    --accent-strong: #7a5810;
-    --good: #1d6b45;
-    --good-soft: #dcefe2;
-    --warn: #8a5a06;
-    --danger: #a8322a;
-    --danger-soft: #f8e1dc;
-  }
-}

@@ -84,3 +84,15 @@ describe("everything survives a round trip through a link (so chips, paging and 
     expect(again.range).toEqual(first.range);
   });
 });
+
+describe("urlWith: a link always names its page", () => {
+  it("is just the path when no parameter is left (a bare query string would be an empty link that reloads the page)", async () => {
+    const { urlWith, qs } = await import("@/lib/queries/filters");
+    expect(qs({ month: undefined, q: "" })).toBe(""); // the trap: this alone is not a usable link
+    expect(urlWith("/transactions", { month: undefined, q: "" })).toBe("/transactions");
+  });
+  it("adds only the parameters that are set", async () => {
+    const { urlWith } = await import("@/lib/queries/filters");
+    expect(urlWith("/transactions", { month: "all", account: "3", q: undefined })).toBe("/transactions?month=all&account=3");
+  });
+});

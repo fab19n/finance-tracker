@@ -19,7 +19,7 @@ import { balanceHistory } from "@/lib/analytics/ledger";
 import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWholeBare, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
-import { datePresets, parseTxSearch, qs, type SearchParams } from "@/lib/queries/filters";
+import { datePresets, parseTxSearch, qs, urlWith, type SearchParams } from "@/lib/queries/filters";
 import { FlowBar } from "@/components/FlowBar";
 import { getAccountLedger } from "@/lib/queries/ledger";
 import { getSettings } from "@/lib/settings";
@@ -70,6 +70,12 @@ function rangeText(range: { from: string | null; to: string | null }): string {
   if (range.from && range.to) return `${shortDate(range.from)} - ${shortDate(range.to)}`;
   return range.from ? `From ${shortDate(range.from)}` : `Until ${shortDate(range.to!)}`;
 }
+
+/**
+ * A link back into this page. Always includes the path: a bare query string is an EMPTY address when no parameter is left
+ * (for example "Back to monthly" with nothing else set), and an empty link just reloads the page you are on.
+ */
+const listUrl = (params: Parameters<typeof qs>[0]) => urlWith("/transactions", params);
 
 export default async function TransactionsPage({
   searchParams,
@@ -151,7 +157,7 @@ export default async function TransactionsPage({
   // Every account, plus the chosen one even if it has since been archived.
   const chips = accounts
     .filter((a) => !a.archived || String(a.id) === account)
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: qs({ ...base, account: String(a.id), page: undefined }) }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: listUrl({ ...base, account: String(a.id), page: undefined }) }));
 
   // Nothing recorded anywhere (first run), as opposed to an empty month or a filter that matches nothing.
   const nothingAtAll = groups.length === 0 && !filtered ? (await sumTransactions({})).count === 0 : false;
@@ -185,13 +191,13 @@ export default async function TransactionsPage({
           values={{ type, category, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort }}
           presets={presets}
           others={present({ month: view.month, q: base.q, account })}
-          clearHref={qs({ ...base, ...sheetKeys })}
+          clearHref={listUrl({ ...base, ...sheetKeys })}
           applied={applied}
         />
       </div>
 
       {/* Which account: one tap. Each shows its balance now (always the real balance, whatever period is on screen). */}
-      <AccountChips label="Filter by account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={qs({ ...base, account: undefined, page: undefined })} />
+      <AccountChips label="Filter by account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={listUrl({ ...base, account: undefined, page: undefined })} />
 
       {monthNav ? (
         <MonthNav
@@ -200,7 +206,7 @@ export default async function TransactionsPage({
           path="/transactions"
           query={new URLSearchParams(present({ q: base.q, category, account, type, min: base.min, max: base.max, sort: base.sort })).toString()}
           sublabel={
-            <Link href={qs({ ...base, month: "all" })} className="inline-flex min-h-11 items-center font-extrabold text-accent-strong hover:underline">
+            <Link href={listUrl({ ...base, month: "all" })} className="inline-flex min-h-11 items-center font-extrabold text-accent-strong hover:underline">
               Show all time
             </Link>
           }
@@ -209,7 +215,7 @@ export default async function TransactionsPage({
       ) : range ? (
         // A date range (from the sheet or a pay-cycle link) is a gold chip you can remove: that brings the month back.
         <div className="flex flex-wrap items-center gap-2">
-          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip on">
+          <Link href={listUrl({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip on">
             {periodText} <X size={13} strokeWidth={3} aria-label="Remove date range, back to monthly" />
             <PendingMark />
           </Link>
@@ -219,7 +225,7 @@ export default async function TransactionsPage({
           <span className="chip on" aria-current="true">
             All time
           </span>
-          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip">
+          <Link href={listUrl({ ...base, month: undefined, from: undefined, to: undefined, page: undefined })} className="chip">
             Back to monthly
             <PendingMark />
           </Link>
@@ -230,7 +236,7 @@ export default async function TransactionsPage({
         <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
           {q.trim() && (
             <li>
-              <Link href={qs({ ...base, q: undefined })} className={PILL}>
+              <Link href={listUrl({ ...base, q: undefined })} className={PILL}>
                 Search: {q.trim()} <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
@@ -238,7 +244,7 @@ export default async function TransactionsPage({
           )}
           {typeName && (
             <li>
-              <Link href={qs({ ...base, type: undefined, page: undefined })} className={PILL}>
+              <Link href={listUrl({ ...base, type: undefined, page: undefined })} className={PILL}>
                 {typeName} only <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
@@ -246,7 +252,7 @@ export default async function TransactionsPage({
           )}
           {categoryChoice && (
             <li>
-              <Link href={qs({ ...base, category: undefined })} className={PILL}>
+              <Link href={listUrl({ ...base, category: undefined })} className={PILL}>
                 {categoryChoice.name} <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
@@ -254,7 +260,7 @@ export default async function TransactionsPage({
           )}
           {amount && (
             <li>
-              <Link href={qs({ ...base, min: undefined, max: undefined, page: undefined })} className={PILL}>
+              <Link href={listUrl({ ...base, min: undefined, max: undefined, page: undefined })} className={PILL}>
                 {amount} <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
@@ -262,7 +268,7 @@ export default async function TransactionsPage({
           )}
           {sortText && (
             <li>
-              <Link href={qs({ ...base, sort: undefined, page: undefined })} className={PILL}>
+              <Link href={listUrl({ ...base, sort: undefined, page: undefined })} className={PILL}>
                 {sortText} <X size={12} aria-label="Remove" />
                 <PendingMark />
               </Link>
@@ -291,8 +297,9 @@ export default async function TransactionsPage({
         />
       ) : (
         // The list sheet: totals and the day-by-day list on one paper-coloured surface with a 28 px rounded top (the
-        // `paper-sheet` class re-points the colour tokens to paper in Dark; in Light it is simply the card colour).
-        <div className="paper-sheet space-y-2 rounded-b-[20px] rounded-t-[28px] border border-line bg-card px-3.5 pb-2 pt-3.5 text-foreground md:p-5">
+        // card colour of the current theme: paper in Light, the dark card in Dark. The design canvas draws a light sheet even in Dark, but that
+        // looked too bright, so the sheet follows the theme).
+        <div className="space-y-2 rounded-b-[20px] rounded-t-[28px] border border-line bg-card px-3.5 pb-2 pt-3.5 text-foreground md:p-5">
           {/* Only transfers on screen: income and spending would all read zero, so say what moved instead. */}
           {type === "transfer" ? (
             flow ? (
@@ -342,8 +349,8 @@ export default async function TransactionsPage({
                     ? `Nothing in ${periodText} fits these filters. Try clearing them or looking at all time.`
                     : `Nothing has been recorded for ${periodText} yet.`
               }
-              primary={q.trim() ? { label: "Clear search", href: qs({ ...base, q: undefined, page: undefined }) } : filtered ? { label: "Clear filters", href: qs({ month: view.month }) } : undefined}
-              secondary={!monthNav ? { label: "Back to monthly", href: qs({ ...base, month: undefined, from: undefined, to: undefined, page: undefined }) } : q.trim() && filtered && (category || amount || type || account) ? { label: "Clear all filters", href: qs({ month: view.month }) } : undefined}
+              primary={q.trim() ? { label: "Clear search", href: listUrl({ ...base, q: undefined, page: undefined }) } : filtered ? { label: "Clear filters", href: listUrl({ month: view.month }) } : undefined}
+              secondary={!monthNav ? { label: "Back to monthly", href: listUrl({ ...base, month: undefined, from: undefined, to: undefined, page: undefined }) } : q.trim() && filtered && (category || amount || type || account) ? { label: "Clear all filters", href: listUrl({ month: view.month }) } : undefined}
             />
           ) : (
             <>
@@ -390,7 +397,7 @@ export default async function TransactionsPage({
       {(view.page > 1 || hasNext) && (
         <div className="flex items-center justify-between">
           {view.page > 1 ? (
-            <Link href={qs({ ...base, page: view.page - 1, select: select ? "1" : undefined })} className="btn">
+            <Link href={listUrl({ ...base, page: view.page - 1, select: select ? "1" : undefined })} className="btn">
               <PendingMark />
               {sortText ? "‹ Previous" : "‹ Newer"}
             </Link>
@@ -398,7 +405,7 @@ export default async function TransactionsPage({
             <span />
           )}
           {hasNext && (
-            <Link href={qs({ ...base, page: view.page + 1, select: select ? "1" : undefined })} className="btn">
+            <Link href={listUrl({ ...base, page: view.page + 1, select: select ? "1" : undefined })} className="btn">
               {sortText ? "Next ›" : "Older ›"}
               <PendingMark />
             </Link>

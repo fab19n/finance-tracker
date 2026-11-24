@@ -96,6 +96,14 @@ export function withAccount(href: string, accountId: number | null | undefined):
   return `${href}${href.includes("?") ? "&" : "?"}account=${accountId}`;
 }
 
+/**
+ * A link to `path` with the given parameters (empty ones dropped). Always starts with the path: a bare query string is an
+ * EMPTY address when no parameter is left, and an empty link reloads the page you are on instead of going anywhere.
+ */
+export function urlWith(path: string, params: Record<string, string | number | undefined>): string {
+  return `${path}${qs(params)}`;
+}
+
 /** Rebuild a query string, dropping empty values. */
 export function qs(params: Record<string, string | number | undefined>): string {
   const u = new URLSearchParams();
