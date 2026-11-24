@@ -195,3 +195,26 @@ describe("entryShapeError (what the phone checks before it queues anything)", ()
     expect(entryShapeError({ ...ok, type: "transfer", toAccountId: 1 })).toBe("From and To accounts must differ");
   });
 });
+
+describe("POST /sync/entries body cap", () => {
+  it("refuses an oversized body even when content-length is missing or lies", async () => {
+    const { POST } = await import("@/app/sync/entries/route");
+    const big = JSON.stringify({ entries: [entry({ note: "x".repeat(300_000) })] });
+    // A streamed body carries no content-length.
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(big));
+        c.close();
+      },
+    });
+    const res = await POST(
+      new Request("http://localhost/sync/entries", { method: "POST", headers: { "content-type": "application/json" }, body: stream, duplex: "half" } as RequestInit),
+    );
+    expect(res.status).toBe(413);
+    expect(rows()).toHaveLength(0);
+    const lying = await POST(
+      new Request("http://localhost/sync/entries", { method: "POST", headers: { "content-type": "application/json", "content-length": "10" }, body: big }),
+    );
+    expect(lying.status).toBe(413);
+  });
+});

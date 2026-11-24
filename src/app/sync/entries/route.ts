@@ -23,6 +23,31 @@ const Entry = z.object({
 });
 const Body = z.object({ entries: z.array(Entry).min(1).max(50) });
 
+/** The body as text, or null once it passes `max` bytes (the rest is never read). */
+async function readCapped(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 type Result = { clientId: string; status: "saved" | "duplicate" | "rejected"; id?: number; error?: string };
 
 function saveOne(db: DB, e: z.infer<typeof Entry>): Result {
@@ -69,9 +94,13 @@ export async function POST(request: Request) {
   }
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return Response.json({ error: "Too much at once" }, { status: 413 });
 
+  // The header can be missing (chunked) or wrong, so count the bytes actually read and stop at the cap.
+  const text = await readCapped(request, MAX_BODY_BYTES);
+  if (text === null) return Response.json({ error: "Too much at once" }, { status: 413 });
+
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     return Response.json({ error: "That wasn't JSON" }, { status: 400 });
   }

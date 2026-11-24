@@ -21,7 +21,7 @@ export function learnFromHistory(db: DB): HistoryRule[] {
     .where(and(isNotNull(transactions.importKey), isNotNull(transactions.note)))
     .all();
 
-  // A name you also send TRANSFERS to ("FABIAN A/L LESLIE": your other accounts) says nothing about what a line with that
+  // A name you also send TRANSFERS to ("PAYER ONE A/L DOE": your other accounts) says nothing about what a line with that
   // name is: the same text is a transfer one day and a top-up the next. Never learn such a name.
   const sentTransfersTo = new Set<string>();
   for (const r of rows) if (r.type === "transfer") sentTransfersTo.add(rulePattern(r.note!));

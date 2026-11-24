@@ -6,11 +6,20 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { accounts, holdings, transactions, valuations } from "@/db/schema";
-import { todayISO } from "@/lib/dates";
+import type { DB } from "@/db/open";
+import { isRealDate, todayISO } from "@/lib/dates";
 import { fetchFxToMyr, fetchQuote, holdingValueSen } from "@/lib/investing/prices";
+import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 
-const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date");
+const DATE = z.string().refine((s) => isRealDate(s), "Pick a valid date");
+const MAX_UNITS = 1_000_000_000_000;
+
+/** The account behind an id from a form, or nothing when it doesn't exist. */
+function accountById(db: DB, raw: unknown) {
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? db.select().from(accounts).where(eq(accounts.id, id)).get() : undefined;
+}
 
 function done(error?: string, extra = ""): never {
   revalidatePath("/", "layout");
@@ -43,6 +52,7 @@ export async function addInvestment(formData: FormData): Promise<void> {
 
   const amount = v.amount?.trim() ? parseSen(v.amount) : 0;
   if (amount === null) done("The amount isn't valid");
+  if (!withinLimit(amount!)) done(MAX_AMOUNT_MESSAGE);
   const isFd = v.product === "fixed_deposit";
 
   let rate: number | null = null;
@@ -50,49 +60,59 @@ export async function addInvestment(formData: FormData): Promise<void> {
     if (!amount || amount <= 0) done("A fixed deposit needs the principal amount");
     rate = Number(v.annualRatePct);
     if (!Number.isFinite(rate) || rate <= 0 || rate > 30) done("Enter the FD's interest rate, e.g. 3.05");
-    if (!v.maturityDate || !/^\d{4}-\d{2}-\d{2}$/.test(v.maturityDate) || v.maturityDate <= v.date) {
+    if (!v.maturityDate || !isRealDate(v.maturityDate) || v.maturityDate <= v.date) {
       done("The maturity date must be after the start date");
     }
   }
   const units = v.units?.trim() ? Number(v.units) : null;
-  if (units !== null && (!Number.isFinite(units) || units <= 0)) done("Units must be a positive number");
+  if (units !== null && (!Number.isFinite(units) || units <= 0 || units > MAX_UNITS)) done("Units must be a positive number");
 
   const db = await getDb();
-  const acc = db
-    .insert(accounts)
-    .values({ name: v.name, type: "investment", openingBalance: 0, sortOrder: 50 })
-    .returning()
-    .get();
-
-  db.insert(holdings)
-    .values({
-      accountId: acc.id,
-      product: v.product,
-      ticker: v.ticker?.trim() || null,
-      units,
-      priceCurrency: v.priceCurrency?.trim() || "USD",
-      principal: isFd ? amount : null,
-      annualRatePct: isFd ? rate : null,
-      startDate: isFd ? v.date : null,
-      maturityDate: isFd ? v.maturityDate : null,
-      compounding: isFd ? (v.compounding ?? "simple") : null,
-    })
-    .run();
-
-  // Record the money leaving your bank, so balances and net worth stay honest.
+  // The funding account is checked BEFORE anything is created, so a bad id leaves nothing half made.
   const from = Number(v.fromAccountId);
-  if (amount && amount > 0 && from && v.recordTransfer) {
-    db.insert(transactions)
+  const funding = amount! > 0 && from && v.recordTransfer;
+  if (funding) {
+    const source = accountById(db, from);
+    if (!source) done("The account the money comes from no longer exists");
+    if (source!.type === "investment") done("Fund an investment from a bank, cash or e-wallet account, not from another investment");
+  }
+
+  db.transaction((tx) => {
+    const acc = tx
+      .insert(accounts)
+      .values({ name: v.name, type: "investment", openingBalance: 0, sortOrder: 50 })
+      .returning()
+      .get();
+
+    tx.insert(holdings)
       .values({
-        date: v.date,
-        type: "transfer",
-        amount,
-        accountId: from,
-        toAccountId: acc.id,
-        note: isFd ? `Open ${v.name}` : `Initial investment in ${v.name}`,
+        accountId: acc.id,
+        product: v.product,
+        ticker: v.ticker?.trim() || null,
+        units,
+        priceCurrency: v.priceCurrency?.trim() || "USD",
+        principal: isFd ? amount : null,
+        annualRatePct: isFd ? rate : null,
+        startDate: isFd ? v.date : null,
+        maturityDate: isFd ? v.maturityDate : null,
+        compounding: isFd ? (v.compounding ?? "simple") : null,
       })
       .run();
-  }
+
+    // Record the money leaving your bank, so balances and net worth stay honest.
+    if (funding) {
+      tx.insert(transactions)
+        .values({
+          date: v.date,
+          type: "transfer",
+          amount: amount!,
+          accountId: from,
+          toAccountId: acc.id,
+          note: isFd ? `Open ${v.name}` : `Initial investment in ${v.name}`,
+        })
+        .run();
+    }
+  });
   done();
 }
 
@@ -108,9 +128,12 @@ export async function recordValuation(formData: FormData): Promise<void> {
   if (!p.success) done(p.error.issues[0]?.message);
   const value = parseSen(p.data!.value);
   if (value === null) done("Enter the current value, e.g. 12500.00");
+  if (!withinLimit(value!)) done(MAX_AMOUNT_MESSAGE);
   const db = await getDb();
+  const inv = accountById(db, p.data!.accountId);
+  if (!inv || inv.type !== "investment") done("That isn't an investment account");
   db.insert(valuations)
-    .values({ accountId: Number(p.data!.accountId), date: p.data!.date, value: value!, source: "manual" })
+    .values({ accountId: inv!.id, date: p.data!.date, value: value!, source: "manual" })
     .onConflictDoUpdate({ target: [valuations.accountId, valuations.date], set: { value: value!, source: "manual" } })
     .run();
   done();
@@ -130,9 +153,15 @@ export async function recordInvestmentFlow(formData: FormData): Promise<void> {
   if (!p.success) done(p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
   if (amount === null || amount <= 0) done("Enter an amount greater than 0");
-  const inv = Number(p.data!.accountId);
-  const other = Number(p.data!.fromAccountId);
+  if (!withinLimit(amount!)) done(MAX_AMOUNT_MESSAGE);
   const db = await getDb();
+  const invAcc = accountById(db, p.data!.accountId);
+  if (!invAcc || invAcc.type !== "investment") done("That isn't an investment account");
+  const otherAcc = accountById(db, p.data!.fromAccountId);
+  if (!otherAcc) done("The account on the other side no longer exists");
+  if (otherAcc!.type === "investment") done("Move money between an investment and a bank, cash or e-wallet account");
+  const inv = invAcc!.id;
+  const other = otherAcc!.id;
   db.insert(transactions)
     .values({
       date: p.data!.date,
@@ -147,8 +176,10 @@ export async function recordInvestmentFlow(formData: FormData): Promise<void> {
 }
 
 export async function archiveInvestment(formData: FormData): Promise<void> {
-  const id = Number(formData.get("accountId"));
   const db = await getDb();
+  const acc = accountById(db, formData.get("accountId"));
+  if (!acc || acc.type !== "investment") done("That isn't an investment account");
+  const id = acc!.id;
   db.update(accounts).set({ archived: true }).where(eq(accounts.id, id)).run();
   done();
 }
@@ -195,11 +226,13 @@ export async function updateHolding(formData: FormData): Promise<void> {
   const p = HoldingInput.safeParse(Object.fromEntries(formData));
   if (!p.success) done("Check the ticker and units");
   const units = p.data!.units?.trim() ? Number(p.data!.units) : null;
-  if (units !== null && (!Number.isFinite(units) || units <= 0)) done("Units must be a positive number");
+  if (units !== null && (!Number.isFinite(units) || units <= 0 || units > MAX_UNITS)) done("Units must be a positive number");
   const db = await getDb();
+  const inv = accountById(db, p.data!.accountId);
+  if (!inv || inv.type !== "investment") done("That isn't an investment account");
   db.update(holdings)
     .set({ ticker: p.data!.ticker?.trim() || null, units, priceCurrency: p.data!.priceCurrency?.trim() || "USD" })
-    .where(eq(holdings.accountId, Number(p.data!.accountId)))
+    .where(eq(holdings.accountId, inv!.id))
     .run();
   done();
 }

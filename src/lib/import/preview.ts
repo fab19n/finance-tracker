@@ -10,6 +10,7 @@ import { classifyRows, type ExistingTx, type SavedRule } from "./classify";
 import { booksBalanceBefore } from "./books";
 import { countEntriesBefore } from "./commit";
 import { learnFromHistory } from "./history";
+import { IMPORT_TOO_LARGE, MAX_IMPORT_BYTES } from "./limits";
 import { looksLikeTngWallet, parseTngWallet } from "./tng";
 import { parseCsvStatement, type CsvOverrides } from "./csv";
 import { extractPdfPages, looksLikePdf, PdfError } from "./pdf-extract";
@@ -32,7 +33,6 @@ export type PreviewInput = {
   startDate?: string;
 };
 
-const MAX_BYTES = 15 * 1024 * 1024;
 
 /**
  * Read a statement (PDF, CSV or pasted text) and turn it into rows with a proposal for each:
@@ -52,7 +52,7 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
   let skipped: string[] = [];
   let csv: PreviewResultCsv | undefined;
 
-  if (input.bytes && input.bytes.length > MAX_BYTES) return { ok: false, error: "That file is too large (over 15 MB)." };
+  if (input.bytes && input.bytes.length > MAX_IMPORT_BYTES) return { ok: false, error: IMPORT_TOO_LARGE };
 
   try {
     if (input.bytes && looksLikePdf(input.bytes)) {

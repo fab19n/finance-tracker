@@ -3,13 +3,8 @@ import { parseTxSearch } from "@/lib/queries/filters";
 import { getAccountLedger } from "@/lib/queries/ledger";
 import { listAccounts } from "@/lib/queries/reference";
 import { listTransactions } from "@/lib/queries/transactions";
+import { csvCell, csvLine, exportPeriod } from "@/lib/csv";
 import { STATEMENT_HEADER, statementRows } from "@/lib/statement";
-
-const esc = (v: string | number | null) => {
-  if (v === null || v === undefined) return "";
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
 
 // BOM so Excel opens UTF-8 (emoji-free here, but names may contain accents).
 const csv = (lines: string[], filename: string) =>
@@ -17,6 +12,7 @@ const csv = (lines: string[], filename: string) =>
     headers: {
       "content-type": "text/csv; charset=utf-8",
       "content-disposition": `attachment; filename="${filename}"`,
+      "cache-control": "no-store",
     },
   });
 
@@ -40,8 +36,8 @@ export async function GET(request: NextRequest) {
     const name = accounts.find((a) => a.id === accountId)?.name ?? "account";
     const lines = statementRows({ opening: ledger.opening, entries: ledger.entries, accountId, rows, from: view.filters.from ?? null });
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "account";
-    const period = view.range ? `${view.range.from ?? "start"}_to_${view.range.to ?? "now"}` : view.month;
-    return csv([STATEMENT_HEADER, ...lines].map((l) => l.map(esc).join(",")), `statement-${slug}-${period}.csv`);
+    // Columns 1, 2 and 6 (description, category, note) are free text; the date and the money columns are not.
+    return csv([csvLine(STATEMENT_HEADER), ...lines.map((l) => csvLine(l, [1, 2, 6]))], `statement-${slug}-${exportPeriod(view)}.csv`);
   }
 
   const rows = await listTransactions({ ...view.filters, limit: 100_000 });
@@ -52,13 +48,13 @@ export async function GET(request: NextRequest) {
         r.date,
         r.type,
         (r.amount / 100).toFixed(2),
-        esc(r.categoryName),
-        esc(r.item),
-        esc(r.accountName),
-        esc(r.toAccountName),
-        esc(r.note),
+        csvCell(r.categoryName, { text: true }),
+        csvCell(r.item, { text: true }),
+        csvCell(r.accountName, { text: true }),
+        csvCell(r.toAccountName, { text: true }),
+        csvCell(r.note, { text: true }),
       ].join(","),
     ),
   ];
-  return csv(lines, `transactions-${view.month}.csv`);
+  return csv(lines, `transactions-${exportPeriod(view)}.csv`);
 }

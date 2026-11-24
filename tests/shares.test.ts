@@ -85,9 +85,9 @@ describe("personLedger - who owes for which months", () => {
   });
 
   it("months from BEFORE your records start still count, once you say when they joined (Netflix paid 'Oct25 to Mar26' in January)", () => {
-    // Your data begins in January, but Kuganesh joined in October: his RM 133.50 on 2 Jan covers Oct-Mar, not Jan-Jun.
+    // Your data begins in January, but Friend joined in October: his RM 133.50 on 2 Jan covers Oct-Mar, not Jan-Jun.
     const months = billedMonths(Array.from({ length: 9 }, (_, i) => `2026-${String(i + 1).padStart(2, "0")}-04`)); // Jan-Sep
-    const l = personLedger(def(1, "Kug", { startMonth: "2025-10" }), months, [pay(1, "2026-01-02", 133.5), pay(1, "2026-07-07", 66.75), pay(1, "2026-09-08", 66.75)]);
+    const l = personLedger(def(1, "Fri", { startMonth: "2025-10" }), months, [pay(1, "2026-01-02", 133.5), pay(1, "2026-07-07", 66.75), pay(1, "2026-09-08", 66.75)]);
     expect(l.cells).toHaveLength(12); // Oct 25 .. Sep 26
     expect(l).toMatchObject({ owed: RM(267), paid: RM(267), balance: 0, status: "settled", paidThrough: "2026-09" });
   });
@@ -140,8 +140,8 @@ describe("sharedBill - the whole picture for one bill", () => {
 
 describe("recognising a person's payment on a bank line", () => {
   it("matches the words you gave anywhere in the line, ignoring case and punctuation", () => {
-    const s = def(1, "Kug", { matchKeywords: "kugan, k.kanda" });
-    expect(descriptionMatchesShare(s, "DUITNOW TO ACCOUNT 612772696 KUGANESH A/L KANDASAMY Rms Oct25")).toBe(true);
+    const s = def(1, "Fri", { matchKeywords: "friend, f.doe" });
+    expect(descriptionMatchesShare(s, "DUITNOW TO ACCOUNT 000000000 FRIEND A/L DOE Rms Oct25")).toBe(true);
     expect(descriptionMatchesShare(s, "DUITNOW TO ACCOUNT SOMEONE ELSE")).toBe(false);
   });
 
@@ -157,28 +157,28 @@ describe("recognising a person's payment on a bank line", () => {
   });
 
   describe("pickShare", () => {
-    const netflix = def(1, "Kuganesh", { share: RM(22.25), matchKeywords: "kuganesh" });
-    const spotify = def(2, "Kuganesh", { billId: 2, share: RM(5.15), matchKeywords: "kuganesh" });
-    const other = def(3, "Mohammad", { matchKeywords: "syafil" });
+    const netflix = def(1, "Friend", { share: RM(22.25), matchKeywords: "friend" });
+    const spotify = def(2, "Friend", { billId: 2, share: RM(5.15), matchKeywords: "friend" });
+    const other = def(3, "Friend C", { matchKeywords: "friendc" });
 
     it("picks the one person named on the line", () => {
-      expect(pickShare([netflix, other], "KUGANESH A/L K", RM(66.75))).toBe(netflix);
+      expect(pickShare([netflix, other], "FRIEND A/L K", RM(66.75))).toBe(netflix);
       expect(pickShare([netflix, other], "NOBODY KNOWN", RM(66.75))).toBeNull();
     });
 
     it("one friend in two plans: the amount decides, when exactly one share divides it", () => {
-      expect(pickShare([netflix, spotify], "KUGANESH", RM(133.5))).toBe(netflix); // 6 x 22.25 (and 25.9 x 5.15 is not whole)
-      expect(pickShare([netflix, spotify], "KUGANESH", RM(30.9))).toBe(spotify); // 6 x 5.15
+      expect(pickShare([netflix, spotify], "FRIEND", RM(133.5))).toBe(netflix); // 6 x 22.25 (and 25.9 x 5.15 is not whole)
+      expect(pickShare([netflix, spotify], "FRIEND", RM(30.9))).toBe(spotify); // 6 x 5.15
     });
 
     it("...and says nothing when it cannot tell, rather than guessing", () => {
-      expect(pickShare([netflix, spotify], "KUGANESH", RM(7))).toBeNull(); // divides neither
-      const same = def(4, "Kuganesh", { billId: 3, share: RM(22.25), matchKeywords: "kuganesh" });
-      expect(pickShare([netflix, same], "KUGANESH", RM(22.25))).toBeNull(); // divides both
+      expect(pickShare([netflix, spotify], "FRIEND", RM(7))).toBeNull(); // divides neither
+      const same = def(4, "Friend", { billId: 3, share: RM(22.25), matchKeywords: "friend" });
+      expect(pickShare([netflix, same], "FRIEND", RM(22.25))).toBeNull(); // divides both
     });
 
     it("ignores people who have left", () => {
-      expect(pickShare([{ ...netflix, active: false }], "KUGANESH", RM(22.25))).toBeNull();
+      expect(pickShare([{ ...netflix, active: false }], "FRIEND", RM(22.25))).toBeNull();
     });
   });
 });
@@ -324,10 +324,10 @@ describe("recognising a lump of months paid at the old price", () => {
   });
 
   it("one friend in two plans: a lump of old-price months still says which plan it is", () => {
-    const netflix = def(1, "Kuganesh", { share: RM(22), matchKeywords: "kuganesh" });
-    const spotify = def(2, "Kuganesh", { billId: 2, share: RM(5.15), matchKeywords: "kuganesh" });
-    expect(pickShare([netflix, spotify], "KUGANESH", RM(120))).toBeNull(); // 120 is not a whole number of RM 22 or RM 5.15
-    expect(pickShare([{ ...netflix, earlierShares: [RM(20)] }, spotify], "KUGANESH", RM(120))).toMatchObject({ id: 1 }); // six months at RM 20
+    const netflix = def(1, "Friend", { share: RM(22), matchKeywords: "friend" });
+    const spotify = def(2, "Friend", { billId: 2, share: RM(5.15), matchKeywords: "friend" });
+    expect(pickShare([netflix, spotify], "FRIEND", RM(120))).toBeNull(); // 120 is not a whole number of RM 22 or RM 5.15
+    expect(pickShare([{ ...netflix, earlierShares: [RM(20)] }, spotify], "FRIEND", RM(120))).toMatchObject({ id: 1 }); // six months at RM 20
   });
 });
 

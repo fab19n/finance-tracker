@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import type { CommitInput, CommitResult, PreviewResult } from "@/lib/import/api-types";
-import { commitRows } from "@/lib/import/commit";
+import { commitRows, MAX_DESCRIPTION_LENGTH, rowShapeProblem } from "@/lib/import/commit";
 import type { CsvOverrides } from "@/lib/import/csv";
+import { isRealDate } from "@/lib/dates";
 import { buildPreview } from "@/lib/import/preview";
 import { getSettings } from "@/lib/settings";
 
@@ -46,7 +47,7 @@ export async function previewStatement(formData: FormData): Promise<PreviewResul
   }
 
   const rawStart = formData.get("startDate");
-  const startDate = typeof rawStart === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawStart) ? rawStart : undefined;
+  const startDate = typeof rawStart === "string" && isRealDate(rawStart) ? rawStart : undefined;
 
   const [db, settings] = [await getDb(), await getSettings()];
   return buildPreview(db, { accountId, bytes, text: text?.trim() ? text : undefined, password, overrides, expectedIncome: settings.expectedIncome, startDate });
@@ -54,7 +55,7 @@ export async function previewStatement(formData: FormData): Promise<PreviewResul
 
 const Row = z.object({
   key: z.string().min(1).max(300),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  date: z.string().refine((s) => isRealDate(s)),
   amount: z.number().int(),
   description: z.string().max(400),
   kind: z.enum(["expense", "income", "transfer", "skip"]),
@@ -73,6 +74,17 @@ const Commit = z.object({
 
 /** Save the reviewed rows in one go (all or nothing). */
 export async function commitImport(input: CommitInput): Promise<CommitResult> {
+  // Say WHICH row is wrong before the generic check fails the lot (an Item longer than the server's limit, say), and
+  // trim an over-long bank description: only its first 200 characters are ever stored.
+  const rawRows = (input as { rows?: unknown })?.rows;
+  if (Array.isArray(rawRows)) {
+    const problem = rowShapeProblem(rawRows);
+    if (problem) return { ok: false, error: problem };
+    input = {
+      ...input,
+      rows: rawRows.map((r) => (r && typeof r.description === "string" && r.description.length > MAX_DESCRIPTION_LENGTH ? { ...r, description: r.description.slice(0, MAX_DESCRIPTION_LENGTH) } : r)),
+    } as CommitInput;
+  }
   const parsed = Commit.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The import data wasn't valid. Re-read the statement and try again." };
   const result = commitRows(await getDb(), parsed.data);

@@ -328,7 +328,7 @@ describe("2b. someone who shares one of your bills, paying you", () => {
   const shares = [share(1, "Jane", "Netflix", 22.25), share(2, "Ahmad", "Netflix", 22.25), share(3, "Jane", "Spotify", 5.15)];
 
   it("is recognised: filed as Reimbursements, named after the bill, and linked to the person", () => {
-    expect(one(row("DUITNOW TO ACCOUNT 612772696 JANE A/L DOE Rms Oct25 to Mar26", 133.5), ctx({ shares }))).toMatchObject({
+    expect(one(row("DUITNOW TO ACCOUNT 000000000 JANE A/L DOE Rms Oct25 to Mar26", 133.5), ctx({ shares }))).toMatchObject({
       kind: "income", categoryId: cat("Reimbursements"), item: "Netflix share", shareId: 1, source: "share", confidence: "high", reason: expect.stringMatching(/Jane.*Netflix/),
     });
   });

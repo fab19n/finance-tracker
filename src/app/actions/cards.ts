@@ -29,20 +29,27 @@ export async function saveCardSettings(formData: FormData): Promise<void> {
   if (last4Raw && !last4) redirect(formHref(id, "The last digits must be exactly four numbers"));
   if (text("network") === "other" && !text("otherName").trim()) redirect(formHref(id, "Give the card mark a name, or pick None"));
 
-  db.update(accounts)
-    .set({ cardNetwork: markToStored(text("network"), text("otherName")), cardColor: color ? color.toLowerCase() : null, cardLast4: last4 })
-    .where(eq(accounts.id, id))
-    .run();
-
-  // "Main" is the spending role, which belongs to one account: choosing it here takes it from whoever had it. A form
-  // without the field leaves the role alone; an investment can't be the spending account.
   const main = formData.get("main");
-  if (main === "1" && account.type !== "investment") {
-    db.update(accounts).set({ purpose: null }).where(eq(accounts.purpose, "spending")).run();
-    db.update(accounts).set({ purpose: "spending" }).where(eq(accounts.id, id)).run();
-  } else if (main === "0" && account.purpose === "spending") {
-    db.update(accounts).set({ purpose: null }).where(eq(accounts.id, id)).run();
+  if (main === "1" && account.archived && account.type !== "investment") {
+    redirect(formHref(id, "An archived account can't be your Main account. Restore it first"));
   }
+
+  // One transaction: the card look and the role move together, so a failure can't leave no spending account at all.
+  db.transaction((tx) => {
+    tx.update(accounts)
+      .set({ cardNetwork: markToStored(text("network"), text("otherName")), cardColor: color ? color.toLowerCase() : null, cardLast4: last4 })
+      .where(eq(accounts.id, id))
+      .run();
+
+    // "Main" is the spending role, which belongs to one account: choosing it here takes it from whoever had it. A form
+    // without the field leaves the role alone; an investment can't be the spending account.
+    if (main === "1" && account.type !== "investment") {
+      tx.update(accounts).set({ purpose: null }).where(eq(accounts.purpose, "spending")).run();
+      tx.update(accounts).set({ purpose: "spending" }).where(eq(accounts.id, id)).run();
+    } else if (main === "0" && account.purpose === "spending") {
+      tx.update(accounts).set({ purpose: null }).where(eq(accounts.id, id)).run();
+    }
+  });
 
   revalidatePath("/", "layout");
   redirect(`/accounts/${id}`);

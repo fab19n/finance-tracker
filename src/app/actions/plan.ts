@@ -6,10 +6,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { accounts, billShares, billTurns, categories, importRules, recurringBills, transactions } from "@/db/schema";
+import { isRealDate } from "@/lib/dates";
+import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 import { getRoleAccounts } from "@/lib/queries/plan";
 
-const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date");
+const DATE = z.string().refine((s) => isRealDate(s), "Pick a valid date");
 
 function done(to: string, error?: string): never {
   revalidatePath("/", "layout");
@@ -39,6 +41,7 @@ export async function saveBill(formData: FormData): Promise<void> {
   if (min === null || min <= 0) done(back, "Enter the bill's amount, e.g. 88.90");
   const max = v.amountMax?.trim() ? parseSen(v.amountMax) : min;
   if (max === null || max! < min!) done(back, "The 'up to' amount can't be less than the amount");
+  if (!withinLimit(min!) || !withinLimit(max!)) done(back, MAX_AMOUNT_MESSAGE);
 
   let dueDay: number | null = null;
   if (v.dueDay?.trim()) {
@@ -77,16 +80,19 @@ export async function deleteBill(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   if (!id) done("/plan/bills");
   const db = await getDb();
-  db.update(transactions).set({ billId: null }).where(eq(transactions.billId, id)).run();
-  // People sharing this bill go with it; money they sent stays, just no longer counted towards anyone.
-  const shareIds = db.select({ id: billShares.id }).from(billShares).where(eq(billShares.billId, id)).all().map((s) => s.id);
-  db.delete(billTurns).where(eq(billTurns.billId, id)).run();
-  if (shareIds.length) {
-    db.update(transactions).set({ shareId: null }).where(inArray(transactions.shareId, shareIds)).run();
-    db.delete(billShares).where(eq(billShares.billId, id)).run();
-  }
-  db.delete(importRules).where(eq(importRules.billId, id)).run();
-  db.delete(recurringBills).where(eq(recurringBills.id, id)).run();
+  // One transaction: a failure part-way (a constraint, a killed process) leaves the bill and its links as they were.
+  db.transaction((tx) => {
+    tx.update(transactions).set({ billId: null }).where(eq(transactions.billId, id)).run();
+    // People sharing this bill go with it; money they sent stays, just no longer counted towards anyone.
+    const shareIds = tx.select({ id: billShares.id }).from(billShares).where(eq(billShares.billId, id)).all().map((s) => s.id);
+    tx.delete(billTurns).where(eq(billTurns.billId, id)).run();
+    if (shareIds.length) {
+      tx.update(transactions).set({ shareId: null }).where(inArray(transactions.shareId, shareIds)).run();
+      tx.delete(billShares).where(eq(billShares.billId, id)).run();
+    }
+    tx.delete(importRules).where(eq(importRules.billId, id)).run();
+    tx.delete(recurringBills).where(eq(recurringBills.id, id)).run();
+  });
   done("/plan/bills");
 }
 
@@ -98,6 +104,7 @@ export async function payBill(formData: FormData): Promise<void> {
   if (!p.success) done("/plan", p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
   if (amount === null || amount <= 0) done("/plan", "Enter the amount you paid");
+  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
   const db = await getDb();
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(p.data!.billId))).get();
   if (!bill) done("/plan", "That bill no longer exists");
@@ -123,12 +130,18 @@ export async function recordSalary(formData: FormData): Promise<void> {
   if (!p.success) done("/plan", p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
   if (amount === null || amount <= 0) done("/plan", "Enter your take-home pay, e.g. 5,400");
+  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
   const { spending } = await getRoleAccounts();
   if (!spending) done("/plan", "Choose your spending account in Settings first");
   const db = await getDb();
+  // Pay cycles are cut from income in the category NAMED "Salary", so without it the payday would be recorded and
+  // then never start a cycle. Refuse with the way out rather than saving an entry the Plan can't see.
   const salary = db.select().from(categories).where(eq(categories.name, "Salary")).get();
+  if (!salary || salary.archived || salary.type !== "income") {
+    done("/plan", 'Salary needs an income category named "Salary". Add or restore it in Settings > Categories, then record the pay again');
+  }
   db.insert(transactions)
-    .values({ date: p.data!.date, type: "income", amount: amount!, accountId: spending!.id, categoryId: salary?.id ?? null, item: "Salary" })
+    .values({ date: p.data!.date, type: "income", amount: amount!, accountId: spending!.id, categoryId: salary!.id, item: "Salary" })
     .run();
   done("/plan");
 }
@@ -141,6 +154,7 @@ export async function recordPaydayTransfer(formData: FormData): Promise<void> {
   if (!p.success) done("/plan", p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
   if (amount === null || amount <= 0) done("/plan", "Enter the amount you moved to savings");
+  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
   const { spending, savings } = await getRoleAccounts();
   if (!spending || !savings) done("/plan", "Choose your spending and savings accounts in Settings first");
   const db = await getDb();

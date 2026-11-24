@@ -8,6 +8,7 @@ import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import type { CommitResult, PreviewOk, PreviewResult } from "@/lib/import/api-types";
 import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
 import { dayLabel } from "@/lib/dates";
+import { IMPORT_TOO_LARGE, MAX_IMPORT_BYTES } from "@/lib/import/limits";
 import { formatRM } from "@/lib/money";
 import { ColumnMapper } from "./ColumnMapper";
 
@@ -92,6 +93,10 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   async function read(overrides?: object, asAccount?: number) {
     setError(null);
     setMapping(null);
+    if (file && file.size > MAX_IMPORT_BYTES) {
+      setError(IMPORT_TOO_LARGE);
+      return;
+    }
     const forAccount = asAccount ?? accountId;
     if (asAccount) setAccountId(asAccount);
     const fd = new FormData();

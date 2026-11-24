@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { accounts, categories } from "@/db/schema";
+import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 import { setSetting } from "@/lib/settings";
 import { settingsHref, type SettingsTab } from "@/lib/settings-tabs";
@@ -33,17 +34,28 @@ export async function saveAccount(formData: FormData): Promise<void> {
   if (opening === null) done("Opening balance isn't a valid amount");
   const negative = v.openingBalance?.trim().startsWith("-");
   const openingBalance = negative ? -opening! : opening!;
+  if (!withinLimit(openingBalance)) done(MAX_AMOUNT_MESSAGE);
   const db = await getDb();
   const purpose = v.purpose || null;
-  // Each role belongs to one account: giving it to this one takes it from whoever had it.
-  if (purpose) db.update(accounts).set({ purpose: null }).where(eq(accounts.purpose, purpose)).run();
-  if (v.id) {
-    // A form without the role field (older callers) leaves the existing role alone.
-    const set = { name: v.name, type: v.type, openingBalance, ...(v.purpose !== undefined ? { purpose } : {}) };
-    db.update(accounts).set(set).where(eq(accounts.id, Number(v.id))).run();
-  } else {
-    db.insert(accounts).values({ name: v.name, type: v.type, openingBalance, purpose, sortOrder: 99 }).run();
-  }
+  const existing = v.id ? db.select().from(accounts).where(eq(accounts.id, Number(v.id))).get() : undefined;
+  if (v.id && !existing) done("That account no longer exists");
+  // Everything is checked BEFORE a role is taken from its holder: a refusal must leave the books as they were.
+  // The Plan assumes the spending and savings accounts are live bank, cash or e-wallet accounts.
+  const roleAfter = v.purpose !== undefined ? purpose : (existing?.purpose ?? null);
+  if (roleAfter && v.type === "investment") done("An investment can't be your spending or savings account");
+  if (purpose && existing?.archived) done("An archived account can't be your spending or savings account. Restore it first");
+
+  db.transaction((tx) => {
+    // Each role belongs to one account: giving it to this one takes it from whoever had it.
+    if (purpose) tx.update(accounts).set({ purpose: null }).where(eq(accounts.purpose, purpose)).run();
+    if (v.id) {
+      // A form without the role field (older callers) leaves the existing role alone.
+      const set = { name: v.name, type: v.type, openingBalance, ...(v.purpose !== undefined ? { purpose } : {}) };
+      tx.update(accounts).set(set).where(eq(accounts.id, Number(v.id))).run();
+    } else {
+      tx.insert(accounts).values({ name: v.name, type: v.type, openingBalance, purpose, sortOrder: 99 }).run();
+    }
+  });
   done();
 }
 
@@ -51,7 +63,9 @@ export async function toggleAccountArchived(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   const archived = formData.get("archived") === "1";
   const db = await getDb();
-  db.update(accounts).set({ archived }).where(eq(accounts.id, id)).run();
+  // An archived account drops out of the Plan, so it also lets go of its role (otherwise restoring it later could
+  // leave two accounts claiming the same role).
+  db.update(accounts).set(archived ? { archived, purpose: null } : { archived }).where(eq(accounts.id, id)).run();
   done();
 }
 
@@ -71,6 +85,7 @@ export async function saveCategory(formData: FormData): Promise<void> {
   const v = p.data!;
   const budget = v.monthlyBudget?.trim() ? parseSen(v.monthlyBudget) : null;
   if (v.monthlyBudget?.trim() && budget === null) done("Budget isn't a valid amount", "categories");
+  if (budget !== null && !withinLimit(budget)) done(MAX_AMOUNT_MESSAGE, "categories");
   // The emoji is no longer shown anywhere (the design has no emoji), so the form has no field for it. A category saved
   // without one KEEPS the icon it has (an update leaves it out), and a new one gets a bullet.
   const row = {
@@ -139,6 +154,7 @@ export async function saveCycleSettings(formData: FormData): Promise<void> {
   const allowance = rmOrZero(v.variableAllowance);
   const buffer = rmOrZero(v.cycleBuffer);
   if (income === null || allowance === null || buffer === null) done("One of the RM amounts isn't valid", "payday");
+  if (![income, allowance, buffer].every((n) => withinLimit(n!))) done(MAX_AMOUNT_MESSAGE, "payday");
   await setSetting("paydayDay", v.paydayDay);
   await setSetting("expectedIncome", income!);
   await setSetting("variableAllowance", allowance!);

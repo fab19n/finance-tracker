@@ -60,7 +60,7 @@ const shares = () => h.db.select().from(billShares).all();
 
 describe("saveShare", () => {
   it("adds a person, and links the past money that is clearly theirs (and only theirs)", async () => {
-    const janeLump = credit("2026-01-02", 133.5, "DUITNOW TO ACCOUNT 612772696 JANE A/L DOE Rms Oct25 to Mar26");
+    const janeLump = credit("2026-01-02", 133.5, "DUITNOW TO ACCOUNT 000000000 JANE A/L DOE Rms Oct25 to Mar26");
     const janeOne = credit("2026-08-05", 22.25, "DUITNOW TO ACCOUNT 55 JANE A/L DOE netflix");
     const ahmad = credit("2026-08-06", 22.25, "DUITNOW TO ACCOUNT 56 AHMAD BIN ALI");
     const salary = credit("2026-08-26", 5400, "IBG CREDIT ACME SDN BHD JANE", salaryCat); // not a candidate category

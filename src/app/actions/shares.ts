@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import type { DB } from "@/db/open";
 import { billShares, billTurns, categories, recurringBills, transactions } from "@/db/schema";
+import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 import { pickShare, SHARE_CANDIDATE_CATEGORIES } from "@/lib/plan/shares";
 import { selectShares } from "@/lib/queries/shares";
@@ -74,6 +75,7 @@ export async function saveShare(formData: FormData): Promise<void> {
 
   const share = parseSen(v.share);
   if (share === null || share <= 0) done("Enter what they owe each month, e.g. 22.25");
+  if (!withinLimit(share!)) done(MAX_AMOUNT_MESSAGE);
   let endMonth: string | null = null;
   if (v.endMonth?.trim()) {
     if (!MONTH.safeParse(v.endMonth).success) done("Pick a valid 'until' month, or leave it blank");
@@ -85,10 +87,14 @@ export async function saveShare(formData: FormData): Promise<void> {
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(v.billId))).get();
   if (!bill) done("That bill no longer exists");
 
+  // On a bill paid in turns one person pays the WHOLE month, so what a payment from them is expected to be is the
+  // bill's usual amount whatever was typed (the same figure setSharing uses); a typed part would be stored as a
+  // monthly share the rotation maths never expects.
+  const turnShare = Math.round((bill!.amountMin + bill!.amountMax) / 2);
   const row = {
     billId: bill!.id,
     name: v.name,
-    share: share!,
+    share: bill!.sharing === "turns" ? turnShare : share!,
     startMonth: v.startMonth,
     endMonth,
     matchKeywords:
@@ -99,14 +105,25 @@ export async function saveShare(formData: FormData): Promise<void> {
         .join(", ") || null,
     active: !!v.active,
   };
-  let id: number;
-  if (v.id) {
-    id = Number(v.id);
-    db.update(billShares).set(row).where(eq(billShares.id, id)).run();
-  } else {
-    id = db.insert(billShares).values({ ...row, sortOrder: 999 }).returning().get().id;
-  }
-  done(undefined, linkPastPayments(db, id));
+  // The person and the payments re-filed to them are written together, or not at all.
+  let linked = 0;
+  let missing = false;
+  db.transaction(() => {
+    let id: number;
+    if (v.id) {
+      id = Number(v.id);
+      if (!db.select({ id: billShares.id }).from(billShares).where(eq(billShares.id, id)).get()) {
+        missing = true;
+        return;
+      }
+      db.update(billShares).set(row).where(eq(billShares.id, id)).run();
+    } else {
+      id = db.insert(billShares).values({ ...row, sortOrder: 999 }).returning().get().id;
+    }
+    linked = linkPastPayments(db, id);
+  });
+  if (missing) done("That person is no longer on a shared bill");
+  done(undefined, linked);
 }
 
 /** Remove someone from a plan. Money they sent stays in your records, just no longer counted towards them. */
@@ -114,10 +131,12 @@ export async function deleteShare(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   if (!id) done();
   const db = await getDb();
-  db.update(transactions).set({ shareId: null }).where(eq(transactions.shareId, id)).run();
-  // Their turns on a rotation go with them (those months are nobody's until you plan them again).
-  db.delete(billTurns).where(eq(billTurns.shareId, id)).run();
-  db.delete(billShares).where(eq(billShares.id, id)).run();
+  db.transaction((tx) => {
+    tx.update(transactions).set({ shareId: null }).where(eq(transactions.shareId, id)).run();
+    // Their turns on a rotation go with them (those months are nobody's until you plan them again).
+    tx.delete(billTurns).where(eq(billTurns.shareId, id)).run();
+    tx.delete(billShares).where(eq(billShares.id, id)).run();
+  });
   done();
 }
 
@@ -134,15 +153,17 @@ export async function setSharing(formData: FormData): Promise<void> {
   const db = await getDb();
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(p.data!.billId))).get();
   if (!bill) done("That bill no longer exists");
-  db.update(recurringBills).set({ sharing: p.data!.sharing }).where(eq(recurringBills.id, bill!.id)).run();
-  if (p.data!.sharing === "turns") db.update(billShares).set({ share: Math.round((bill!.amountMin + bill!.amountMax) / 2) }).where(eq(billShares.billId, bill!.id)).run();
+  db.transaction((tx) => {
+    tx.update(recurringBills).set({ sharing: p.data!.sharing }).where(eq(recurringBills.id, bill!.id)).run();
+    if (p.data!.sharing === "turns") tx.update(billShares).set({ share: Math.round((bill!.amountMin + bill!.amountMax) / 2) }).where(eq(billShares.billId, bill!.id)).run();
+  });
   done();
 }
 
 const CoverInput = z.object({ billId: z.string().min(1), shareId: z.string().min(1, "Choose who covered it"), month: MONTH });
 
 /**
- * "Rakeesh covered October": give that person the month. Months are claimed when someone volunteers (not in the order
+ * "Friend A covered October": give that person the month. Months are claimed when someone volunteers (not in the order
  * people pay, and not in a fixed order), so this is one tap from the money that has arrived. Refuses a month somebody
  * already has: changing a month is the planner's job.
  */
@@ -194,7 +215,7 @@ export async function saveTurns(formData: FormData): Promise<void> {
 
 const AssignInput = z.object({ txId: z.string().min(1), shareId: z.string().min(1, "Choose who it is from") });
 
-/** "This RM 66.75 was Kuganesh paying for Netflix": count it towards their months. */
+/** "This RM 66.75 was Friend paying for Netflix": count it towards their months. */
 export async function assignPayment(formData: FormData): Promise<void> {
   const p = AssignInput.safeParse(Object.fromEntries(formData));
   if (!p.success) done(p.error.issues[0]?.message);

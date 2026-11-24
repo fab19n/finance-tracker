@@ -422,7 +422,7 @@ export function rotationWindow(schedule: TurnSlot[], thisMonth: string, cycleLen
 // ---- recognising a person's payment on a bank line ----------------------------------------------------------------
 
 /**
- * Does this bank line name this person? The words you gave are matched anywhere ("kugan" finds KUGANESH A/L ...).
+ * Does this bank line name this person? The words you gave are matched anywhere ("friend" finds FRIEND A/L ...).
  * With none given, their name must appear as whole words, so "Ali" is not found inside "Kalidas".
  */
 export function descriptionMatchesShare(s: Pick<ShareDef, "name" | "matchKeywords">, description: string): boolean {
