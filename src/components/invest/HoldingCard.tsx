@@ -46,7 +46,12 @@ export function HoldingCard({ row, funding, today }: { row: InvestmentRow; fundi
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-black">{account.name}</h3>
-          <p className="sub !text-[11px]">{PRODUCT_LABEL[product]}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            <span className="sub !text-[11px]">{PRODUCT_LABEL[product]}</span>
+            {isFd && fd && (
+              <span className={`pill ${fd.matured ? "tag-warn" : fdAttention ? "tag-warn" : "tag-info"}`}>{fd.matured ? "Matured" : `${fd.daysToMaturity} days left`}</span>
+            )}
+          </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="num whitespace-nowrap text-lg font-black">{formatRM(row.value)}</p>
@@ -55,7 +60,7 @@ export function HoldingCard({ row, funding, today }: { row: InvestmentRow; fundi
         </div>
       </header>
 
-      <dl className="space-y-1.5 rounded-2xl bg-card-subtle p-3 text-[13px]">
+      <dl className="divide-y divide-line rounded-2xl bg-card-subtle px-3 text-[13px] [&>div]:py-2">
         <div className="flex items-baseline justify-between gap-3">
           <dt className="text-xs font-extrabold text-muted">You put in</dt>
           <dd className="num font-black">{formatRM(row.invested)}</dd>
@@ -84,8 +89,8 @@ export function HoldingCard({ row, funding, today }: { row: InvestmentRow; fundi
       </dl>
 
       {isFd && fd && (
-        <p className={`banner !text-xs ${fdAttention ? "banner-warn" : "bg-card-subtle text-foreground"}`}>
-          <CalendarClock size={16} className={`mt-0.5 shrink-0 ${fdAttention ? "" : "text-muted"}`} aria-hidden />
+        <p className={`banner !text-xs ${fdAttention ? "banner-warn" : "banner-info"}`}>
+          <CalendarClock aria-hidden />
           {fd.matured ? (
             <span>
               Matured on {dayLabel(fd.maturityDate)}: <strong>{formatRM(fd.maturityValue)}</strong> is ready to withdraw or roll over.

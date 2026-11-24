@@ -13,6 +13,7 @@ import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
 import { DuoIcon } from "@/components/DuoIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { Kpi } from "@/components/Kpi";
+import { Money } from "@/components/Money";
 import { SavedNotice } from "@/components/settings/SavedNotice";
 import { MoreHeader } from "@/components/MoreHeader";
 import { shortDate, todayISO } from "@/lib/dates";
@@ -112,7 +113,7 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
           <section className="order-1 grid grid-cols-2 gap-2.5 md:gap-3" aria-label="Portfolio summary">
             <div className="hero col-span-2">
               <p className="text-xs font-extrabold">Portfolio worth</p>
-              <p className="num mt-1.5 whitespace-nowrap text-[40px] font-black leading-none tracking-[-0.03em] md:text-[44px]">{formatRMWhole(value)}</p>
+              <p className="num mt-1.5 whitespace-nowrap text-[40px] font-black leading-none tracking-[-0.03em] md:text-[44px]"><Money sen={value} /></p>
               <p className="mt-2 text-xs font-extrabold">
                 {invested > 0
                   ? `${sign}${formatRMWhole(Math.abs(gain))} · ${sign}${formatPct(Math.abs(gain) / invested, 1)} since you started`

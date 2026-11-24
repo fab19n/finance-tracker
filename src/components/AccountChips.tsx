@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PendingMark } from "@/components/PendingMark";
 import { ScrollChosenIntoView } from "@/components/ScrollChosenIntoView";
+import { cardLook } from "@/lib/card";
 import { formatRM } from "@/lib/money";
 
 type Chip = {
@@ -8,17 +9,20 @@ type Chip = {
   name: string;
   balance: number;
   href: string;
-  /** The account's card colour, drawn as a 10 px dot in the compact row (null: the plain grey one). */
+  /** A colour for the 10 px dot, if the caller already has one. Otherwise it comes from `cardColor` + the name (`cardLook`). */
   dot?: string | null;
+  /** The account's own card colour (`accounts.cardColor`); with the name it gives the bank's colour when none was chosen. */
+  cardColor?: string | null;
 };
 
 /**
- * Accounts as a row of pills, each showing its balance and each a LINK: on the Add page a tap opens that account's
- * entries; on Activity the row is the account filter (the chosen one is solid gold, "All accounts" clears it). It scrolls
- * sideways on a phone. Balances are derived from transactions, so they are the real ones.
+ * Accounts as a row of pills, each a LINK: on the Add page a tap opens that account's entries; on Activity (and Plan,
+ * Insights, Home) the row is the account filter (the chosen one is solid gold, "All" clears it). One 44 px line per chip:
+ * a dot in the account's card colour, the name (12.5 px, bold) and, inline and small, the balance. It scrolls sideways on a
+ * phone. Balances are derived from transactions, so they are the real ones.
  *
- * `compact` is Home's row: one 44 px line per chip, "All", a dot in the account's card colour and the NAME only (the balance
- * stays in the link's accessible name, and on the account's own card).
+ * `compact` is Home's row: the same line with the NAME only (the balance stays in the link's accessible name, and on the
+ * account's own card).
  */
 export function AccountChips({
   accounts,
@@ -34,9 +38,7 @@ export function AccountChips({
   label?: string;
   compact?: boolean;
 }) {
-  const base = compact
-    ? "flex min-h-11 shrink-0 items-center gap-2 rounded-full border-[1.5px] px-3.5 transition"
-    : "flex shrink-0 flex-col items-start rounded-full border-[1.5px] px-3.5 py-1.5 transition";
+  const base = "flex min-h-11 shrink-0 items-center gap-2 rounded-full border-[1.5px] px-3.5 transition";
   const idle = "border-line bg-card hover:border-foreground";
   const chosen = "border-accent-strong bg-accent text-accent-fg";
   return (
@@ -44,13 +46,14 @@ export function AccountChips({
       {/* The row scrolls sideways on a phone: bring the chosen account into view if it is off-screen. */}
       <ScrollChosenIntoView selected={selectedId} />
       {allHref !== undefined && (
-        <Link href={allHref} aria-label={compact ? "All accounts" : undefined} aria-current={selectedId === null ? "true" : undefined} className={`${base} justify-center ${selectedId === null ? chosen : idle}`}>
-          <span className={compact ? "text-xs font-extrabold" : "text-[11px] font-extrabold"}>{compact ? "All" : "All accounts"}</span>
+        <Link href={allHref} aria-label="All accounts" aria-current={selectedId === null ? "true" : undefined} className={`${base} justify-center ${selectedId === null ? chosen : idle}`}>
+          <span className="text-[12.5px] font-bold">All</span>
           <PendingMark />
         </Link>
       )}
       {accounts.map((a) => {
         const on = a.id === selectedId;
+        const dot = a.dot !== undefined ? a.dot : cardLook({ name: a.name, cardColor: a.cardColor ?? null }).bg;
         return (
           <Link
             key={a.id}
@@ -59,9 +62,9 @@ export function AccountChips({
             aria-label={compact ? `${a.name}, ${formatRM(a.balance)}` : undefined}
             className={`${base} ${on ? chosen : idle}`}
           >
-            {compact && <span aria-hidden className={`size-2.5 shrink-0 rounded-full ${a.dot ? "" : "bg-ink-muted"}`} style={a.dot ? { backgroundColor: a.dot } : undefined} />}
-            <span className={compact ? "text-xs font-extrabold" : "text-[11px] font-extrabold"}>{a.name}</span>
-            {!compact && <span className={`num text-[11px] font-bold ${on ? "" : a.balance < 0 ? "text-danger" : "text-muted"}`}>{formatRM(a.balance)}</span>}
+            <span aria-hidden className={`size-2.5 shrink-0 rounded-full ${dot ? "" : "bg-ink-muted"}`} style={dot ? { backgroundColor: dot } : undefined} />
+            <span className="text-[12.5px] font-bold">{a.name}</span>
+            {!compact && <span className={`num text-[11px] font-semibold ${on ? "" : a.balance < 0 ? "text-danger" : "text-muted"}`}>{formatRM(a.balance)}</span>}
             <PendingMark />
           </Link>
         );

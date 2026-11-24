@@ -2,6 +2,7 @@ import { deleteBill, saveBill } from "@/app/actions/plan";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { SubmitButton } from "@/components/SubmitButton";
+import { Toggle } from "@/components/Toggle";
 import { senToInput } from "@/lib/money";
 import { deleteBillBody, NO_USAGE, type BillUsage } from "@/lib/plan/bill-delete";
 import type { BillRow } from "@/lib/queries/plan";
@@ -94,9 +95,7 @@ export function BillForm({
           </label>
           <input id={`${f}-keywords`} name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="netflix, tnb" className="input" />
         </div>
-        <label className="col-span-2 flex min-h-11 items-center gap-2 text-[13px] font-extrabold md:col-span-1">
-          <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-accent-strong" /> Active
-        </label>
+        <Toggle name="active" defaultChecked={bill?.active ?? true} label="Active" hint="Counted in the plan" className="col-span-2 md:col-span-2" />
         <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 w-full md:col-span-6">
           {bill ? "Save bill" : "Add bill"}
         </SubmitButton>

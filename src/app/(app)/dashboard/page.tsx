@@ -57,7 +57,6 @@ import {
   shortDate,
   todayISO,
 } from "@/lib/dates";
-import { cardLook } from "@/lib/card";
 import { initials } from "@/lib/initials";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { asBillTxs, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
@@ -153,7 +152,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const accountQuery = accountChoice ? `&account=${accountChoice.id}` : "";
   const chips = accounts
     .filter((a) => !a.archived || a.id === accountChoice?.id)
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: accountHref(a.id), dot: cardLook(a).bg }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: accountHref(a.id), cardColor: a.cardColor }));
   // The balance through the period (never past today), from the account's whole history.
   const historyFrom = period ? period.start : monthStart(month);
   const historyTo = period ? period.end : monthEnd(month);

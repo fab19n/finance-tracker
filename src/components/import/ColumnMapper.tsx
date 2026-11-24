@@ -1,5 +1,6 @@
 "use client";
 
+import { Toggle } from "@/components/Toggle";
 import { useState } from "react";
 import type { CsvLayout } from "@/lib/import/types";
 
@@ -73,10 +74,7 @@ export function ColumnMapper({
         </table>
       </div>
 
-      <label className="flex min-h-11 items-center gap-2">
-        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 shrink-0 accent-accent-strong" />
-        The first row holds column names
-      </label>
+      <Toggle checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} label="The first row holds column names" />
 
       <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-3">
         {pick(date, setDate, "Date")}

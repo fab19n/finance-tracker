@@ -1,13 +1,13 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
+import { nextRadioIndex } from "@/components/entry/entry-logic";
 import { osPrefersDark, readTheme, setTheme, THEME_EVENT, type ThemeChoice } from "@/lib/theme";
 
 const OPTIONS = [
-  { id: "system", label: "System", icon: Monitor },
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
+  { id: "system", label: "System" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
 ] as const;
 
 /** Re-read when this tab changes the theme, another tab does, or the OS flips between light and dark. */
@@ -32,19 +32,40 @@ function subscribe(onChange: () => void) {
 export function AppearanceCard() {
   const choice = useSyncExternalStore(subscribe, readTheme, (): ThemeChoice => "system");
   const dark = useSyncExternalStore(subscribe, osPrefersDark, () => false);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // A radio group: one stop in the Tab order (the chosen one), the arrow keys move and choose, Home and End jump.
+  function onKey(e: React.KeyboardEvent, index: number) {
+    const next = nextRadioIndex(e.key, index, OPTIONS.length);
+    if (next === null) return;
+    e.preventDefault();
+    setTheme(OPTIONS[next].id);
+    buttons.current[next]?.focus();
+  }
 
   return (
     <section className="card space-y-3" aria-labelledby="appearance-h">
       <div>
         <h2 id="appearance-h" className="h2">
-          Appearance
+          Theme on this device
         </h2>
         <p className="sub mt-1">Applies instantly. Works without your PC.</p>
       </div>
       <div role="radiogroup" aria-labelledby="appearance-h" className="seg">
-        {OPTIONS.map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" role="radio" aria-checked={choice === id} onClick={() => setTheme(id)} className="seg-item inline-flex min-h-9 items-center justify-center gap-1.5">
-            <Icon size={14} strokeWidth={2.5} aria-hidden />
+        {OPTIONS.map(({ id, label }, i) => (
+          <button
+            key={id}
+            ref={(el) => {
+              buttons.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={choice === id}
+            tabIndex={choice === id ? 0 : -1}
+            onClick={() => setTheme(id)}
+            onKeyDown={(e) => onKey(e, i)}
+            className="seg-item"
+          >
             {label}
           </button>
         ))}

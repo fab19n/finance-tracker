@@ -135,7 +135,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const cashView = accountChoice?.type === "cash" && cash.accounts.length === 1;
   const chips = balances
     .filter((a) => a.type !== "investment" && (!a.archived || a.id === accountChoice?.id))
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: `/insights${qs({ account: a.id })}` }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: `/insights${qs({ account: a.id })}` }));
 
   const insights = detectLeaks({
     rows,

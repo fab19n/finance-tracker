@@ -227,6 +227,47 @@ const SHAPES = {
       <path d="M12 7.5v9M7.5 12h9" />
     </>
   ),
+  download: (
+    <>
+      <path className="duo-fill" d="M5 15.5h14V18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 15.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2.5" />
+    </>
+  ),
+  sliders: (
+    <>
+      <circle className="duo-fill" cx="9" cy="8" r="2.6" />
+      <circle className="duo-fill" cx="15.5" cy="16" r="2.6" />
+      <path d="M4 8h2.4M11.6 8H20M4 16h8.9M18.1 16H20M9 10.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2zM15.5 18.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2z" />
+    </>
+  ),
+  "trend-up": (
+    <>
+      <path className="duo-fill" d="M4 17.5 9.5 12l3.5 3.5 7-7.5v10.5z" />
+      <path d="m4 17 5.5-5.5 3.5 3.5L20 8M15 8h5v5" />
+    </>
+  ),
+  "trend-down": (
+    <>
+      <path className="duo-fill" d="M4 6.5 9.5 12l3.5-3.5 7 7.5V5.5z" />
+      <path d="m4 7 5.5 5.5L13 9l7 7M15 16h5v-5" />
+    </>
+  ),
+  contactless: (
+    <>
+      <circle className="duo-fill" cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9 9.5a4 4 0 0 1 0 5M12 7.5a7 7 0 0 1 0 9M15 5.8a10 10 0 0 1 0 12.4" />
+    </>
+  ),
+  repeat: (
+    <>
+      <rect className="duo-fill" x="4" y="7" width="16" height="10" rx="3" />
+      <path d="M17 3.5 20 6.5 17 9.5M4 12.5V11a4.5 4.5 0 0 1 4.5-4.5H20M7 20.5 4 17.5l3-3M20 11.5V13a4.5 4.5 0 0 1-4.5 4.5H4" />
+    </>
+  ),
+  close: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
+  /** A bare tick (no disc), for chips and checkboxes where a disc would be too heavy at 13 px. */
+  tick: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   arrow: <path d="M5 12h14M13.5 6.5 19 12l-5.5 5.5" />,
   "chevron-right": <path d="m9.5 5.5 6.5 6.5-6.5 6.5" />,
   "chevron-left": <path d="m14.5 5.5-6.5 6.5 6.5 6.5" />,

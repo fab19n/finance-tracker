@@ -1,5 +1,4 @@
-import { SalaryForm } from "@/components/plan/SalaryForm";
-import { FileUp } from "lucide-react";
+import { Info } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -7,6 +6,8 @@ import { AccountChips } from "@/components/AccountChips";
 import { AccountCycleCard } from "@/components/plan/AccountCycleCard";
 import { AccountOutlookCard } from "@/components/plan/AccountOutlookCard";
 import { BillChecklist } from "@/components/plan/BillChecklist";
+import { PaydayCard } from "@/components/plan/PaydayCard";
+import { SalaryForm } from "@/components/plan/SalaryForm";
 import { PaydayPlanner } from "@/components/plan/PaydayPlanner";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
@@ -14,11 +15,12 @@ import { SavedNotice } from "@/components/settings/SavedNotice";
 import { SetupCard } from "@/components/setup/SetupCard";
 import { SavingsCheck } from "@/components/plan/SavingsCheck";
 import { todayISO } from "@/lib/dates";
-import { formatPct, formatRM, formatRMWhole, senToInput } from "@/lib/money";
-import { monthlyCommitments, summarizeBills } from "@/lib/plan/bills";
+import { formatRM, senToInput } from "@/lib/money";
+import { summarizeBills } from "@/lib/plan/bills";
 import { cycleLabel } from "@/lib/plan/cycle";
 import { planPayday } from "@/lib/plan/payday";
 import { billsPaidFrom, safeToSpend } from "@/lib/plan/safe";
+import { paydayStatement } from "@/lib/plan/statement";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getPlan } from "@/lib/queries/plan";
@@ -35,7 +37,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const error = first(sp.error);
   const today = todayISO();
   const [plan, balances] = await Promise.all([getPlan(today), getAccountBalances(true)]);
-  const { cycle, safe, roles, commitments, planner } = plan;
+  const { cycle, safe, roles, planner } = plan;
   const anyEntry = await listTransactions({ limit: 1 });
   const facts = setupFacts({ accounts: balances, hasSalary: plan.hasSalary, expectedIncome: plan.settings.expectedIncome, hasEntries: anyEntry.length > 0 });
   // Before pay is known and a spending account is chosen, "bills + allowance + buffer" against a pay of RM 0 would read as a
@@ -50,6 +52,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       ? `You have not moved anything to savings this cycle yet. Your payday plan would move ${formatRM(split.moveToSavings)} and keep ${formatRM(split.keepInMain)} in ${roles.spending?.name ?? "your spending account"}; the figure above counts all of it, so it falls by that much once you record the move.`
       : null;
   const needsSalary = !plan.hasSalary || cycle.paydayOverdue;
+  const statement = planReady ? paydayStatement({ income: planner.income, bills: planner.bills, allowance: planner.allowance, buffer: planner.buffer }) : null;
 
   // One account on its own (?account=): the bills it pays and what is left in it after them, and what it did this cycle.
   // (An investment account pays no bills, so it isn't offered; an unknown id is ignored.)
@@ -68,29 +71,37 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
   const billItems = mine ?? plan.bills;
   const billSummary = mine ? summarizeBills(mine) : plan.summary;
-  const billCommitments = mine ? monthlyCommitments(mine.map((i) => i.bill)) : commitments;
+  const accountNames = new Map(balances.map((a) => [a.id, a.name]));
   const chips = balances
     .filter((a) => a.type !== "investment" && (!a.archived || a.id === accountChoice?.id))
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: `/plan${qs({ account: a.id })}` }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: `/plan${qs({ account: a.id })}` }));
+
+  const billsSection = (
+    <section className="space-y-2" aria-labelledby="bills-h">
+      <div className="flex items-baseline justify-between gap-3 px-1">
+        <h2 id="bills-h" className="label !mb-0">
+          Bills this cycle{accountChoice && ` · paid from ${accountChoice.name}`}
+        </h2>
+        <Link href={`/plan/bills${qs({ account: accountChoice?.id })}`} className="text-xs font-extrabold text-accent-strong hover:underline">
+          All bills
+        </Link>
+      </div>
+      {accountChoice && billItems.length === 0 ? (
+        <p className="card sub">
+          No bills are paid from {accountChoice.name}.{" "}
+          <Link href={`/plan/bills${qs({ account: accountChoice.id })}`} className="font-extrabold text-accent-strong hover:underline">
+            Add one in Bills
+          </Link>
+        </p>
+      ) : (
+        <BillChecklist items={billItems} summary={billSummary} today={today} account={accountChoice?.id} accountNames={accountChoice ? undefined : accountNames} />
+      )}
+    </section>
+  );
 
   return (
     <div className="space-y-3 md:space-y-4">
-      <PlanHeader
-        account={accountChoice?.id}
-        subtitle={
-          <>
-            {accountChoice && `${accountChoice.name} · `}Pay cycle {cycleLabel(cycle)} · {cycle.paydayOverdue ? "payday is due" : `day ${cycle.dayNumber} of ${cycle.daysTotal}`}
-            {cycle.source === "setting" && " (estimated - record your salary to make it exact)"}
-          </>
-        }
-        actions={
-          <Link href="/import" className="btn">
-            <FileUp size={14} strokeWidth={2.5} aria-hidden />
-            <span className="md:hidden">Import</span>
-            <span className="hidden md:inline">Import statement</span>
-          </Link>
-        }
-      />
+      <PlanHeader account={accountChoice?.id} />
 
       {!accountChoice && <SetupCard facts={facts} />}
 
@@ -103,43 +114,22 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
       {/* The whole plan, or one account on its own (each chip shows its real balance now). */}
       <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref="/plan" />
-      {accountChoice && (
-        <p className="sub px-1">
-          Showing only {accountChoice.name}: the bills it pays and what is left in it after them. The payday plan and the savings check are about your spending
-          and savings accounts together, so they step aside.{" "}
-          <Link href="/plan" className="font-extrabold text-accent-strong hover:underline">
-            See the whole plan
-          </Link>
-        </p>
-      )}
 
-      {/* Phone: one column in this order. From lg: the card and the bills on the left, the plan and the reality check on the right
-          (one account on its own is a single column). */}
-      <div className={accountChoice ? "space-y-3 md:space-y-4 lg:max-w-3xl" : "grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-2 lg:items-start"}>
-        <div className="space-y-3 md:space-y-4">
+      {accountChoice ? (
+        <div className="space-y-3 md:space-y-4 lg:max-w-3xl">
+          {/* The spending account gets the real "safe to spend" card whichever way you reach it (same maths either way). */}
+          {outlook && mine && !isSpending ? <AccountOutlookCard safe={outlook} billCount={mine.length} /> : <SafeToSpendCard safe={safe} cycle={cycle} />}
+          {unmovedNote && isSpending && <p className="sub px-1 leading-relaxed">{unmovedNote}</p>}
+          {/* Recording the salary is an action, not an analysis: it stays available when one account is on screen. */}
           {needsSalary && (
-            <section className="card space-y-3 !bg-accent-soft" aria-labelledby="salary-h">
-              <div>
-                <h2 id="salary-h" className="h2">
-                  {plan.hasSalary ? "Payday has arrived?" : "Record your salary to start"}
-                </h2>
-                <p className="sub mt-1 !text-foreground">
-                  Salary landing in your spending account is what starts a pay cycle. Record it and everything on this page lines up with your real month.
-                </p>
-              </div>
-              <SalaryForm defaultAmount={planner.income ? senToInput(planner.income) : ""} today={today} canRecord={!!roles.spending} account={accountChoice?.id} />
+            <section className="card space-y-3" aria-labelledby="salary-h">
+              <h2 id="salary-h" className="h2">
+                {plan.hasSalary ? "Payday has arrived?" : "Record your salary to start"}
+              </h2>
+              <SalaryForm defaultAmount={planner.income ? senToInput(planner.income) : ""} today={today} canRecord={!!roles.spending} />
             </section>
           )}
-
-          {/* The spending account gets the real "safe to spend" card whichever way you reach it (same maths either way). */}
-          {accountChoice && outlook && mine && !isSpending ? (
-            <AccountOutlookCard safe={outlook} billCount={mine.length} />
-          ) : (
-            <SafeToSpendCard safe={safe} cycle={cycle} />
-          )}
-          {unmovedNote && (!accountChoice || isSpending) && <p className="sub px-1 leading-relaxed">{unmovedNote}</p>}
-
-          {accountChoice && cycleTotals && cycleMoved && (
+          {cycleTotals && cycleMoved && (
             <AccountCycleCard
               name={accountChoice.name}
               period={cycleLabel(cycle)}
@@ -147,47 +137,36 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
               href={`/transactions${qs({ month: "all", from: cycle.start, to: cycleEnd, account: accountChoice.id })}`}
             />
           )}
-
-          <section className="card" aria-labelledby="bills-h">
-            <div className="mb-3">
-              <h2 id="bills-h" className="h2">
-                Bills this cycle{accountChoice && ` · paid from ${accountChoice.name}`}
-              </h2>
-              {billCommitments.count > 0 && (
-                <p className="sub mt-1 leading-relaxed">
-                  {billCommitments.count} bills = <strong className="text-foreground">{formatRM(billCommitments.monthly)}</strong> a month (
-                  {formatRMWhole(billCommitments.annual)} a year)
-                  {planner.income > 0 && <>, {formatPct(billCommitments.monthly / planner.income)} of your pay</>}. Subscriptions and other &quot;wants&quot;:{" "}
-                  <strong className="text-foreground">{formatRM(billCommitments.discretionaryMonthly)}</strong> a month ({formatRMWhole(billCommitments.discretionaryAnnual)} a
-                  year).
-                </p>
-              )}
-            </div>
-            {accountChoice && billItems.length === 0 ? (
-              <p className="sub">
-                No bills are paid from {accountChoice.name}.{" "}
-                <Link href={`/plan/bills${qs({ account: accountChoice.id })}`} className="font-extrabold text-accent-strong hover:underline">
-                  Add one in Bills
-                </Link>
-              </p>
-            ) : (
-              <BillChecklist items={billItems} summary={billSummary} today={today} account={accountChoice?.id} />
-            )}
-          </section>
+          {billsSection}
+          <p className="banner banner-info flex items-start gap-2 leading-snug">
+            <Info size={18} className="mt-px shrink-0" aria-hidden />
+            <span>
+              The payday plan and the savings check cover the spending and savings accounts together, so they step aside here.{" "}
+              <Link href="/plan" className="font-extrabold underline underline-offset-2">
+                See the whole plan
+              </Link>
+            </span>
+          </p>
         </div>
-
-        {!accountChoice && (
+      ) : (
+        // Phone: one column in the board's order (the hero, the payday plan, the savings check, the bills). From lg: two columns.
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-2 lg:items-start">
           <div className="space-y-3 md:space-y-4">
-            {planReady ? (
-            <section className="space-y-2" aria-labelledby="payday-h">
-              <div className="px-1">
-                <h2 id="payday-h" className="h2">
-                  Payday plan
-                </h2>
-                <p className="sub mt-0.5">
-                  Decide once how salary is split, instead of topping up bill by bill. Change the numbers and see what happens before moving any money.
-                </p>
-              </div>
+            <SafeToSpendCard safe={safe} cycle={cycle} />
+            {unmovedNote && <p className="sub px-1 leading-relaxed">{unmovedNote}</p>}
+          </div>
+          <PaydayCard
+            statement={statement}
+            spendingName={roles.spending?.name ?? null}
+            cycleText={`Pay cycle ${cycleLabel(cycle)}`}
+            estimated={cycle.source === "setting"}
+            moved={movedThisCycle}
+            salaryOpen={needsSalary}
+            salaryDefault={planner.income ? senToInput(planner.income) : ""}
+            today={today}
+            canRecordSalary={!!roles.spending}
+            hasSalary={plan.hasSalary}
+            planner={
               <PaydayPlanner
                 income={planner.income}
                 incomeFrom={planner.incomeFrom}
@@ -200,30 +179,12 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 today={today}
                 alreadyMoved={movedThisCycle}
               />
-            </section>
-            ) : (
-              <section className="card" aria-labelledby="payday-h">
-                <h2 id="payday-h" className="h2">
-                  Payday plan
-                </h2>
-                <p className="sub mt-1 leading-relaxed">
-                  Record your salary and choose your spending account first. The plan splits your pay between bills, everyday spending and savings, and needs both to add up.
-                </p>
-              </section>
-            )}
-
-            <section className="space-y-2" aria-labelledby="check-h">
-              <div className="px-1">
-                <h2 id="check-h" className="h2">
-                  Savings reality check
-                </h2>
-                <p className="sub mt-0.5">What you move to savings versus what really stays there. Moving money isn&apos;t saving if some comes back.</p>
-              </div>
-              <SavingsCheck flows={plan.flows} rolesConfigured={!!(roles.spending && roles.savings)} hasSalary={plan.hasSalary} />
-            </section>
-          </div>
-        )}
-      </div>
+            }
+          />
+          <SavingsCheck flows={plan.flows} rolesConfigured={!!(roles.spending && roles.savings)} hasSalary={plan.hasSalary} planned={split ? split.moveToSavings : null} />
+          {billsSection}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, ListFilter, X } from "lucide-react";
 import Link from "next/link";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { DuoIcon } from "@/components/DuoIcon";
 import { activeDateChoice, TYPE_CHOICES, type DatePreset } from "./filter-logic";
 
 type Option = { id: number; name: string };
@@ -22,7 +22,7 @@ function Choice({ name, value, defaultChecked, children, seg = false }: { name: 
   return (
     <label className={`group cursor-pointer ${seg ? "seg-item" : "chip"} ${ON}`}>
       <input type="radio" name={name} value={value} defaultChecked={defaultChecked} className="sr-only" />
-      <Check size={13} strokeWidth={3} aria-hidden className="hidden group-has-checked:block" />
+      <DuoIcon name="tick" size={13} strokeWidth={3} aria-hidden className="hidden group-has-checked:block" />
       {children}
     </label>
   );
@@ -63,7 +63,7 @@ export function FilterSheet({
         onClick={() => ref.current?.showModal()}
         className="inline-flex min-h-11 w-[100px] items-center justify-center gap-1.5 rounded-full border border-line bg-card text-[13px] font-bold transition hover:bg-card-subtle active:scale-[0.98]"
       >
-        <ListFilter size={15} strokeWidth={2.4} aria-hidden />
+        <DuoIcon name="sliders" size={16} strokeWidth={2.2} aria-hidden />
         Filter
         {applied > 0 && (
           <span className="grid min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-extrabold text-accent-fg" aria-label={`${applied} applied`}>
@@ -108,20 +108,54 @@ function FilterForm({
   const [custom, setCustom] = useState(false);
   const dates = activeDateChoice(from, to, presets, custom);
   const typing = dates === "custom";
+  const formRef = useRef<HTMLFormElement>(null);
+  // "Show N entries": how many entries the form as it stands would list. Asked of /transactions/count (the page's own
+  // filters, read-only) after the first change, so opening the sheet costs nothing. `null` = not asked yet, or unavailable.
+  const [touched, setTouched] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [formChange, setFormChange] = useState(0);
+  useEffect(() => {
+    if (!touched || !formRef.current) return;
+    const params = new URLSearchParams();
+    for (const [k, v] of new FormData(formRef.current)) if (typeof v === "string" && v !== "") params.set(k, v);
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/transactions/count?${params}`, { signal: ctl.signal, cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { count?: number } | null) => setCount(typeof j?.count === "number" ? j.count : null))
+        // A request cancelled by the next keystroke is not a failure; a real one must not leave an old number on the button.
+        .catch((e: unknown) => {
+          if ((e as { name?: string } | null)?.name !== "AbortError") setCount(null);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ctl.abort();
+    };
+  }, [touched, from, to, custom, formChange]);
   const pick = (f: string, t: string) => {
     setFrom(f);
     setTo(t);
     setCustom(false);
+    setTouched(true);
   };
   return (
-    <form action="/transactions" method="get" className="space-y-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-5">
+    <form
+      ref={formRef}
+      action="/transactions"
+      method="get"
+      onChange={() => {
+        setTouched(true);
+        setFormChange((n) => n + 1);
+      }}
+      className="space-y-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-5">
       <div aria-hidden className="mx-auto h-1 w-10 rounded-full bg-line md:hidden" />
       <div className="flex items-center justify-between gap-3">
         <h2 id={titleId} className="font-display text-xl font-semibold tracking-[-0.01em]">
           Filter
         </h2>
         <button type="button" aria-label="Close" onClick={close} className="ib">
-          <X size={18} aria-hidden />
+          <DuoIcon name="close" size={18} aria-hidden />
         </button>
       </div>
       {Object.entries(others).map(([k, v]) => (
@@ -164,7 +198,11 @@ function FilterForm({
               {p.label}
             </button>
           ))}
-          <button type="button" aria-pressed={typing} onClick={() => setCustom(true)} className="chip">
+          <button type="button" aria-pressed={typing} onClick={() => {
+              setCustom(true);
+              setTouched(true);
+            }}
+            className="chip">
             Custom
           </button>
         </div>
@@ -226,7 +264,7 @@ function FilterForm({
           Clear
         </Link>
         <button type="submit" className="btn-primary w-full">
-          Show entries
+          {count === null ? "Show entries" : `Show ${count.toLocaleString("en-MY")} ${count === 1 ? "entry" : "entries"}`}
         </button>
       </div>
     </form>

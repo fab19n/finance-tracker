@@ -1,13 +1,13 @@
-import { ChevronDown } from "lucide-react";
-import { shortMonthLabel } from "@/lib/dates";
+import { AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
+import { monthLabel, shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import type { MonthCell, PersonLedger } from "@/lib/plan/shares";
 import { standingText } from "@/lib/plan/shares-text";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
-import { MonthBadge, NoMonth } from "./MonthBadge";
+import { MonthBadge, NoMonth, StatusTag } from "./MonthBadge";
 import { RotationCard } from "./RotationCard";
-import { ShareForm } from "./ShareForm";
+import { ShareActions } from "./ShareForm";
 import { SharingToggle } from "./SharingToggle";
 
 // Six columns fit a phone beside the name column; older months stay in each person's own list.
@@ -55,7 +55,7 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
   const soFar = latest && soFarRows.length > 0 ? { month: latest, rows: soFarRows, total: soFarRows.reduce((n, r) => n + r.cost, 0), paid: soFarRows.reduce((n, r) => n + Math.min(r.paid, r.cost), 0) } : null;
 
   return (
-    <section className="card space-y-3.5" aria-label={`${view.bill.name}, shared`}>
+    <section id={`bill-${view.bill.id}`} className="card scroll-mt-4 space-y-3.5" aria-label={`${view.bill.name}, shared`}>
       <div>
         <h2 className="h2">{view.bill.name}</h2>
         <p className="sub num mt-0.5">
@@ -63,9 +63,8 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         </p>
       </div>
 
-      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing={view.bill.sharing} />
-
-      <p className={`banner font-extrabold ${view.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
+      <p role="status" className={`banner font-extrabold ${view.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
+        {view.owedToYou > 0 ? <AlertTriangle aria-hidden /> : <CheckCircle2 aria-hidden />}
         <span className="min-w-0">
           {view.owedToYou > 0 ? `Owed to you: ${formatRM(view.owedToYou)}` : "Everyone is paid up."}
           {view.paidAhead > 0 && <span className="font-bold"> ({formatRM(view.paidAhead)} paid in advance)</span>}
@@ -87,9 +86,10 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                       <span className="truncate text-[13px] font-extrabold">{p.share.name}</span>
+                      <StatusTag tone={s.tone === "owes" ? "warn" : s.tone === "ahead" ? "info" : "good"}>{s.tone === "owes" ? "Owes" : s.tone === "ahead" ? "Ahead" : "Paid up"}</StatusTag>
                       {!p.share.active && <span className="pill bg-card text-muted">left{p.share.endMonth ? ` after ${shortMonthLabel(p.share.endMonth)}` : ""}</span>}
                     </span>
-                    <span className={`block text-[11px] font-extrabold leading-snug ${s.tone === "owes" ? "text-warn" : s.tone === "ahead" ? "text-good" : "text-muted"}`}>{s.text}</span>
+                    <span className="block text-[11px] font-bold leading-snug text-muted">{s.text}</span>
                   </span>
                   <span className="num shrink-0 text-right text-[11px] font-bold text-muted">{formatRM(p.share.share)} / month</span>
                   <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
@@ -130,7 +130,7 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
                       )}
                     </ul>
                   )}
-                  {mine.find((m) => m.id === p.share.id) && <ShareForm share={mine.find((m) => m.id === p.share.id)} bills={bills} defaultStart={defaultStart} />}
+                  {mine.find((m) => m.id === p.share.id) && <ShareActions share={mine.find((m) => m.id === p.share.id)!} bills={bills} defaultStart={defaultStart} />}
                 </div>
               </details>
             </li>
@@ -138,32 +138,9 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         })}
       </ul>
 
-      {soFar && (
-        <div className="rounded-2xl bg-card-subtle p-3.5">
-          <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h3 className="text-[13px] font-extrabold">{shortMonthLabel(soFar.month)} so far</h3>
-            <span className="num text-xs font-bold text-muted">{formatRM(soFar.paid)} of {formatRM(soFar.total)}</span>
-          </div>
-          <ul className="space-y-2.5">
-            {soFar.rows.map((r) => (
-              <li key={r.id}>
-                <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-bold">
-                  <span className="truncate font-extrabold">{r.name}</span>
-                  <span className="num shrink-0 text-muted">
-                    {formatRM(r.paid)} of {formatRM(r.cost)}{r.paid >= r.cost ? " · paid" : ""}
-                  </span>
-                </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-card" aria-hidden>
-                  <div className="h-full rounded-full bg-good" style={{ width: `${r.cost > 0 ? Math.min(100, (r.paid / r.cost) * 100) : 0}%` }} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {shown.length > 0 && (
         <div>
+          <h3 className="mb-1 text-[13px] font-extrabold">Who has covered which month</h3>
           <div>
             <table className="w-full table-fixed border-collapse text-xs">
               <caption className="sr-only">Months each person has covered</caption>
@@ -209,6 +186,31 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         </div>
       )}
 
+      {soFar && (
+        <div className="rounded-2xl bg-card-subtle p-3.5">
+          <div className="mb-2.5 flex items-baseline justify-between gap-2">
+            <h3 className="text-[13px] font-extrabold">{monthLabel(soFar.month).split(" ")[0]} so far</h3>
+            <span className="num text-xs font-bold text-muted">{formatRM(soFar.paid)} of {formatRM(soFar.total)}</span>
+          </div>
+          <ul className="space-y-2.5">
+            {soFar.rows.map((r) => (
+              <li key={r.id}>
+                <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-bold">
+                  <span className="truncate font-extrabold">{r.name}</span>
+                  <span className="num shrink-0 text-muted">
+                    {formatRM(r.paid)} of {formatRM(r.cost)}{r.paid >= r.cost ? " · paid" : ""}
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-card" aria-hidden>
+                  <div className="h-full rounded-full bg-good" style={{ width: `${r.cost > 0 ? Math.min(100, (r.paid / r.cost) * 100) : 0}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing={view.bill.sharing} />
     </section>
   );
 }

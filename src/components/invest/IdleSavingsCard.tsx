@@ -71,7 +71,7 @@ export function IdleSavingsCard({
           </ul>
 
           {op.noGain ? (
-            <p className="banner bg-card-subtle !text-xs leading-relaxed text-muted">
+            <p className="banner banner-info !text-xs leading-relaxed">
               <Info size={16} className="mt-0.5 shrink-0" aria-hidden />
               <span>
                 At your assumed rates ({savingsRatePct}% savings vs {fdRatePct}% fixed deposit) there&apos;s nothing to gain by moving it. Check current rates and update them

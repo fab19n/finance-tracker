@@ -1,14 +1,14 @@
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
-import { ChevronDown } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Info } from "lucide-react";
 import { coverMonth, saveTurns } from "@/app/actions/shares";
 import { dayLabel, shiftMonth, shortMonthLabel } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { monthRange, rotationWindow, type TurnCell, type TurnPerson } from "@/lib/plan/shares";
 import type { ShareRow, SharedBillView } from "@/lib/queries/shares";
-import { MonthBadge, NoMonth } from "./MonthBadge";
-import { ShareForm } from "./ShareForm";
+import { MonthBadge, NoMonth, StatusTag } from "./MonthBadge";
+import { ShareActions } from "./ShareForm";
 import { SharingToggle } from "./SharingToggle";
 
 /** "Oct 26", "Nov 26 to Feb 27", or "Oct 26, Dec 26" for months that aren't back to back. */
@@ -20,15 +20,15 @@ function monthSpan(months: string[]): string {
 }
 
 /** One line that says where this person stands. */
-function standing(p: TurnPerson, thisMonth: string, cycle: string[]): { text: string; tone: "ok" | "owes" | "info" } {
+function standing(p: TurnPerson, thisMonth: string, cycle: string[]): { text: string; tone: "ok" | "owes" | "info"; tag: string } {
   if (p.owes > 0) {
     const first = p.turns.find((c) => c.month <= thisMonth && c.state !== "paid");
-    return { text: `Owes ${formatRM(p.owes)}${first ? ` for ${shortMonthLabel(first.month)}` : ""}`, tone: "owes" };
+    return { text: `Owes ${formatRM(p.owes)}${first ? ` for ${shortMonthLabel(first.month)}` : ""}`, tone: "owes", tag: "Owes" };
   }
-  if (p.unmatched > 0) return { text: `${formatRM(p.unmatched)} sent, month not set`, tone: "info" };
-  if (p.next) return { text: `Paid up · next turn ${shortMonthLabel(p.next.month)}`, tone: "ok" };
+  if (p.unmatched > 0) return { text: `${formatRM(p.unmatched)} sent, month not set`, tone: "info", tag: "Month not set" };
+  if (p.next) return { text: `Paid up · next turn ${shortMonthLabel(p.next.month)}`, tone: "ok", tag: "Paid up" };
   // The group chat's list for a cycle has one line per person, filled in once they have covered a month.
-  return p.turns.some((c) => cycle.includes(c.month)) ? { text: "Covered this cycle", tone: "ok" } : { text: "Hasn't covered a month this cycle yet", tone: "info" };
+  return p.turns.some((c) => cycle.includes(c.month)) ? { text: "Covered this cycle", tone: "ok", tag: "Covered" } : { text: "Hasn't covered a month this cycle yet", tone: "info", tag: "Open" };
 }
 
 /** What happened to one turn, in words. */
@@ -79,9 +79,27 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
   // The planner lists every month that matters: from the earliest planned (or shown) to six months past the window.
   const editorFrom = [...r.schedule.map((s) => s.month), columns[0]].sort()[0];
   const editorMonths = monthRange(editorFrom, shiftMonth(columns[columns.length - 1], 6));
+  // The planner opens on this cycle and what is coming; earlier months wait behind "Show earlier months".
+  const upcomingEditor = editorMonths.filter((m) => m >= cycle[0]);
+  const earlierEditor = editorMonths.filter((m) => m < cycle[0]);
+  const select = (m: string) => (
+    <label key={m} className="min-w-0">
+      <span className="label">{shortMonthLabel(m)}</span>
+      {/* "Nobody yet" is the quiet choice: muted until someone is picked. */}
+      <select name={`turn:${m}`} defaultValue={String(whoIn(m) ?? "")} className="input [&:has(option[value='']:checked)]:text-muted">
+        <option value="">Nobody yet</option>
+        <option value="you">You</option>
+        {r.people.map((p) => (
+          <option key={p.share.id} value={p.share.id}>
+            {p.share.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
-    <section className="card space-y-3.5" aria-label={`${view.bill.name}, paid in turns`}>
+    <section id={`bill-${view.bill.id}`} className="card scroll-mt-4 space-y-3.5" aria-label={`${view.bill.name}, paid in turns`}>
       <div>
         <h2 className="h2">{view.bill.name}</h2>
         <p className="sub num mt-0.5">
@@ -89,10 +107,9 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
         </p>
       </div>
 
-      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing="turns" />
-
       <div className="space-y-2">
-        <p className={`banner font-extrabold ${r.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
+        <p role="status" className={`banner font-extrabold ${r.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
+          {r.owedToYou > 0 ? <AlertTriangle aria-hidden /> : <CheckCircle2 aria-hidden />}
           <span className="min-w-0">
             {r.owedToYou > 0 ? (
               <>
@@ -106,6 +123,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
         </p>
         {openPast.length > 0 && (
           <p className="banner banner-warn">
+            <AlertTriangle aria-hidden />
             <span className="min-w-0">
               <strong>{monthSpan(openPast)}</strong> {openPast.length === 1 ? "is" : "are"} still open: nobody has said they&apos;ll cover {openPast.length === 1 ? "it" : "them"} yet.
               {openLater.length > 0 && <span className="text-muted"> {monthSpan(openLater)} stay open too: whoever covers a month gets it.</span>}
@@ -113,7 +131,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           </p>
         )}
         {openPast.length === 0 && openLater.length > 0 && (
-          <p className="banner bg-card-subtle text-muted">
+          <p className="banner banner-info">
+            <Info aria-hidden />
             <span className="min-w-0">
               Open: {monthSpan(openLater)}. Whoever says they&apos;ll cover a month gets it.
             </span>
@@ -135,7 +154,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                     </option>
                   ))}
                 </select>
-                <SubmitButton className="btn" pendingLabel="Counting...">Count it</SubmitButton>
+                <SubmitButton className="btn-primary" pendingLabel="Counting...">Count it</SubmitButton>
               </>
             ) : (
               <span className="sub basis-full">No month is open this cycle: set it in the planner below.</span>
@@ -158,9 +177,10 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                       <span className="truncate text-[13px] font-extrabold">{p.share.name}</span>
+                      <StatusTag tone={s.tone === "owes" ? "warn" : s.tone === "ok" ? "good" : "info"}>{s.tag}</StatusTag>
                       {!p.share.active && <span className="pill bg-card text-muted">left</span>}
                     </span>
-                    <span className={`block text-[11px] font-extrabold leading-snug ${s.tone === "owes" ? "text-warn" : s.tone === "ok" ? "text-muted" : "text-foreground"}`}>{s.text}</span>
+                    <span className="block text-[11px] font-bold leading-snug text-muted">{s.text}</span>
                   </span>
                   <span className="num shrink-0 text-right text-[11px] font-bold text-muted">{formatRM(p.share.share)} per turn</span>
                   <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
@@ -179,7 +199,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                   )}
                   {p.leftovers.length > 0 && <p className="text-muted">{formatRM(p.unmatched)} they sent isn&apos;t for a month yet: say which month they covered (above, or in the planner).</p>}
                   {p.lastPayment && <p className="text-muted">Last paid {formatRM(p.lastPayment.amount)} on {p.lastPayment.date}.</p>}
-                  {person && <ShareForm share={person} bills={bills} defaultStart={defaultStart} />}
+                  {person && <ShareActions share={person} bills={bills} defaultStart={defaultStart} />}
                 </div>
               </details>
             </li>
@@ -188,16 +208,17 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
       </ul>
 
       <div>
-        <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Who covered which month, for your two latest cycles. Scrolls sideways on a small screen; use the arrow keys.">
-          <table className="w-full table-fixed border-collapse text-xs" style={{ minWidth: 54 + columns.length * 34 }}>
-            <caption className="sr-only">Who covers each month, for your two latest cycles</caption>
+        <h3 className="mb-1 text-[13px] font-extrabold">Who covered which month</h3>
+        <div>
+          <table className="w-full table-fixed border-collapse text-xs">
+            <caption className="sr-only">Who covers each month, for the current cycle</caption>
             <colgroup>
               <col className="w-[54px]" />
             </colgroup>
             <thead className="text-muted">
               <tr>
-                <th className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-[10.5px] font-bold">Month</th>
-                {columns.map((m) => (
+                <th className="py-1.5 pr-2 text-left text-[10.5px] font-bold">Month</th>
+                {cycle.map((m) => (
                   <th key={m} scope="col" className="px-0 py-1.5 text-center text-[10.5px] font-bold leading-tight">
                     {shortMonthLabel(m).split(" ")[0]}
                     <span className="block text-[10px] font-semibold">{m.slice(2, 4)}</span>
@@ -206,10 +227,10 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               </tr>
             </thead>
             <tbody>
-              {columns.some((m) => whoIn(m) === undefined) && (
+              {cycle.some((m) => whoIn(m) === undefined) && (
                 <tr className="border-t border-line">
-                  <th scope="row" className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-xs font-extrabold text-muted">Open</th>
-                  {columns.map((m) => (
+                  <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">Open</th>
+                  {cycle.map((m) => (
                     <td key={m} className="px-0 py-1">
                       {whoIn(m) === undefined ? <MonthBadge kind="open" label={`${shortMonthLabel(m)}: open, nobody has covered it yet`} /> : <NoMonth label={`${shortMonthLabel(m)}: covered`} />}
                     </td>
@@ -217,8 +238,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                 </tr>
               )}
               <tr className="border-t border-line">
-                <th scope="row" className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-xs font-extrabold text-muted">You</th>
-                {columns.map((m) =>
+                <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">You</th>
+                {cycle.map((m) =>
                   whoIn(m) === "you" ? (
                     <td key={m} className="px-0 py-1">
                       <MonthBadge kind="you" label={`${shortMonthLabel(m)}: your month${r.charged.includes(m) ? ", paid" : ""}`} />
@@ -232,10 +253,10 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               </tr>
               {r.people.map((p) => (
                 <tr key={p.share.id} className="border-t border-line">
-                  <th scope="row" className="sticky left-0 z-10 truncate bg-card py-1.5 pr-2 text-left text-xs font-extrabold">
+                  <th scope="row" className="truncate py-1.5 pr-2 text-left text-xs font-extrabold">
                     {p.share.name}
                   </th>
-                  {columns.map((m) => (
+                  {cycle.map((m) => (
                     <Mark key={m} cell={p.turns.find((c) => c.month === m)} name={p.share.name} month={m} />
                   ))}
                 </tr>
@@ -249,8 +270,9 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="unpaid" label="covered, month has come, not paid yet" small /> not paid yet</span>
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="later" label="covered, still to come" small /> covered, still to come</span>
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="you" label="your month" small /> your month</span>
-          {columns.some((m) => whoIn(m) === undefined) && <span className="inline-flex items-center gap-1.5"><MonthBadge kind="open" label="open" small /> open: nobody has covered it yet</span>}
+          {cycle.some((m) => whoIn(m) === undefined) && <span className="inline-flex items-center gap-1.5"><MonthBadge kind="open" label="open" small /> open: nobody has covered it yet</span>}
           <span>· not their month</span>
+          <span className="basis-full">Earlier months are in each person&apos;s list above.</span>
         </p>
       </div>
 
@@ -264,26 +286,22 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           <p className="sub leading-relaxed">
             The first month of each cycle is yours. The others go to whoever says they&apos;ll cover them: pick them here when they do (leave a month on &ldquo;nobody yet&rdquo; until then). A person&apos;s payment settles <strong className="text-foreground">the month they covered</strong>.
           </p>
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
-            {editorMonths.map((m) => (
-              <label key={m} className="min-w-0">
-                <span className="label">{shortMonthLabel(m)}</span>
-                <select name={`turn:${m}`} defaultValue={String(whoIn(m) ?? "")} className="input">
-                  <option value="">Nobody yet</option>
-                  <option value="you">You</option>
-                  {r.people.map((p) => (
-                    <option key={p.share.id} value={p.share.id}>
-                      {p.share.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">{upcomingEditor.map(select)}</div>
+          {earlierEditor.length > 0 && (
+            // Closed, but still part of the form: an earlier month keeps its value when you save.
+            <details className="group">
+              <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs font-extrabold text-accent-strong [&::-webkit-details-marker]:hidden">
+                Show earlier months
+                <ChevronDown size={14} strokeWidth={2.5} className="transition group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-2 grid grid-cols-2 gap-2.5 md:grid-cols-3">{earlierEditor.map(select)}</div>
+            </details>
+          )}
           <SubmitButton className="btn-primary w-full md:w-auto" pendingLabel="Saving...">Save</SubmitButton>
         </ActionForm>
       </details>
 
+      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing="turns" />
     </section>
   );
 }

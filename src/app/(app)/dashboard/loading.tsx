@@ -6,8 +6,8 @@ export default function Loading() {
   return (
     <div role="status" className="space-y-3 md:space-y-4">
       <span className="sr-only">Loading Home</span>
+      <h1 className="h-page">Home</h1>
       <div aria-hidden className="space-y-3 md:space-y-4">
-        <div className={`${block} h-8 w-40`} />
         <div className="flex flex-col gap-2.5 md:flex-row md:gap-3">
           <div className={`${block} h-11 w-52 rounded-full`} />
           <div className={`${block} h-11 flex-1 rounded-full md:max-w-72`} />

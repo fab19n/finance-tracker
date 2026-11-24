@@ -144,7 +144,7 @@ export default async function TransactionsPage({
   // Every account, plus the chosen one even if it has since been archived.
   const chips = accounts
     .filter((a) => !a.archived || String(a.id) === account)
-    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, href: qs({ ...base, account: String(a.id), page: undefined }) }));
+    .map((a) => ({ id: a.id, name: a.name, balance: a.balance, cardColor: a.cardColor, href: qs({ ...base, account: String(a.id), page: undefined }) }));
 
   // Nothing recorded anywhere (first run), as opposed to an empty month or a filter that matches nothing.
   const nothingAtAll = groups.length === 0 && !filtered ? (await sumTransactions({})).count === 0 : false;

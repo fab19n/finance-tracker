@@ -39,3 +39,13 @@ export function NoMonth({ label }: { label: string }) {
     </span>
   );
 }
+
+/** A status tag in words (and a check for good news): `Owes`, `Paid up`, `Ahead`, so a status is never the tint alone. */
+export function StatusTag({ tone, children }: { tone: "good" | "warn" | "danger" | "info"; children: string }) {
+  return (
+    <span className={`pill tag-${tone}`}>
+      {tone === "good" && <Check size={11} strokeWidth={3.2} aria-hidden />}
+      {children}
+    </span>
+  );
+}

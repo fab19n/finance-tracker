@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
+import { DuoIcon } from "@/components/DuoIcon";
 import { BACK_MARK_KEY, ORIGIN_EVENT, originKey, safeBackPath, sectionOf, type Section } from "@/lib/back";
 
 /** The origin lives in sessionStorage, written by NavTracker after the page changes: it says so with an event. */
@@ -45,7 +45,7 @@ export function BackLink({ href, label }: { href: string; label: string }) {
         } catch {}
       }}
       className="grid size-11 shrink-0 place-items-center rounded-full bg-card-subtle text-foreground transition hover:bg-line">
-      <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
+      <DuoIcon name="chevron-left" size={22} strokeWidth={2.4} aria-hidden />
     </Link>
   );
 }

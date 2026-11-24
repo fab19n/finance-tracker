@@ -2,15 +2,19 @@ import Link from "next/link";
 import { formatPct, formatRM } from "@/lib/money";
 import { cycleLabel } from "@/lib/plan/cycle";
 import type { CycleFlow } from "@/lib/plan/savings-flow";
+import { savingsSummary } from "@/lib/plan/statement";
 
 /**
- * The reality check. For each pay cycle: what went into savings, what came back out, why, and what you
- * REALLY saved - because moving money between your own accounts is not spending, and hides where it went.
+ * The savings check, as the board draws it: one sentence ("You planned RM 800 and moved RM 800. Nothing was drawn back
+ * out this cycle.") and a bar of how much of the plan was moved. The reality check's full reading (what came back, why, what
+ * you REALLY saved, every cycle) is behind "Details": moving money between your own accounts is not spending, and hides where
+ * it went. `planned` is the payday plan's move for the cycle in progress (null when no plan can be made yet).
  */
-export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: CycleFlow[]; rolesConfigured: boolean; hasSalary: boolean }) {
+export function SavingsCheck({ flows, rolesConfigured, hasSalary, planned }: { flows: CycleFlow[]; rolesConfigured: boolean; hasSalary: boolean; planned: number | null }) {
   if (!rolesConfigured) {
     return (
       <p className="card sub leading-relaxed">
+        <span className="label">Savings check</span>
         Choose your spending and savings accounts in{" "}
         <Link href="/settings?tab=accounts" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
           Settings
@@ -20,8 +24,16 @@ export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: Cyc
     );
   }
   if (!hasSalary || flows.length === 0) {
-    return <p className="card sub leading-relaxed">Record your salary (in the box at the top of this page) and a few entries, and this compares what you move to savings with what you take back out each cycle.</p>;
+    return (
+      <p className="card sub leading-relaxed">
+        <span className="label">Savings check</span>
+        Record your salary (&quot;Mark salary received&quot; above) and a few entries, and this compares what you move to savings with what you take back out each cycle.
+      </p>
+    );
   }
+  // The headline is about the cycle in progress (the newest), the one the plan was made for.
+  const head = savingsSummary(flows[0], planned);
+  const pct = head.fraction === null ? null : Math.round(head.fraction * 100);
 
   // Lead with the latest finished cycle; fall back to the one in progress.
   const lead = flows.find((f) => f.complete) ?? flows[0];
@@ -30,8 +42,20 @@ export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: Cyc
   const kept = lead.deposited - lead.drawn - lead.spentFromSavings;
 
   return (
-    <div className="space-y-3">
-      <div className="card space-y-3">
+    <section className="card space-y-3" aria-labelledby="check-h">
+      <h2 id="check-h" className="label !mb-0">
+        Savings check
+      </h2>
+      <p className="text-[13.5px] font-semibold leading-snug">{head.text}</p>
+      {pct !== null && (
+        <div className="h-2 w-full overflow-hidden rounded-full bg-card-subtle" role="img" aria-label={`${pct}% of the planned move to savings has been moved`}>
+          <div className="h-full rounded-full bg-good" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <details>
+        <summary className="btn btn-sm cursor-pointer list-none [&::-webkit-details-marker]:hidden">Details</summary>
+        <div className="mt-3 space-y-3">
+      <div className="space-y-3">
         <p className="sub">
           {lead.complete ? "Last cycle" : "This cycle so far"} · {cycleLabel(lead)}
         </p>
@@ -96,7 +120,7 @@ export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: Cyc
 
       {/* Seven columns do not fit a phone: the card scrolls sideways, can be focused and scrolled from the keyboard, and says so. */}
       <div
-        className="card overflow-x-auto !p-0"
+        className="overflow-x-auto rounded-2xl border border-line"
         role="region"
         tabIndex={0}
         aria-label="Savings by pay cycle. Scrolls sideways on a small screen; use the arrow keys."
@@ -134,6 +158,8 @@ export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: Cyc
           </tbody>
         </table>
       </div>
-    </div>
+        </div>
+      </details>
+    </section>
   );
 }

@@ -16,13 +16,13 @@ export function UnassignedPayments({ credits, people }: { credits: UnassignedCre
   const active = people.filter((p) => p.active);
   if (!credits.length || !active.length) return null;
   return (
-    <section className="card space-y-3" aria-labelledby="unassigned-h">
+    <section id="unassigned" className="card scroll-mt-4 space-y-3" aria-labelledby="unassigned-h">
       <div>
         <h2 id="unassigned-h" className="h2">
-          Money in, not yet counted towards anyone
+          Money in, not yet counted
         </h2>
         <p className="sub mt-0.5 leading-relaxed">
-          If one of these was somebody paying their share, say who. It then counts towards their oldest unpaid months. Leave the rest alone.
+          If one was somebody paying their share, say who: it settles their oldest months. Leave the rest alone.
         </p>
       </div>
       <ul className="space-y-1.5">
@@ -45,7 +45,7 @@ export function UnassignedPayments({ credits, people }: { credits: UnassignedCre
                   </option>
                 ))}
               </select>
-              <SubmitButton className="btn col-span-2 md:col-span-1" pendingLabel="Counting...">
+              <SubmitButton className="btn-primary col-span-2 w-full md:col-span-1 md:w-auto" pendingLabel="Counting...">
                 {c.suggestedShareId ? "Yes, count it" : "Count it"}
               </SubmitButton>
             </ActionForm>

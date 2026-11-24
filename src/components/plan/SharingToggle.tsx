@@ -1,35 +1,55 @@
-import { ChevronDown } from "lucide-react";
 import { ActionForm } from "@/components/ActionForm";
-import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { setSharing } from "@/app/actions/shares";
 
 /**
- * How is this bill split? Every month in equal parts (Netflix: everyone owes a quarter of each month, and a lump sum
- * pays the oldest months) or in turns (Spotify: one person pays the WHOLE month, in rotation).
+ * How is this bill split? A labelled two-way control: every month in equal parts (Netflix: everyone owes a quarter of each
+ * month, and a lump sum pays the oldest months) or in turns (Spotify: one person pays the WHOLE month, in rotation). The
+ * chosen one is filled and marked `aria-pressed`; the other submits. Switching TO turns asks first, because it sets each
+ * person's amount to the bill's usual amount (nothing received is changed).
  */
 export function SharingToggle({ billId, billName, sharing }: { billId: number; billName: string; sharing: "monthly" | "turns" }) {
+  const id = `split-${billId}`;
   return (
-    <details className="group rounded-2xl bg-card-subtle px-3.5 py-3">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-extrabold text-muted [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0">
-          How is {billName} split? {sharing === "turns" ? "(in turns)" : "(an equal part of each month's charge)"}
-        </span>
-        <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 transition group-open:rotate-180" aria-hidden />
-      </summary>
-      <ActionForm action={setSharing} className="mt-3 space-y-2.5">
+    <div className="space-y-2">
+      <p id={id} className="label !mb-0">
+        How this bill is split
+      </p>
+      <ActionForm action={setSharing}>
         <input type="hidden" name="billId" value={billId} />
-        <select name="sharing" defaultValue={sharing} className="input" aria-label={`How ${billName} is split`}>
-          <option value="monthly">Everyone pays an equal part of every month (a lump sum covers the oldest months)</option>
-          <option value="turns">One person pays the whole month, in turn (you take some months yourself)</option>
-        </select>
-        <p className="sub leading-relaxed">
-          Equal parts: each month is split by what {billName} was actually charged that month, so a price rise counts only from when it took effect, and a payment counts at the price it was made at.
-        </p>
-        <p className="sub leading-relaxed">
-          Switching to turns sets each person&apos;s amount to the bill&apos;s usual amount, and you then plan whose month is whose. Nothing you have received is changed.
-        </p>
-        <SubmitButton className="btn" pendingLabel="Saving...">Save</SubmitButton>
+        <div role="group" aria-labelledby={id} className="seg">
+          {sharing === "monthly" ? (
+            <>
+              <button type="button" className="seg-item on" aria-pressed="true">
+                Equal parts
+              </button>
+              <input type="hidden" name="sharing" value="turns" />
+              <ConfirmSubmit
+                trigger="In turns"
+                triggerClassName="seg-item"
+                title={`Split ${billName} in turns?`}
+                body="One person pays the whole month, in turn. Each person's amount becomes the bill's usual amount, and you then plan whose month is whose. Nothing you have received is changed."
+                confirmLabel="Switch to turns"
+                tone="neutral"
+              />
+            </>
+          ) : (
+            <>
+              <button type="submit" name="sharing" value="monthly" className="seg-item">
+                Equal parts
+              </button>
+              <button type="button" className="seg-item on" aria-pressed="true">
+                In turns
+              </button>
+            </>
+          )}
+        </div>
       </ActionForm>
-    </details>
+      <p className="sub leading-relaxed">
+        {sharing === "monthly"
+          ? `Each person owes their part of every month, at what ${billName} was charged that month, so a price rise counts only from when it took effect. A payment counts at the price it was made at.`
+          : "One person pays the whole month, in turn. A month is open until someone says they will cover it, and a payment settles the month they covered."}
+      </p>
+    </div>
   );
 }

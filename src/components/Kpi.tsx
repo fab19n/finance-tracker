@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { DuoIcon, type DuoName } from "@/components/DuoIcon";
 import { kpiSizeClass } from "@/lib/analytics/dashboard-text";
 import { formatRMWhole } from "@/lib/money";
 
@@ -37,13 +37,13 @@ export function Kpi({
       const down = delta.ratio < -0.005;
       const good = (up && delta.upIsGood) || (down && !delta.upIsGood);
       const bad = (up && !delta.upIsGood) || (down && delta.upIsGood);
-      const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Minus;
+      const icon: DuoName = up ? "trend-up" : down ? "trend-down" : "arrow";
       const pct = `${up ? "+" : ""}${(delta.ratio * 100).toFixed(0)}%`;
       const change = delta.diff !== undefined && (up || down) ? `${delta.diff > 0 ? "+" : "−"}${formatRMWhole(Math.abs(delta.diff))} (${pct})` : pct;
       deltaEl = (
         <>
           <span className={`flex items-center gap-0.5 font-extrabold ${good ? "text-good" : bad ? "text-danger" : "text-muted"}`}>
-            <Icon size={14} aria-hidden className="shrink-0" />
+            <DuoIcon name={icon} size={14} strokeWidth={2.2} aria-hidden className="shrink-0" />
             {change}
           </span>
           <span className="block font-bold text-muted">{delta.vs}</span>

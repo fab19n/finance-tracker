@@ -1,10 +1,11 @@
 "use client";
 
-import { AlertTriangle, Check, CheckCircle2, FileText, FileUp, Loader2, Lock, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CheckCircle2, ChevronDown, FileText, Loader2, Lock, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { commitImport, previewStatement } from "@/app/actions/import";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { Toggle } from "@/components/Toggle";
 import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import type { CommitResult, PreviewOk, PreviewResult } from "@/lib/import/api-types";
 import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
@@ -38,7 +39,7 @@ type EditRow = ClassifiedRow & {
   watch: boolean;
 };
 
-type Filter = "attention" | "all" | "skipped";
+type Filter = "attention" | "new" | "all" | "skipped";
 const PAGE = 60;
 
 const KIND_LABEL: Record<ProposalKind, string> = { expense: "Spending", income: "Income", transfer: "Transfer", skip: "Skip" };
@@ -49,10 +50,10 @@ const KIND_LABEL: Record<ProposalKind, string> = { expense: "Spending", income: 
  */
 type Tone = "good" | "warn" | "danger" | "accent";
 const PILL: Record<Tone, string> = {
-  good: "bg-good-soft text-good",
-  warn: "bg-warn-soft text-warn",
-  danger: "bg-danger-soft text-danger",
-  accent: "bg-accent-soft text-accent-strong",
+  good: "tag-good",
+  warn: "tag-warn",
+  danger: "tag-danger",
+  accent: "tag-info",
 };
 const BANNER = { good: "banner banner-good", warn: "banner banner-warn", danger: "banner banner-danger" } as const;
 
@@ -107,6 +108,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const [rows, setRows] = useState<EditRow[]>([]);
   const [filter, setFilter] = useState<Filter>("attention");
   const [shown, setShown] = useState(PAGE);
+  // A line is compact (name, category, amount) until it is tapped; one that needs a look opens by itself. `true`/`false` here is the person's own choice.
+  const [manual, setManual] = useState<Record<string, boolean>>({});
   const [setOpening, setSetOpening] = useState(true);
   const [ack, setAck] = useState(false);
   const [ackAccount, setAckAccount] = useState(false);
@@ -176,7 +179,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       accountId: preview.account.id,
       startDate,
       setOpening,
-      filter,
+      // The saved review knows three filters; "new" is kept as "all".
+      filter: filter === "new" ? "all" : filter,
       preview: { ...preview, rows: [] },
       rows: rows as unknown as Record<string, unknown>[],
     };
@@ -204,6 +208,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     setSetOpening(d.setOpening);
     setFilter(d.filter);
     setShown(PAGE);
+    setManual({});
     setAck(false);
     setAckAccount(false);
     setError(null);
@@ -277,6 +282,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       setRows(edits);
       setFilter(edits.some((r) => rowNeedsLook(r, flagged)) || res.check.mismatches.length > 0 ? "attention" : "all");
       setShown(PAGE);
+      setManual({});
       setSetOpening(res.account.existingEntries === 0 && res.openingBalance !== null);
       setAck(false);
       setAckAccount(false);
@@ -292,6 +298,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       const target = all.find((r) => r.key === key);
       if (!target) return all;
       const merged: EditRow = { ...target, ...change, edited: true, confirmed: false, remember: change.remember ?? true };
+      // Changing a line keeps it open, even if the change settles what was wrong with it.
+      setManual((m) => ({ ...m, [key]: true }));
       if (change.kind === "transfer") merged.billId = null;
       if (change.kind && change.kind !== "income") merged.shareId = null; // a share payment is money in, nothing else
       // Carry the decision to the other untouched lines from the same payee going the same way, so one
@@ -319,7 +327,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const needsLook = (r: EditRow) => rowNeedsLook(r, mismatch);
   // ONE count, used by the summary line and the tab alike.
   const lookCount = rows.filter(needsLook).length;
-  const visible = rows.filter((r) => (filter === "all" ? true : filter === "skipped" ? r.kind === "skip" : needsLook(r)));
+  const visible = rows.filter((r) => (filter === "all" ? true : filter === "skipped" ? r.kind === "skip" : filter === "new" ? r.kind !== "skip" : needsLook(r)));
   const toImport = rows.filter((r) => r.kind !== "skip");
   const drift = skippedDrift(rows);
 
@@ -389,77 +397,126 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   );
 
   /**
-   * The page around every phase: the one <h1> (with the step in its subtitle, so it can follow the wizard) and a single
-   * column no wider than 720 px. A plain function, not a component, so the phases keep their state when the step changes.
+   * The page around every phase: the one <h1>, the three steps (a non-interactive control: the current one is marked
+   * `aria-current="step"`) and a single column no wider than 720 px. A plain function, not a component, so the phases keep
+   * their state when the step changes.
    */
-  const page = (subtitle: string, body: ReactNode) => (
+  const STEPS = ["File", "Review", "Done"];
+  const page = (step: 1 | 2 | 3, body: ReactNode) => (
     <div className="space-y-4 md:space-y-5">
-      <PageHeader
-        title="Import statement"
-        subtitle={subtitle}
-        back={BACK_TO_MORE}
-      />
-      <div className="max-w-[45rem] space-y-3 md:space-y-4">{body}</div>
+      <PageHeader title="Import" back={BACK_TO_MORE} />
+      <div className="max-w-[45rem] space-y-3 md:space-y-4">
+        <ol className="seg" aria-label="Steps">
+          {STEPS.map((label, i) => (
+            <li key={label} className={`seg-item ${i + 1 === step ? "on" : ""}`} aria-current={i + 1 === step ? "step" : undefined}>
+              {i + 1} {label}
+            </li>
+          ))}
+        </ol>
+        {body}
+      </div>
     </div>
   );
 
   // ---------------------------------------------------------------- done
   if (result) {
+    // The statement just imported stays in `preview` until "Import another", so the finish can say where the account now stands.
+    const ran = preview;
+    const ranTotal = ran?.check.total ?? null;
+    const matches = ran ? (ranTotal ? ranTotal.ok : ran.check.checked > 0 ? ran.check.mismatches.length === 0 : null) : null;
+    const opening = ran ? (ran.openingBalance ?? ranTotal?.opening ?? null) : null;
+    const closing = ran ? (ran.closingBalance ?? ranTotal?.closing ?? null) : null;
+    const range = ran?.dateRange;
+    // The lines just imported, in Activity: this account and the statement's own dates.
+    const activityHref = ran ? `/transactions?month=all&account=${ran.account.id}${range ? `&from=${range.from}&to=${range.to}` : ""}` : "/transactions?month=all";
+    const notes = [
+      result.skipped > 0 ? `${result.skipped} ${result.skipped === 1 ? "line was" : "lines were"} skipped (already recorded, or skipped by you).` : "",
+      result.transfers > 0 ? `${result.transfers} of the entries ${result.transfers === 1 ? "is a transfer" : "are transfers"} (not counted as spending).` : "",
+      result.rulesSaved > 0 ? `${result.rulesSaved} rule${result.rulesSaved === 1 ? " was" : "s were"} remembered, so similar lines are sorted for you next time.` : "",
+      result.openingSet ? `${account?.name}'s starting balance was set so the app matches your bank.` : "",
+    ].filter(Boolean);
+    const another = () => {
+      setResult(null);
+      setPreview(null);
+      setRows([]);
+      setFile(null);
+      setText("");
+      setPassword("");
+      setError(null);
+      setUnreachable(null);
+      setNeedPassword(false);
+      setMapping(null);
+      setOffer(null);
+    };
     return page(
-      "All done",
-      <div className="card space-y-3.5">
-        <p role="status" className="flex items-center gap-2.5 text-lg font-black">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-good-soft text-good">
-            <CheckCircle2 size={20} aria-hidden />
+      3,
+      <div className="card space-y-4">
+        <div className="space-y-2 text-center">
+          <span className="mx-auto grid size-12 place-items-center rounded-full tag-good">
+            <CheckCircle2 size={24} aria-hidden />
           </span>
-          Imported {result.imported} entries
-        </p>
-        <ul className="list-disc space-y-1.5 rounded-2xl bg-card-subtle py-3 pl-8 pr-3.5 text-[13px] font-bold text-muted">
-          {result.transfers > 0 && <li>{result.transfers} of them are transfers (not counted as spending)</li>}
-          {result.skipped > 0 && <li>{result.skipped} lines were skipped (already recorded, or skipped by you)</li>}
-          {result.rulesSaved > 0 && <li>Remembered {result.rulesSaved} rule{result.rulesSaved === 1 ? "" : "s"}, so similar lines are sorted automatically next time</li>}
-          {result.openingSet && <li>Set {account?.name}&apos;s starting balance so the app matches your bank</li>}
-        </ul>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/plan" className="btn-primary w-full md:w-auto">
+          <h2 role="status" className="font-display text-xl font-semibold leading-tight">
+            {result.imported} {result.imported === 1 ? "entry" : "entries"} imported
+          </h2>
+          {notes.length > 0 && <p className="sub leading-relaxed">{notes.join(" ")}</p>}
+        </div>
+
+        {(opening !== null || closing !== null || matches !== null) && (
+          <div className="rows">
+            {opening !== null && (
+              <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                <span>Opening balance</span>
+                <span className="num font-black">{formatRM(opening)}</span>
+              </div>
+            )}
+            {closing !== null && (
+              <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                <span>Closing balance</span>
+                <span className="num font-black">{formatRM(closing)}</span>
+              </div>
+            )}
+            {matches !== null && (
+              <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                <span>Matches the bank</span>
+                <span className={`pill ${matches ? "tag-good" : "tag-warn"}`}>
+                  {matches ? <Check size={12} strokeWidth={3} aria-hidden /> : <AlertTriangle size={12} aria-hidden />}
+                  {matches ? "Yes" : "No, you chose to import anyway"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          <Link href={activityHref} className="btn-primary w-full">
+            See in Activity <ArrowRight size={16} strokeWidth={2.5} aria-hidden />
+          </Link>
+          {/* Leaving this screen drops the Undo button (it stays in Settings), so a stray tap is asked about first. */}
+          {result.batchId && !undone ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                another();
+              }}
+            >
+              <ConfirmSubmit
+                trigger="Import another"
+                triggerClassName="btn w-full"
+                tone="neutral"
+                title="Import another statement?"
+                body="This one is saved. If you change your mind, you can still undo it from Settings, under Appearance & data."
+                confirmLabel="Import another"
+                cancelLabel="Stay here"
+              />
+            </form>
+          ) : (
+            <button type="button" className="btn w-full" onClick={another}>
+              Import another
+            </button>
+          )}
+          <Link href="/plan" className="btn w-full">
             See your plan
           </Link>
-          <Link href="/transactions?month=all" className="btn">
-            View activity
-          </Link>
-          {(() => {
-            const another = () => {
-              setResult(null);
-              setPreview(null);
-              setRows([]);
-              setFile(null);
-              setText("");
-              setPassword("");
-              setError(null);
-              setUnreachable(null);
-              setNeedPassword(false);
-              setMapping(null);
-              setOffer(null);
-            };
-            // Leaving this screen drops the Undo button (it stays in Settings), so a stray tap is asked about first.
-            return result.batchId && !undone ? (
-              <form onSubmit={(e) => { e.preventDefault(); another(); }}>
-                <ConfirmSubmit
-                  trigger="Import another statement"
-                  triggerClassName="btn"
-                  tone="neutral"
-                  title="Import another statement?"
-                  body="This one is saved. If you change your mind, you can still undo it from Settings, under Appearance & data."
-                  confirmLabel="Import another"
-                  cancelLabel="Stay here"
-                />
-              </form>
-            ) : (
-              <button type="button" className="btn" onClick={another}>
-                Import another statement
-              </button>
-            );
-          })()}
         </div>
         {result.batchId && <UndoImport batchId={result.batchId} count={result.imported} accountName={account?.name ?? "this account"} onUndone={() => setUndone(true)} />}
       </div>,
@@ -469,7 +526,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   // ---------------------------------------------------------------- upload
   if (!preview) {
     return page(
-      "Step 1 of 2 · choose a statement",
+      1,
       <>
         <form
           className="card space-y-4"
@@ -479,10 +536,17 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           }}
         >
           <div>
-            <h2 className="h2">Bank statement</h2>
-            <p className="sub mt-1">
-              Bring in past months in minutes instead of typing them. I&apos;ll sort what I recognise (bills, petrol, subscriptions, ATM withdrawals) and ask only about the rest.
-            </p>
+            <label className="label" htmlFor="imp-account">
+              Account
+            </label>
+            <select id="imp-account" className="input" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))}>
+              {statementAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.purpose ? ` (${a.purpose === "spending" ? "main" : a.purpose})` : ""}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -494,8 +558,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               <div className="mx-auto mb-2.5 grid size-12 place-items-center rounded-full bg-accent-soft text-accent-strong">
                 {file ? <FileText size={22} aria-hidden /> : <Upload size={22} aria-hidden />}
               </div>
-              <p className="truncate text-[13px] font-extrabold">{file ? file.name : "Drop the statement here or tap to choose"}</p>
-              <p className="sub mt-0.5 !text-[11px]">{file ? "Tap to choose a different file" : "PDF or CSV"}</p>
+              <p className="truncate text-[13px] font-extrabold">{file ? file.name : "Choose a PDF or CSV"}</p>
+              <p className="sub mt-0.5 !text-[11px]">{file ? "Tap to choose a different file" : "or drop it here"}</p>
               <input id="imp-file" type="file" accept=".pdf,.csv,.txt,application/pdf,text/csv" className="absolute inset-0 size-full cursor-pointer opacity-0" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
             {offer ? (
@@ -525,34 +589,18 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
             </p>
           </div>
 
-          <div className={`grid gap-3 ${needPassword ? "md:grid-cols-2" : ""}`}>
+          {needPassword && (
             <div>
-              <label className="label" htmlFor="imp-account">
-                Which account is this statement for?
+              <label className="label" htmlFor="imp-pw">
+                PDF password (this one is protected)
               </label>
-              <select id="imp-account" className="input" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))}>
-                {statementAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                    {a.purpose ? ` (${a.purpose})` : ""}
-                  </option>
-                ))}
-              </select>
+              <input id="imp-pw" ref={passwordBox} type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Not saved" className="input" />
             </div>
-
-            {needPassword && (
-              <div>
-                <label className="label" htmlFor="imp-pw">
-                  This PDF is password-protected
-                </label>
-                <input id="imp-pw" ref={passwordBox} type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="PDF password (not saved)" className="input" />
-              </div>
-            )}
-          </div>
+          )}
 
           <div>
             <label className="label" htmlFor="imp-start">
-              Only import lines from this date on <span className="font-semibold">(optional)</span>
+              Only from this date (optional)
             </label>
             <input id="imp-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input md:max-w-xs" />
             <p className="mt-1.5 text-[11px] font-semibold leading-snug text-muted">
@@ -576,7 +624,15 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           {unreachableBanner}
 
           <button type="submit" className="btn-primary w-full" disabled={pending || (!file && !text.trim())}>
-            {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" aria-hidden /> : <FileUp size={16} aria-hidden />} {pending ? "Reading the statement…" : "Read statement"}
+            {pending ? (
+              <>
+                <Loader2 size={16} strokeWidth={3} className="animate-spin motion-reduce:animate-none" aria-hidden /> Reading the statement…
+              </>
+            ) : (
+              <>
+                Read statement <ArrowRight size={16} strokeWidth={2.5} aria-hidden />
+              </>
+            )}
           </button>
         </form>
 
@@ -587,25 +643,37 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           </div>
         )}
 
-        <div className="card">
-          <h2 className="h2 mb-2">How this works</h2>
-          <ol className="space-y-1.5 text-xs font-semibold leading-relaxed text-muted">
-            <li>1. Lines already in your books are skipped.</li>
-            <li>2. Card holds and reversed transfers cancel out.</li>
-            <li>3. You review every new line before anything is saved.</li>
-          </ol>
-        </div>
+        <p className="banner banner-info">
+          <Lock aria-hidden />
+          <span className="min-w-0">Everything is read on your PC. A PDF password is used once and never kept.</span>
+        </p>
 
-        <aside className="card">
-          <h2 className="h2 mb-2">Where to get the file</h2>
-          <ul className="list-disc space-y-1.5 pl-4 text-xs font-semibold leading-relaxed text-muted">
-            <li><strong className="font-extrabold text-foreground">Maybank:</strong> the monthly PDF e-statement. <strong className="font-extrabold text-foreground">CIMB:</strong> the e-statement PDF, the Transaction History <strong className="font-extrabold text-foreground">CSV</strong>, or the Transaction History page printed to PDF for a month.</li>
-            <li><strong className="font-extrabold text-foreground">Touch &lsquo;n Go eWallet:</strong> the &ldquo;TNG WALLET TRANSACTION HISTORY&rdquo; PDF the app e-mails you. Choose your e-Wallet account. Your top-ups from the bank are recognised as already recorded; what you spent and what you earned on GO+ is added.</li>
-            <li>Bank PDFs are often password-protected. Enter the password when asked; it is used once and never stored.</li>
-            <li>Import oldest first, and your <strong className="font-extrabold text-foreground">spending account before your savings account</strong>, so transfers between them are recognised once. Import your banks before an e-wallet&apos;s history for the same reason. Tick &ldquo;set the starting balance&rdquo; only on the earliest statement of each account.</li>
-            <li>The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly. (A wallet history prints no running balance, so the whole statement is checked against its closing balance instead.)</li>
-          </ul>
-        </aside>
+        <details className="card group">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+            <span className="h2">How this works</span>
+            <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="mt-3 space-y-4">
+            <p className="sub leading-relaxed">
+              Bring in past months in minutes instead of typing them. I&apos;ll sort what I recognise (bills, petrol, subscriptions, ATM withdrawals) and ask only about the rest.
+            </p>
+            <ol className="space-y-1.5 text-xs font-semibold leading-relaxed text-muted">
+              <li>1. Lines already in your books are skipped.</li>
+              <li>2. Card holds and reversed transfers cancel out.</li>
+              <li>3. You review every new line before anything is saved.</li>
+            </ol>
+            <div>
+              <h3 className="mb-2 text-[13px] font-extrabold">Where to get the file</h3>
+              <ul className="list-disc space-y-1.5 pl-4 text-xs font-semibold leading-relaxed text-muted">
+                <li><strong className="font-extrabold text-foreground">Maybank:</strong> the monthly PDF e-statement. <strong className="font-extrabold text-foreground">CIMB:</strong> the e-statement PDF, the Transaction History <strong className="font-extrabold text-foreground">CSV</strong>, or the Transaction History page printed to PDF for a month.</li>
+                <li><strong className="font-extrabold text-foreground">Touch &lsquo;n Go eWallet:</strong> the &ldquo;TNG WALLET TRANSACTION HISTORY&rdquo; PDF the app e-mails you. Choose your e-Wallet account. Your top-ups from the bank are recognised as already recorded; what you spent and what you earned on GO+ is added.</li>
+                <li>Bank PDFs are often password-protected. Enter the password when asked; it is used once and never stored.</li>
+                <li>Import oldest first, and your <strong className="font-extrabold text-foreground">spending account before your savings account</strong>, so transfers between them are recognised once. Import your banks before an e-wallet&apos;s history for the same reason. Tick &ldquo;set the starting balance&rdquo; only on the earliest statement of each account.</li>
+                <li>The app checks every line against the bank&apos;s own running balance, so a misread can&apos;t slip through quietly. (A wallet history prints no running balance, so the whole statement is checked against its closing balance instead.)</li>
+              </ul>
+            </div>
+          </div>
+        </details>
       </>,
     );
   }
@@ -616,13 +684,6 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const total = check.total;
   const allGood = total ? total.ok : check.mismatches.length === 0 && check.checked > 0;
   const balanceTone: Exclude<Tone, "accent"> = allGood ? "good" : check.mismatches.length ? "danger" : "warn";
-  const balanceWord = allGood
-    ? "Balance matches"
-    : check.mismatches.length
-      ? `${check.mismatches.length} line${check.mismatches.length === 1 ? "" : "s"} off`
-      : total
-        ? "Closing balance off"
-        : "No balance to check";
   const balanceMessage = total
     ? total.ok
       ? `These lines take the account from ${formatRM(total.opening)} to ${formatRM(total.closing)}, exactly where the statement says it ended.`
@@ -633,47 +694,66 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         ? "This statement has no running balance to check against, so please look over the amounts and directions yourself."
         : `${check.mismatches.length} line${check.mismatches.length === 1 ? "" : "s"} don't add up to the bank's running balance - they're marked below.`;
 
+  // Where the lines take the account from and to, when the statement says both: the board's "They take Maybank from RM a to RM b".
+  const fromBalance = total?.opening ?? preview.openingBalance;
+  const toBalance = total?.closing ?? preview.closingBalance;
+  const twin = preview.accountCheck?.looksLike ?? null;
+  const skippedCount = rows.filter((r) => r.kind === "skip").length;
+  const filters: { f: Filter; label: string; tone: string }[] = [
+    { f: "new", label: `${toImport.length} new`, tone: "tag-good" },
+    { f: "skipped", label: `${skippedCount} skipped`, tone: "tag-info" },
+    { f: "attention", label: `${lookCount} need${lookCount === 1 ? "s" : ""} a look`, tone: "tag-warn" },
+    { f: "all", label: `All ${rows.length}`, tone: "bg-card-subtle text-foreground" },
+  ];
+
   return page(
-    `Step 2 of 2 · review ${stats.fresh} new ${stats.fresh === 1 ? "line" : "lines"}`,
+    2,
     <>
       <section className="card space-y-3" aria-label="Summary">
-        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-          <div className="min-w-0">
-            <p className="text-[13px] font-black">{preview.account.name}</p>
-            <p className="sub !text-[11px]">
-              {stats.total} lines
-              {preview.dateRange && (
-                <>
-                  {" "}
-                  · {dayLabel(preview.dateRange.from)} to {dayLabel(preview.dateRange.to)}
-                </>
-              )}
-            </p>
-            {rows.some((r) => r.edited || r.confirmed) ? (
-              <form onSubmit={(e) => { e.preventDefault(); leaveReview(); }}>
-                <ConfirmSubmit
-                  trigger="← Choose a different file"
-                  triggerClassName="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong"
-                  title="Leave this review?"
-                  body="Your changes are saved on this device. Choose the same statement again and you can resume them, or start over."
-                  confirmLabel="Choose a different file"
-                  cancelLabel="Keep reviewing"
-                />
-              </form>
-            ) : (
-              <button type="button" className="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong" onClick={leaveReview}>
-                ← Choose a different file
-              </button>
+        <div className="min-w-0">
+          <p className="text-[13px] font-black">{preview.account.name}</p>
+          <p className="sub !text-[11px]">
+            {stats.total} lines
+            {preview.dateRange && (
+              <>
+                {" "}
+                · {dayLabel(preview.dateRange.from)} to {dayLabel(preview.dateRange.to)}
+              </>
             )}
-          </div>
-          <span className={`pill ${PILL[balanceTone]}`}>
-            {allGood ? <Check size={12} strokeWidth={3} aria-hidden /> : <AlertTriangle size={12} aria-hidden />}
-            {balanceWord}
-          </span>
+          </p>
+          {rows.some((r) => r.edited || r.confirmed) ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                leaveReview();
+              }}
+            >
+              <ConfirmSubmit
+                trigger="← Choose a different file"
+                triggerClassName="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong"
+                title="Leave this review?"
+                body="Your changes are saved on this device. Choose the same statement again and you can resume them, or start over."
+                confirmLabel="Choose a different file"
+                cancelLabel="Keep reviewing"
+              />
+            </form>
+          ) : (
+            <button type="button" className="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong" onClick={leaveReview}>
+              ← Choose a different file
+            </button>
+          )}
         </div>
 
         {allGood ? (
-          <p className="sub !text-xs">{balanceMessage}</p>
+          <p role="status" className="banner banner-good">
+            <CheckCircle2 aria-hidden />
+            <span className="min-w-0">
+              <b>The lines add up.</b>{" "}
+              {fromBalance !== null && toBalance !== null
+                ? `They take ${preview.account.name} from ${formatRM(fromBalance)} to ${formatRM(toBalance)}.`
+                : balanceMessage}
+            </span>
+          </p>
         ) : (
           <p role="status" className={BANNER[balanceTone]}>
             <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
@@ -688,24 +768,46 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         ))}
 
         {preview.accountCheck && (
-          <div role="alert" className={`${BANNER[preview.accountCheck.looksLike ? "danger" : "warn"]} flex-col items-stretch gap-1`}>
-            <p className="flex gap-2 font-black">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
-              {preview.accountCheck.looksLike
-                ? `This looks like ${preview.accountCheck.looksLike.name}'s statement, not ${preview.account.name}'s`
-                : `This statement doesn't start where your books for ${preview.account.name} leave off`}
+          <div role="alert" className="space-y-2.5">
+            <p className={`banner ${twin ? "banner-danger" : "banner-warn"}`}>
+              <AlertTriangle aria-hidden />
+              <span className="min-w-0">
+                <b>
+                  {twin
+                    ? `This looks like the ${twin.name} statement.`
+                    : `This statement doesn't start where your books for ${preview.account.name} leave off.`}
+                </b>{" "}
+                {twin
+                  ? `Its opening balance matches ${twin.name}'s books exactly, not ${preview.account.name}'s. Importing it here would file ${twin.name}'s transactions under ${preview.account.name}.`
+                  : `On ${dayLabel(preview.accountCheck.date)} it starts ${formatRM(Math.abs(preview.accountCheck.statement - preview.accountCheck.books))} away from your entries. Either it belongs to a different account, or entries before this date are missing or wrong (a transfer to an account the app doesn't track, for example).`}
+              </span>
             </p>
-            <p className="text-xs font-semibold leading-snug">
-              On {dayLabel(preview.accountCheck.date)} the statement starts at <strong className="font-black">{formatRM(preview.accountCheck.statement)}</strong>, but your entries say {preview.account.name} held{" "}
-              <strong className="font-black">{formatRM(preview.accountCheck.books)}</strong>
-              {preview.accountCheck.looksLike
-                ? `, while ${preview.accountCheck.looksLike.name} should hold exactly the statement's figure. Importing it here would file ${preview.accountCheck.looksLike.name}'s transactions under ${preview.account.name}.`
-                : ` (a difference of ${formatRM(Math.abs(preview.accountCheck.statement - preview.accountCheck.books))}). Either it belongs to a different account, or entries before this date are missing or wrong (a transfer to an account the app doesn't track, for example).`}
-            </p>
-            {preview.accountCheck.looksLike && (
-              <button type="button" className="btn-primary mt-1.5 self-start" disabled={pending} onClick={() => read(undefined, preview.accountCheck!.looksLike!.id)}>
-                Read it as {preview.accountCheck.looksLike.name} instead
-              </button>
+            <div className="rows">
+              <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                <span>Statement opening</span>
+                <span className="num font-black">{formatRM(preview.accountCheck.statement)}</span>
+              </div>
+              <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                <span>{preview.account.name} books</span>
+                <span className="num font-black">{formatRM(preview.accountCheck.books)}</span>
+              </div>
+              {twin && (
+                <div className="flex min-h-12 items-center justify-between gap-3 text-[13px] font-bold">
+                  <span>{twin.name} books</span>
+                  <span className="num font-black">{formatRM(preview.accountCheck.statement)}</span>
+                </div>
+              )}
+            </div>
+            {twin && (
+              <>
+                <button type="button" className="btn-primary w-full" disabled={pending} onClick={() => read(undefined, twin.id)}>
+                  <ArrowRight size={16} strokeWidth={2.5} aria-hidden /> Read it as {twin.name}
+                </button>
+                {/* Importing it here anyway needs this switched on: the Import button stays disabled until then. */}
+                <div className="card !py-1">
+                  <Toggle label={`Import to ${preview.account.name} anyway`} hint="I know this is the right account" checked={ackAccount} onChange={(e) => setAckAccount(e.target.checked)} />
+                </div>
+              </>
             )}
           </div>
         )}
@@ -759,13 +861,14 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         )}
 
         {preview.openingBalance !== null && preview.account.existingEntries === 0 && (
-          <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
-            <input type="checkbox" checked={setOpening} onChange={(e) => setSetOpening(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
-            <span>
-              Set {preview.account.name}&apos;s starting balance to <strong className="font-black">{formatRM(preview.openingBalance)}</strong> (the balance before the first line), so the app matches your bank.
-              {!check.openingVerified && <span className="text-warn"> The statement didn&apos;t state it, so this is worked out from the first line - check it against your statement.</span>}
-            </span>
-          </label>
+          <div className="rounded-2xl bg-card-subtle px-3">
+            <Toggle
+              checked={setOpening}
+              onChange={(e) => setSetOpening(e.target.checked)}
+              label={`Set ${preview.account.name}'s starting balance to ${formatRM(preview.openingBalance)}`}
+              hint={`The balance before the first line, so the app matches your bank.${check.openingVerified ? "" : " The statement didn't state it, so this is worked out from the first line: check it against your statement."}`}
+            />
+          </div>
         )}
       </section>
 
@@ -777,13 +880,11 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         {lookCount > 0 && <> · <strong className="font-black text-warn">{lookCount}</strong> need a look</>}
       </p>
 
-      <div className="no-scrollbar -mx-5 flex gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Filter lines">
-        {([
-          ["attention", `Needs a look (${lookCount})`],
-          ["all", `All (${rows.length})`],
-          ["skipped", `Skipped (${rows.filter((r) => r.kind === "skip").length})`],
-        ] as const).map(([f, label]) => (
-          <button key={f} type="button" aria-pressed={filter === f} onClick={() => chooseFilter(f)} className="chip">
+      {/* The counts are the filters: a tag per group, the chosen one carries a check and a ring (never colour alone). */}
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter lines">
+        {filters.map(({ f, label, tone }) => (
+          <button key={f} type="button" aria-pressed={filter === f} onClick={() => chooseFilter(f)} className={`pill min-h-11 px-3.5 text-xs ${tone} ${filter === f ? "ring-2 ring-accent-strong" : ""}`}>
+            {filter === f && <Check size={12} strokeWidth={3.2} aria-hidden />}
             {label}
           </button>
         ))}
@@ -801,104 +902,136 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           )}
         </div>
       ) : (
-        <ul className="space-y-2">
+        // One card of compact lines (name, category, amount). A line that needs a look opens by itself; any other opens on a tap.
+        <ul className="rows">
           {visible.slice(0, shown).map((r) => {
             const off = mismatch.has(r.index);
+            const look = needsLook(r) || off || problems.has(r.key);
+            const expanded = manual[r.key] ?? look;
+            const category = r.categoryId ? categories.find((c) => c.id === r.categoryId)?.name : null;
+            const other = r.transferAccountId ? accounts.find((a) => a.id === r.transferAccountId)?.name : null;
+            const origin = r.edited ? " · your choice" : r.proposal.source === "rule" || r.proposal.source === "history" ? " · learned from you" : "";
+            const caption =
+              r.kind === "skip"
+                ? r.proposal.reason
+                : r.kind === "transfer"
+                  ? other
+                    ? `Transfer ${r.amount < 0 ? "to" : "from"} ${other}${origin}`
+                    : "Transfer: pick the other account"
+                  : category
+                    ? `${category}${origin}`
+                    : "Pick a category";
             return (
-              <li
-                key={r.key}
-                className={`card min-w-0 border-[1.5px] px-4 py-3.5 ${off ? "border-danger" : needsLook(r) ? "border-warn" : "border-transparent"} ${r.kind === "skip" ? "opacity-45" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="break-words text-[13px] font-black">{r.description}</p>
-                    <p className="sub !text-[11px]">{dayLabel(r.date)}</p>
-                  </div>
-                  <p className={`num shrink-0 text-sm font-black ${r.kind === "transfer" || r.kind === "skip" ? "text-muted" : r.amount > 0 ? "text-income" : ""}`}>
+              <li key={r.key} className={`min-w-0 ${r.kind === "skip" ? "opacity-70" : ""} ${off ? "shadow-[inset_3px_0_0_var(--danger)]" : look ? "shadow-[inset_3px_0_0_var(--warn)]" : ""}`}>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setManual((m) => ({ ...m, [r.key]: !expanded }))}
+                  className="flex min-h-14 w-full items-center gap-3 py-2 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-[13px] font-extrabold">{r.description}</span>
+                    <span className="sub block !text-[11px]">
+                      {dayLabel(r.date)} · {caption}
+                    </span>
+                  </span>
+                  <span className={`num shrink-0 text-[13px] font-black ${r.kind === "transfer" || r.kind === "skip" ? "text-muted" : r.amount > 0 ? "text-income" : ""}`}>
                     {r.amount > 0 ? "+" : "−"}
                     {formatRM(Math.abs(r.amount))}
-                  </p>
-                </div>
+                  </span>
+                  <ChevronDown size={16} strokeWidth={2.4} className={`shrink-0 text-muted transition ${expanded ? "rotate-180" : ""}`} aria-hidden />
+                </button>
 
-                <div className="mt-2.5 grid grid-cols-5 gap-2 md:grid-cols-4">
-                  <select aria-label="What is this?" className="input col-span-2 py-2 md:col-span-1" value={r.kind} onChange={(e) => patch(r.key, { kind: e.target.value as ProposalKind, categoryId: null })}>
-                    {(Object.keys(KIND_LABEL) as ProposalKind[]).map((k) => (
-                      <option key={k} value={k}>
-                        {KIND_LABEL[k]}
-                      </option>
-                    ))}
-                  </select>
-                  {r.kind === "transfer" ? (
-                    <select aria-label="Other account" className="input col-span-3 py-2 md:col-span-2" value={r.transferAccountId ?? ""} onChange={(e) => patch(r.key, { transferAccountId: Number(e.target.value) || null })}>
-                      <option value="">{r.amount < 0 ? "Went to which account?" : "Came from which account?"}</option>
-                      {accounts.filter((a) => a.id !== accountId).map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : r.kind !== "skip" ? (
-                    <select aria-label="Category" className="input col-span-3 py-2 md:col-span-2" value={r.categoryId ?? ""} onChange={(e) => patch(r.key, { categoryId: Number(e.target.value) || null })}>
-                      <option value="">Choose a category…</option>
-                      {catsFor(r.kind).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">
-                      {r.proposal.reason}
-                      {r.proposal.source === "duplicate" && r.proposal.matchedId ? (
-                        <>
-                          {" "}
-                          <Link href={`/transactions/${r.proposal.matchedId}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline">
-                            See that entry (opens in a new tab)
-                          </Link>
-                        </>
-                      ) : null}
-                    </p>
-                  )}
-                  {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
-                </div>
+                {expanded && (
+                  <div className="pb-3.5">
+                    <div className="grid grid-cols-5 gap-2 md:grid-cols-4">
+                      <select aria-label="What is this?" className="input col-span-2 py-2 md:col-span-1" value={r.kind} onChange={(e) => patch(r.key, { kind: e.target.value as ProposalKind, categoryId: null })}>
+                        {(Object.keys(KIND_LABEL) as ProposalKind[]).map((k) => (
+                          <option key={k} value={k}>
+                            {KIND_LABEL[k]}
+                          </option>
+                        ))}
+                      </select>
+                      {r.kind === "transfer" ? (
+                        <select aria-label="Other account" className="input col-span-3 py-2 md:col-span-2" value={r.transferAccountId ?? ""} onChange={(e) => patch(r.key, { transferAccountId: Number(e.target.value) || null })}>
+                          <option value="">{r.amount < 0 ? "Went to which account?" : "Came from which account?"}</option>
+                          {accounts.filter((a) => a.id !== accountId).map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : r.kind !== "skip" ? (
+                        <select aria-label="Category" className="input col-span-3 py-2 md:col-span-2" value={r.categoryId ?? ""} onChange={(e) => patch(r.key, { categoryId: Number(e.target.value) || null })}>
+                          <option value="">Choose a category…</option>
+                          {catsFor(r.kind).map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">
+                          {r.proposal.reason}
+                          {r.proposal.source === "duplicate" && r.proposal.matchedId ? (
+                            <>
+                              {" "}
+                              <Link href={`/transactions/${r.proposal.matchedId}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline">
+                                See that entry (opens in a new tab)
+                              </Link>
+                            </>
+                          ) : null}
+                        </p>
+                      )}
+                      {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
+                    </div>
 
-                {r.kind !== "skip" && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {r.billId && (
-                      <span className="pill max-w-full bg-accent-soft text-accent-strong">
-                        <span className="min-w-0 truncate">Bill: {bills.find((b) => b.id === r.billId)?.name}</span>
-                        <button type="button" aria-label="Unlink from bill" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { billId: null, remember: r.remember })}>
-                          <X size={12} aria-hidden />
-                        </button>
-                      </span>
+                    {r.kind !== "skip" && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {r.billId && (
+                          <span className="pill tag-info max-w-full">
+                            <span className="min-w-0 truncate">Bill: {bills.find((b) => b.id === r.billId)?.name}</span>
+                            <button type="button" aria-label="Unlink from bill" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { billId: null, remember: r.remember })}>
+                              <X size={12} aria-hidden />
+                            </button>
+                          </span>
+                        )}
+                        {r.shareId && r.kind === "income" && (
+                          <span className="pill tag-info max-w-full">
+                            <span className="min-w-0 truncate">Shared bill: {shares.find((s) => s.id === r.shareId)?.label}</span>
+                            <button type="button" aria-label="Don't count it towards that person" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { shareId: null, remember: r.remember })}>
+                              <X size={12} aria-hidden />
+                            </button>
+                          </span>
+                        )}
+                        <Status tone={r.edited ? "accent" : r.proposal.confidence === "low" ? "warn" : "good"}>{r.edited ? "Your choice" : r.proposal.reason}</Status>
+                        {r.signedBy === "guess" && <Status tone="warn">Direction guessed: check it</Status>}
+                        {off && <Status tone="danger">Doesn&apos;t add up to the running balance</Status>}
+                        {problems.has(r.key) && <Status tone="warn">{r.kind === "transfer" ? "Pick the other account" : "Pick a category"}</Status>}
+                      </div>
                     )}
-                    {r.shareId && r.kind === "income" && (
-                      <span className="pill max-w-full bg-accent-soft text-accent-strong">
-                        <span className="min-w-0 truncate">Shared bill: {shares.find((s) => s.id === r.shareId)?.label}</span>
-                        <button type="button" aria-label="Don't count it towards that person" className="-my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-full hover:bg-card/50" onClick={() => patch(r.key, { shareId: null, remember: r.remember })}>
-                          <X size={12} aria-hidden />
-                        </button>
-                      </span>
+
+                    {r.kind !== "skip" && r.edited && (
+                      <label className="mt-1 flex min-h-11 items-center gap-2 text-[11px] font-bold text-muted">
+                        <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
+                        Remember for next time
+                      </label>
                     )}
-                    <Status tone={r.edited ? "accent" : r.proposal.confidence === "low" ? "warn" : "good"}>{r.edited ? "Your choice" : r.proposal.reason}</Status>
-                    {r.signedBy === "guess" && <Status tone="warn">Direction guessed: check it</Status>}
-                    {off && <Status tone="danger">Doesn&apos;t add up to the running balance</Status>}
-                    {problems.has(r.key) && <Status tone="warn">{r.kind === "transfer" ? "Pick the other account" : "Pick a category"}</Status>}
+
+                    {/* A flagged line stays here after you change it, until you say it is right (or leave the tab). Lines that don't add up are cleared by the tick below instead. */}
+                    {needsLook(r) && !off && !problems.has(r.key) && (
+                      <button
+                        type="button"
+                        className="btn mt-2 w-full md:w-auto"
+                        onClick={() => {
+                          setRows((all) => all.map((x) => (x.key === r.key ? { ...x, confirmed: true } : x)));
+                          setManual((m) => ({ ...m, [r.key]: false }));
+                        }}
+                      >
+                        <Check size={14} strokeWidth={3} aria-hidden /> Looks right
+                      </button>
+                    )}
                   </div>
-                )}
-
-                {r.kind !== "skip" && r.edited && (
-                  <label className="mt-1 flex min-h-11 items-center gap-2 text-[11px] font-bold text-muted">
-                    <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
-                    Remember for next time
-                  </label>
-                )}
-
-                {/* A flagged line stays here after you change it, until you say it is right (or leave the tab). Lines that don't add up are cleared by the tick below instead. */}
-                {needsLook(r) && !off && !problems.has(r.key) && (
-                  <button type="button" className="btn mt-2 w-full md:w-auto" onClick={() => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, confirmed: true } : x)))}>
-                    <Check size={14} strokeWidth={3} aria-hidden /> Looks right
-                  </button>
                 )}
               </li>
             );
@@ -927,12 +1060,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />I&apos;ve checked the lines marked red and want to import anyway.
           </label>
         )}
-        {preview.accountCheck?.looksLike && (
-          <label className="flex items-start gap-2 text-[13px] font-bold">
-            <input type="checkbox" checked={ackAccount} onChange={(e) => setAckAccount(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
-            This really is {preview.account.name}&apos;s statement; import it here anyway.
-          </label>
-        )}
+        {twin && !ackAccount && <p className="sub !text-[11px]">Switch on &ldquo;Import to {preview.account.name} anyway&rdquo; above, or read it as {twin.name}.</p>}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="min-w-0 flex-1 basis-40">
             <p className="text-[13px] font-black">
@@ -949,8 +1077,9 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               <p className="sub !text-[11px]">Every line is sorted</p>
             )}
           </div>
-          <button className="btn-primary shrink-0" onClick={save} disabled={pending || problems.size > 0 || toImport.length === 0 || (check.mismatches.length > 0 && !ack) || (!!preview.accountCheck?.looksLike && !ackAccount)}>
-            {pending && <Loader2 size={16} strokeWidth={3} className="animate-spin" />} Import {toImport.length} {toImport.length === 1 ? "entry" : "entries"}
+          <button className="btn-primary shrink-0" onClick={save} disabled={pending || problems.size > 0 || toImport.length === 0 || (check.mismatches.length > 0 && !ack) || (!!twin && !ackAccount)}>
+            {pending && <Loader2 size={16} strokeWidth={3} className="animate-spin motion-reduce:animate-none" />} Import {toImport.length} {toImport.length === 1 ? "entry" : "entries"}
+            {!pending && <ArrowRight size={16} strokeWidth={2.5} aria-hidden />}
           </button>
         </div>
       </div>

@@ -53,7 +53,7 @@ export function HoldingActions({
               aria-expanded={on}
               aria-controls={panelId}
               onClick={() => setOpen(on ? null : t.id)}
-              className={`pill min-h-9 cursor-pointer px-3.5 transition ${
+              className={`pill min-h-11 cursor-pointer px-3.5 transition ${
                 on ? "bg-foreground text-background" : i === 0 ? "bg-accent-soft text-accent-strong" : "bg-card-subtle text-muted hover:text-foreground"
               }`}
             >

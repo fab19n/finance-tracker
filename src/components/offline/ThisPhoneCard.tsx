@@ -55,7 +55,7 @@ export function ThisPhoneCard({ pinOn = false }: { pinOn?: boolean }) {
       {!facts ? (
         <p className="sub">Looking…</p>
       ) : (
-        <dl className="space-y-2.5 text-[13px] font-bold">
+        <dl className="divide-y divide-line text-[13px] font-bold [&>div]:py-2.5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
           <div>
             <dt className="text-muted">Opening without your PC</dt>
             <dd>

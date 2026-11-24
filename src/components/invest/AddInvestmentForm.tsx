@@ -4,6 +4,7 @@ import { useState } from "react";
 import { addInvestment } from "@/app/actions/investments";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
+import { Toggle } from "@/components/Toggle";
 
 type Product = "sp500_etf" | "fixed_deposit" | "asb" | "other";
 
@@ -133,12 +134,14 @@ export function AddInvestmentForm({
         </div>
       )}
 
-      <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
-        <input type="checkbox" name="recordTransfer" defaultChecked className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
-        <span>
-          Also record the transfer out of that account <span className="text-muted">(takes the amount out of its balance on the date above, so tick it only if the money really left that account since you started tracking it. It is not counted as spending.)</span>
-        </span>
-      </label>
+      <div className="rounded-2xl bg-card-subtle px-3">
+        <Toggle
+          name="recordTransfer"
+          defaultChecked
+          label="Also record the transfer out of that account"
+          hint="Takes the amount out of its balance on the date above, so switch it on only if the money really left that account since you started tracking it. It is a transfer, not spending."
+        />
+      </div>
 
       <SubmitButton pendingLabel="Adding..." className="btn-primary w-full md:w-auto">
         Add investment
