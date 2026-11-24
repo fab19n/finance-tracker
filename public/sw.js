@@ -10,7 +10,7 @@
  *
  * Changed offline.html, or these caching rules? Bump VERSION, so every phone starts afresh.
  */
-const VERSION = "v6";
+const VERSION = "v7";
 const SHELL = `money-tracker-shell-${VERSION}`;
 const PAGES = `money-tracker-pages-${VERSION}`;
 const STATIC = `money-tracker-static-${VERSION}`;
@@ -45,7 +45,11 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => !CURRENT.includes(key)).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      // The old caches (and so every saved page) are gone: tell the open app to save its pages again at once.
+      .then(() => (self.clients.matchAll ? self.clients.matchAll({ type: "window" }) : []))
+      .then((windows) => windows.forEach((w) => w.postMessage({ type: "worker-activated" })))
+      .catch(() => {}),
   );
 });
 

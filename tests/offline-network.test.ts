@@ -131,3 +131,41 @@ describe("within", () => {
     expect(signal?.aborted).toBe(true);
   });
 });
+
+describe("a new service worker (watchWorkerChanges)", () => {
+  async function setup() {
+    const { watchWorkerChanges } = await import("@/lib/offline/browser");
+    const handlers = new Map<string, (e: { data?: { type?: string } }) => void>();
+    const container = {
+      addEventListener: (t: string, fn: (e: { data?: { type?: string } }) => void) => void handlers.set(t, fn),
+      removeEventListener: (t: string) => void handlers.delete(t),
+    };
+    let clock = 0;
+    const onNew = vi.fn();
+    const stop = watchWorkerChanges(container, onNew, () => clock);
+    return { handlers, onNew, stop, tick: (ms: number) => (clock += ms) };
+  }
+
+  it("saves the pages again when the worker takes over, or says it has activated", async () => {
+    const { handlers, onNew, tick } = await setup();
+    handlers.get("controllerchange")!({});
+    expect(onNew).toHaveBeenCalledTimes(1);
+    tick(60_000);
+    handlers.get("message")!({ data: { type: "worker-activated" } });
+    expect(onNew).toHaveBeenCalledTimes(2);
+  });
+
+  it("merges the two signals of one change, and ignores other messages", async () => {
+    const { handlers, onNew } = await setup();
+    handlers.get("controllerchange")!({});
+    handlers.get("message")!({ data: { type: "worker-activated" } });
+    handlers.get("message")!({ data: { type: "something-else" } });
+    expect(onNew).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops watching when asked", async () => {
+    const { handlers, stop } = await setup();
+    stop();
+    expect(handlers.size).toBe(0);
+  });
+});

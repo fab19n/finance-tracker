@@ -24,10 +24,23 @@ export function AreaGradient({ id }: { id: string }) {
   );
 }
 
+export function pillWidth(text: string): number {
+  return Math.round(text.length * 6.6 + 16);
+}
+
+/**
+ * Where the pill's left edge goes. Right-aligned (or centred) on x, but never left of `minLeft`: a last point near the left
+ * edge (early in a period) would otherwise push the pill out of the chart and clip it.
+ */
+export function pillLeft(x: number, width: number, anchor: "end" | "middle", minLeft = 4): number {
+  const left = anchor === "end" ? x - width : x - width / 2;
+  return Math.max(minLeft, left);
+}
+
 /** A single dark pill carrying one short value ("RM 3,120"). `anchor` "end" right-aligns it on x. */
-export function ValuePill({ x, y, text, anchor = "end" }: { x: number; y: number; text: string; anchor?: "end" | "middle" }) {
-  const w = Math.round(text.length * 6.6 + 16);
-  const left = anchor === "end" ? x - w : x - w / 2;
+export function ValuePill({ x, y, text, anchor = "end", minLeft = 4 }: { x: number; y: number; text: string; anchor?: "end" | "middle"; minLeft?: number }) {
+  const w = pillWidth(text);
+  const left = pillLeft(x, w, anchor, minLeft);
   return (
     <g pointerEvents="none">
       <rect x={left} y={y} width={w} height={22} rx={11} className="viz-pill" />

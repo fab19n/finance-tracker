@@ -135,6 +135,35 @@ export async function savePagesForOffline(force = false) {
   }
 }
 
+type WorkerEvents = {
+  addEventListener(type: string, fn: (event: { data?: { type?: string } }) => void): void;
+  removeEventListener(type: string, fn: (event: { data?: { type?: string } }) => void): void;
+};
+
+/**
+ * A new service worker (a VERSION bump) deletes every older cache, saved pages included, but the ten-minute throttle on
+ * saving them lives in localStorage and would keep the phone empty for up to ten minutes. So when the worker changes
+ * (`controllerchange`) or says it has activated, `onNew` is called to save the pages again now. Both can arrive for one
+ * change; calls within two seconds are merged. Returns the way to stop watching.
+ */
+export function watchWorkerChanges(container: WorkerEvents, onNew: () => void, now: () => number = Date.now): () => void {
+  let last = -Infinity;
+  const fire = () => {
+    if (now() - last < 2000) return;
+    last = now();
+    onNew();
+  };
+  const onMessage = (event: { data?: { type?: string } }) => {
+    if (event.data?.type === "worker-activated") fire();
+  };
+  container.addEventListener("controllerchange", fire);
+  container.addEventListener("message", onMessage);
+  return () => {
+    container.removeEventListener("controllerchange", fire);
+    container.removeEventListener("message", onMessage);
+  };
+}
+
 /** Locking the app: the copies of your pages on this phone go too. (Entries not yet sent stay: they are not pages.) */
 export function forgetSavedPages() {
   try {
@@ -157,7 +186,19 @@ export function startOffline(): () => void {
   window.addEventListener("focus", look);
   document.addEventListener("visibilitychange", look);
   const timer = setInterval(look, LOOK_EVERY_MS);
+  const stopWatchingWorker =
+    "serviceWorker" in navigator
+      ? watchWorkerChanges(navigator.serviceWorker as unknown as WorkerEvents, () => {
+          try {
+            localStorage.removeItem(LAST_SAVED_KEY);
+          } catch {
+            // best effort
+          }
+          void savePagesForOffline();
+        })
+      : () => {};
   return () => {
+    stopWatchingWorker();
     window.removeEventListener("online", look);
     window.removeEventListener("offline", look);
     window.removeEventListener("focus", look);

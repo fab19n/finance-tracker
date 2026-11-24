@@ -5,10 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { categories, transactions } from "@/db/schema";
+import { accounts, categories, transactions } from "@/db/schema";
 import { safeBackPath } from "@/lib/back";
 import { shortDate } from "@/lib/dates";
 import { checkEntry } from "@/lib/entries";
+import { savedMessage } from "@/lib/entry-shape";
 import { formatRM, parseSen } from "@/lib/money";
 import { findLookalikes } from "@/lib/queries/lookalikes";
 
@@ -54,14 +55,27 @@ export async function saveTransaction(_prev: FormState, formData: FormData): Pro
   const row = checked.row;
 
   if (v.id) {
-    db.update(transactions).set(row).where(eq(transactions.id, Number(v.id))).run();
+    // A link only makes sense for the kind of entry it was made for: a bill payment is an expense, a sharer's payment is
+    // income. Turning the entry into something else must not leave it counted against the bill or the person.
+    const { changes } = db
+      .update(transactions)
+      .set({ ...row, ...(row.type === "expense" ? {} : { billId: null }), ...(row.type === "income" ? {} : { shareId: null }) })
+      .where(eq(transactions.id, Number(v.id)))
+      .run();
+    if (changes !== 1) return { ok: false, error: "That entry no longer exists (it may have been deleted). Nothing was changed." };
     refreshAll();
     // Back to the list the entry was opened from (a same-site path only), else the current month.
     redirect(safeBackPath(formData.get("back")) ?? "/transactions");
   }
   db.insert(transactions).values(row).run();
   refreshAll();
-  return { ok: true, message: "Saved", nonce: Date.now() };
+  const name = (id: number | null | undefined) => (id ? (db.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, id)).get()?.name ?? null) : null);
+  const category = row.categoryId ? db.select({ name: categories.name }).from(categories).where(eq(categories.id, row.categoryId)).get()?.name : null;
+  return {
+    ok: true,
+    message: savedMessage({ type: row.type, amount: row.amount, category, account: name(row.accountId), toAccount: name(row.toAccountId) }),
+    nonce: Date.now(),
+  };
 }
 
 const Adopt = z.object({

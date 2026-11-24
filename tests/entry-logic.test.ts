@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { savedMessage } from "@/lib/entry-shape";
 import { categoryIconName, dayChoice, submitLabel, visibleCategories } from "@/components/entry/entry-logic";
 
 const norm = (s: string) => s.replace(/\s/g, " ");
@@ -74,5 +75,17 @@ describe("dayChoice", () => {
     expect(dayChoice("2026-11-22", "2026-11-23")).toBe("yesterday");
     expect(dayChoice("2026-02-28", "2026-03-01")).toBe("yesterday");
     expect(dayChoice("2026-11-20", "2026-11-23")).toBeNull();
+  });
+});
+
+describe("savedMessage", () => {
+  it("says what was added, for how much and where", () => {
+    expect(norm(savedMessage({ type: "expense", amount: 1250, category: "Eating Out", account: "Cash in Hand" }))).toBe("Added RM 12.50 · Eating Out · Cash in Hand");
+    expect(norm(savedMessage({ type: "income", amount: 650000, category: "Salary", account: "Bank" }))).toBe("Added RM 6,500.00 · Salary · Bank");
+    expect(norm(savedMessage({ type: "transfer", amount: 20000, account: "Bank", toAccount: "Cash" }))).toBe("Added RM 200.00 · Bank to Cash");
+  });
+  it("leaves out a name it does not have", () => {
+    expect(norm(savedMessage({ type: "expense", amount: 500 }))).toBe("Added RM 5.00");
+    expect(norm(savedMessage({ type: "transfer", amount: 500, account: "Bank" }))).toBe("Added RM 5.00");
   });
 });

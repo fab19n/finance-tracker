@@ -133,7 +133,7 @@
       }
       .go {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 0.5rem;
         margin: 1.25rem 0 0.75rem;
       }
@@ -142,7 +142,7 @@
         min-height: 2.75rem;
         border: 0;
         border-radius: 999px;
-        padding: 0.75rem 1.125rem;
+        padding: 0.75rem 0.5rem;
         font: inherit;
         font-size: 0.875rem;
         font-weight: 800;
@@ -188,8 +188,10 @@
       <div class="go">
         <button type="button" class="second" onclick="location.assign('/')">Add</button>
         <button type="button" class="second" onclick="location.assign('/transactions')">Activity</button>
+        <button type="button" class="second" onclick="location.assign('/dashboard')">Home</button>
+        <button type="button" class="second" onclick="location.assign('/accounts')">Accounts</button>
         <button type="button" class="second" onclick="location.assign('/plan')">Plan</button>
-        <button type="button" class="second" onclick="location.assign('/dashboard')">Dashboard</button>
+        <button type="button" class="second" onclick="location.assign('/more')">More</button>
       </div>
       <button type="button" onclick="location.reload()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4.5h-4.5" /></svg>

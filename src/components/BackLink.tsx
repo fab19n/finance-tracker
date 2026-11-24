@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
-import { ORIGIN_EVENT, originKey, safeBackPath, sectionOf, type Section } from "@/lib/back";
+import { BACK_MARK_KEY, ORIGIN_EVENT, originKey, safeBackPath, sectionOf, type Section } from "@/lib/back";
 
 /** The origin lives in sessionStorage, written by NavTracker after the page changes: it says so with an event. */
 function subscribe(onChange: () => void) {
@@ -35,7 +35,16 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   const origin = useSyncExternalStore(subscribe, () => readOrigin(section), serverOrigin);
   const target = origin || href;
   return (
-    <Link href={target} aria-label={origin ? "Back" : label} className="grid size-11 shrink-0 place-items-center rounded-full bg-card text-foreground transition hover:bg-card-subtle">
+    <Link
+      href={target}
+      aria-label={origin ? "Back" : label}
+      onClick={() => {
+        // Tell NavTracker this move is a way back, not an entry into the section it lands in.
+        try {
+          sessionStorage.setItem(BACK_MARK_KEY, String(Date.now()));
+        } catch {}
+      }}
+      className="grid size-11 shrink-0 place-items-center rounded-full bg-card text-foreground transition hover:bg-card-subtle">
       <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
     </Link>
   );

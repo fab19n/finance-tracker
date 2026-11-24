@@ -24,6 +24,24 @@ describe("bank colours", () => {
   });
 });
 
+describe("text on a card", () => {
+  it("reaches 4.5:1 on every grey and on a sweep of hues", () => {
+    for (let v = 0; v < 256; v++) {
+      const h = v.toString(16).padStart(2, "0");
+      const bg = "#" + h + h + h;
+      expect(contrast(bg, textOn(bg))).toBeGreaterThanOrEqual(4.5);
+    }
+    for (let r = 0; r < 256; r += 15) for (let g = 0; g < 256; g += 15) for (let b = 0; b < 256; b += 15) {
+      const bg = "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("");
+      expect(contrast(bg, textOn(bg))).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+  it("catches the mid grey that white and the near-black both missed", () => {
+    expect(contrast("#797979", "#ffffff")).toBeLessThan(4.5);
+    expect(contrast("#797979", textOn("#797979"))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
 describe("the mark in the corner", () => {
   it("round-trips a known network and a named other", () => {
     expect(parseMark("visa")).toEqual({ kind: "network", key: "visa" });

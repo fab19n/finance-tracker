@@ -56,7 +56,13 @@ describe("the offline page (public/offline.html)", () => {
     expect(html).toMatch(/Tailscale/);
     expect(html).toMatch(/location\.reload\(\)/);
     expect(html).toMatch(/location\.assign\('\/'\)/);
-    for (const p of ["/transactions", "/plan", "/dashboard"]) expect(html).toContain(`location.assign('${p}')`);
+    for (const p of ["/transactions", "/plan", "/dashboard", "/accounts", "/more"]) expect(html).toContain(`location.assign('${p}')`);
+    expect(html).not.toMatch(/>Dashboard</);
+  });
+
+  it("offers only pages that are kept for offline reading (plus Add, which always works)", async () => {
+    const { SAVED_PAGES } = await import("@/lib/offline/browser");
+    for (const m of html.matchAll(/location\.assign\('([^']+)'\)/g)) expect(SAVED_PAGES, m[1]).toContain(m[1]);
     expect(html).toMatch(/You're offline/);
   });
 });
@@ -132,11 +138,12 @@ function loadWorker(network: (request: Asked) => Promise<Response>) {
       public init?: unknown,
     ) {}
   }
+  const tellWindow = vi.fn();
   const self = {
     location: { origin: ORIGIN },
     addEventListener: (type: string, fn: Listener) => listeners.set(type, fn),
     skipWaiting: vi.fn(),
-    clients: { claim: vi.fn() },
+    clients: { claim: vi.fn(), matchAll: vi.fn(async () => [{ postMessage: tellWindow }]) },
   };
   vm.runInNewContext(readFileSync(path.join(process.cwd(), "public/sw.js"), "utf8"), {
     self,
@@ -153,7 +160,7 @@ function loadWorker(network: (request: Asked) => Promise<Response>) {
   });
   const names = () => [...stores.keys()];
   const cache = (startsWith: string) => stores.get(names().find((n) => n.startsWith(startsWith)) ?? "");
-  return { listeners, stores, self, caches, names, cache };
+  return { listeners, stores, self, caches, names, cache, tellWindow };
 }
 type Worker = ReturnType<typeof loadWorker>;
 
@@ -199,6 +206,12 @@ describe("the service worker (public/sw.js)", () => {
       await fire(worker, "activate").settled();
       expect(worker.names()).toEqual([expect.stringContaining("shell")]);
       expect(worker.self.clients.claim).toHaveBeenCalled();
+    });
+
+    it("tells the open app it is new, so the app saves its pages again at once", async () => {
+      const { worker } = await installed();
+      await fire(worker, "activate").settled();
+      expect(worker.tellWindow).toHaveBeenCalledWith({ type: "worker-activated" });
     });
   });
 

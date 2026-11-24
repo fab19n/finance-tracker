@@ -24,7 +24,7 @@ export function AccountCard({ account: a }: { account: AccountBalance }) {
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-extrabold">{a.name}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-bold opacity-80">
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-bold">
             {KIND[a.type]}
             {a.cardLast4 && <span className="num">•••• {a.cardLast4}</span>}
           </p>

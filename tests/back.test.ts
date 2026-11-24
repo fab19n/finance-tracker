@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextOrigin, safeBackPath, sectionOf, withBack } from "@/lib/back";
+import { BACK_MARK_MS, isFreshMark, nextOrigin, safeBackPath, sectionOf, withBack } from "@/lib/back";
 
 describe("safeBackPath", () => {
   it("accepts a same-site path with its query", () => {
@@ -52,5 +52,50 @@ describe("nextOrigin", () => {
   });
   it("treats going from one section straight to another as a new origin", () => {
     expect(nextOrigin("/plan", "/import")).toEqual({ section: "import", origin: "/plan" });
+  });
+});
+
+describe("nextOrigin: a way back is never an entry", () => {
+  /** Plays a list of moves the way NavTracker does, with the origins in a plain object. */
+  function walk(moves: { to: string; returning?: boolean }[], start: string) {
+    const origins: Partial<Record<string, string>> = {};
+    let at = start;
+    for (const m of moves) {
+      const left = sectionOf(at);
+      const hit = nextOrigin(at, m.to, { returning: m.returning, leftOrigin: left ? (origins[left] ?? null) : null });
+      if (hit) origins[hit.section] = hit.origin;
+      at = m.to;
+    }
+    return origins;
+  }
+
+  it("More > Plan > Settings > Back keeps Plan's origin at More (no ping-pong)", () => {
+    const o = walk([{ to: "/plan" }, { to: "/settings?tab=accounts" }, { to: "/plan", returning: true }], "/more");
+    expect(o).toEqual({ plan: "/more", settings: "/plan" });
+  });
+  it("holds even when the way back is not marked, because it lands in the section it was entered from", () => {
+    const o = walk([{ to: "/plan" }, { to: "/settings?tab=accounts" }, { to: "/plan" }], "/more");
+    expect(o.plan).toBe("/more");
+  });
+  it("a browser back (popstate) is a return too", () => {
+    expect(nextOrigin("/settings", "/plan", { returning: true })).toBeNull();
+    expect(nextOrigin("/more", "/plan", { returning: true })).toBeNull();
+  });
+  it("still records a genuinely new entry, and one made after a return", () => {
+    const o = walk([{ to: "/plan" }, { to: "/settings" }, { to: "/plan", returning: true }, { to: "/import" }], "/more");
+    expect(o).toEqual({ plan: "/more", settings: "/plan", import: "/plan" });
+  });
+  it("Plan > Import > Back > Back reaches More", () => {
+    const o = walk([{ to: "/plan" }, { to: "/import" }, { to: "/plan", returning: true }], "/more");
+    expect(o.plan).toBe("/more");
+  });
+});
+
+describe("isFreshMark", () => {
+  it("counts a recent mark only", () => {
+    expect(isFreshMark(String(1000), 2000)).toBe(true);
+    expect(isFreshMark(1000, 1000 + BACK_MARK_MS + 1)).toBe(false);
+    expect(isFreshMark(5000, 4000)).toBe(false);
+    for (const bad of [null, undefined, "", "abc"]) expect(isFreshMark(bad, 1000)).toBe(false);
   });
 });

@@ -45,11 +45,36 @@ export const ORIGIN_EVENT = "mt-origin-change";
  * Returns what to remember as the origin of the section just entered, or null when nothing changes (a move inside one
  * section, or into a page that has no back link).
  */
-export function nextOrigin(prev: string | null, pathname: string): { section: Section; origin: string } | null {
+export function nextOrigin(
+  prev: string | null,
+  pathname: string,
+  opts: {
+    /** The move was a way BACK (a tap on the back arrow, or the browser's own back/forward): never an "entry". */
+    returning?: boolean;
+    /** The remembered origin of the section being left, if any. */
+    leftOrigin?: string | null;
+  } = {},
+): { section: Section; origin: string } | null {
   const now = sectionOf(pathname);
-  if (!now || !prev) return null;
+  if (!now || !prev || opts.returning) return null;
   const was = sectionOf(prev);
   if (was === now) return null;
+  // Landing in the section this one was entered from IS the way back, however it was done (a plain link, a gesture the
+  // page could not see). Remembering the page just left would make the two sections point at each other for ever.
+  const leftOrigin = safeBackPath(opts.leftOrigin);
+  if (was && leftOrigin && sectionOf(leftOrigin) === now) return null;
   const origin = safeBackPath(prev);
   return origin ? { section: now, origin } : null;
+}
+
+/** sessionStorage key BackLink sets when it is tapped (the time, in ms), and NavTracker consumes after the page changes. */
+export const BACK_MARK_KEY = "mt-nav-back";
+/** How long a "going back" mark counts. A navigation that never happened must not taint the next, unrelated one. */
+export const BACK_MARK_MS = 5000;
+
+/** True when `stamp` (a time in ms, as text or number, or null) is a "going back" mark made within the last few seconds. */
+export function isFreshMark(stamp: string | number | null | undefined, now: number): boolean {
+  if (stamp === null || stamp === undefined || stamp === "") return false;
+  const t = Number(stamp);
+  return Number.isFinite(t) && now - t >= 0 && now - t <= BACK_MARK_MS;
 }

@@ -7,8 +7,9 @@ import { adoptLookalike, saveTransaction, type FormState } from "@/app/actions/t
 import { AccountPicker, type PickableAccount } from "@/components/entry/AccountPicker";
 import { CategoryPicker } from "@/components/entry/CategoryPicker";
 import { dayChoice, submitLabel } from "@/components/entry/entry-logic";
+import { withBack } from "@/lib/back";
 import { isISODate, shiftDays, shortDate, todayISO } from "@/lib/dates";
-import { entryShapeError, type WireEntry } from "@/lib/entry-shape";
+import { entryShapeError, savedMessage, type WireEntry } from "@/lib/entry-shape";
 import { parseSen } from "@/lib/money";
 import { offlineStore } from "@/lib/offline/browser";
 import { newClientId } from "@/lib/offline/ids";
@@ -151,7 +152,7 @@ export function TransactionForm({
       accountId: Number(fd.get("accountId")) || 0,
       toAccountId: kind === "transfer" ? Number(fd.get("toAccountId")) || null : null,
       categoryId: kind === "transfer" ? null : Number(fd.get("categoryId")) || null,
-      item: kind === "transfer" ? null : String(fd.get("item") ?? "").trim().slice(0, 120) || null,
+      item: String(fd.get("item") ?? "").trim().slice(0, 120) || null, // a transfer keeps its description too ("Payday move")
       note: String(fd.get("note") ?? "").trim().slice(0, 500) || null,
     };
     const problem = entryShapeError(entry);
@@ -169,7 +170,11 @@ export function TransactionForm({
     const outcome = draft ? await store.update(draft.clientId, entry, labels) : await store.submit(entry, labels);
     switch (outcome.kind) {
       case "saved":
-        return { ok: true, message: "Saved", nonce: Date.now() };
+        return {
+          ok: true,
+          message: savedMessage({ type: entry.type, amount: entry.amount, category: labels.category, account: labels.account, toAccount: labels.toAccount }),
+          nonce: Date.now(),
+        };
       case "queued":
         return { ok: true, message: queuedMessage(outcome.why), nonce: Date.now() };
       case "rejected":
@@ -277,6 +282,8 @@ export function TransactionForm({
   const dayPicked = dayChoice(date, today);
   const toAccounts = accounts.filter((a) => a.id !== accountId);
   const showSaved = state.ok && !initial && seenResult !== state;
+  // A refusal belongs to what was typed when it came back: once anything is edited it is stale, like the Saved notice.
+  const showError = !!state.error && seenResult !== state;
 
   return (
     // An edit anywhere in the form starts a new entry in the user's mind: the "Saved" notice from the last one goes.
@@ -463,8 +470,14 @@ export function TransactionForm({
                       Use this one
                     </button>
                   )}
-                  <Link href={`/transactions/${l.id}`} className="inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong underline">
-                    Open
+                  {/* A new tab, so what is typed here is not lost; the bank's entry comes back to this page. */}
+                  <Link
+                    href={withBack(`/transactions/${l.id}`, "/")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong underline"
+                  >
+                    Open<span className="sr-only"> (opens in a new tab)</span>
                   </Link>
                 </span>
               </li>
@@ -481,7 +494,7 @@ export function TransactionForm({
       {/* The docked button: sticky above the tab bar (about 100 px) and its raised Add button, inside the form so Enter in any
           field still submits. A refusal shows right above it, where it can't be scrolled away from the button that caused it. */}
       <div className="sticky bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-10 -mx-1 space-y-2 bg-gradient-to-t from-background from-70% to-transparent px-1 pt-4 md:bottom-4">
-        {state.error && (
+        {showError && (
           <p role="alert" className="banner banner-danger leading-snug">
             {state.error}
           </p>

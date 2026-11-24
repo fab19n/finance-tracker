@@ -63,8 +63,23 @@ describe("saveTransaction", () => {
   it("records an expense in exact sen, trimming the item", async () => {
     const { saveTransaction } = await import("@/app/actions/transactions");
     const r = await saveTransaction({ ok: false }, expense());
-    expect(r).toMatchObject({ ok: true, message: "Saved" });
+    const cashName = h.db.select().from(accounts).all().find((a) => a.id === ids.cash)!.name;
+    expect(r).toMatchObject({ ok: true, message: expect.stringMatching(new RegExp(`^Added RM.12.50 · Eating Out · ${cashName}$`)) });
     expect(txs()).toMatchObject([{ type: "expense", amount: 1250, accountId: ids.cash, categoryId: ids.food, item: "Teh tarik", toAccountId: null }]);
+  });
+
+  it("a new transfer keeps the description typed on it, and says where the money went", async () => {
+    const { saveTransaction } = await import("@/app/actions/transactions");
+    const r = await saveTransaction({ ok: false }, fd({ type: "transfer", amount: "200", date: "2026-10-02", accountId: String(ids.bank), toAccountId: String(ids.cash), item: " Payday move " }));
+    expect(txs()[0]).toMatchObject({ type: "transfer", item: "Payday move" });
+    expect(r.message).toMatch(/^Added RM.200.00 · .+ to .+$/);
+  });
+
+  it("refuses an amount above the ceiling", async () => {
+    const { saveTransaction } = await import("@/app/actions/transactions");
+    const r = await saveTransaction({ ok: false }, expense({ amount: "2,000,000,000" }));
+    expect(r.error).toMatch(/too large/);
+    expect(txs()).toHaveLength(0);
   });
 
   it("records income and transfers (transfers carry no category)", async () => {
@@ -109,6 +124,35 @@ describe("saveTransaction", () => {
     expect(url).toBe("/transactions");
     expect(txs()).toHaveLength(1);
     expect(txs()[0]).toMatchObject({ id, amount: 1500, item: "Latte" });
+  });
+
+  it("editing an entry that no longer exists says so instead of reporting success", async () => {
+    const { saveTransaction } = await import("@/app/actions/transactions");
+    const r = await saveTransaction({ ok: false }, expense({ id: "424242" }));
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/no longer exists/) });
+    expect(txs()).toHaveLength(0);
+  });
+
+  it("editing a bill payment into income, or a sharer's payment into a transfer, cuts the link", async () => {
+    const { saveTransaction } = await import("@/app/actions/transactions");
+    const { recurringBills, billShares } = await import("@/db/schema");
+    const bill = h.db.insert(recurringBills).values({ name: "Net", accountId: ids.bank, categoryId: ids.food, amountMin: 1000, amountMax: 1000 }).returning().get().id;
+    const share = h.db.insert(billShares).values({ billId: bill, name: "Sam", share: 250, startMonth: "2026-01" }).returning().get().id;
+    const paid = h.db.insert(transactions).values({ date: "2026-10-01", type: "expense", amount: 1000, accountId: ids.bank, categoryId: ids.food, billId: bill }).returning().get().id;
+    const sent = h.db.insert(transactions).values({ date: "2026-10-02", type: "income", amount: 250, accountId: ids.bank, categoryId: ids.salary, shareId: share }).returning().get().id;
+    const row = (id: number) => txs().find((t) => t.id === id)!;
+
+    // Still an expense: the bill link stays. Still income: the person stays.
+    await redirected(saveTransaction({ ok: false }, expense({ id: String(paid), accountId: String(ids.bank), amount: "10.50" })));
+    await redirected(saveTransaction({ ok: false }, fd({ id: String(sent), type: "income", amount: "2.50", date: "2026-10-02", accountId: String(ids.bank), categoryId: String(ids.salary) })));
+    expect(row(paid)).toMatchObject({ billId: bill, amount: 1050 });
+    expect(row(sent)).toMatchObject({ shareId: share, amount: 250 });
+
+    // Changed into something else: the link goes.
+    await redirected(saveTransaction({ ok: false }, fd({ id: String(paid), type: "income", amount: "10", date: "2026-10-01", accountId: String(ids.bank), categoryId: String(ids.salary) })));
+    await redirected(saveTransaction({ ok: false }, fd({ id: String(sent), type: "transfer", amount: "2.50", date: "2026-10-02", accountId: String(ids.bank), toAccountId: String(ids.cash) })));
+    expect(row(paid)).toMatchObject({ type: "income", billId: null });
+    expect(row(sent)).toMatchObject({ type: "transfer", shareId: null });
   });
 
   it("editing returns to the list the entry was opened from, but never to another site", async () => {

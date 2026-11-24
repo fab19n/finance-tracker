@@ -116,6 +116,7 @@ describe("POST /sync/entries", () => {
   it.each([
     ["a zero amount", () => ({ amount: 0 }), /amount greater than 0/],
     ["a fractional amount (sen are whole)", () => ({ amount: 12.5 }), /amount greater than 0/],
+    ["an amount above the ceiling", () => ({ amount: 100_000_000_001 }), /too large/],
     ["an impossible date", () => ({ date: "2026-02-31" }), /valid date/],
     ["a date in the wrong shape", () => ({ date: "11/10/2026" }), /valid date/],
     ["a transfer to the same account", () => ({ type: "transfer", toAccountId: ids.cash, categoryId: null }), /must differ/],
@@ -124,6 +125,13 @@ describe("POST /sync/entries", () => {
     const res = await verdicts({ entries: [bad, entry()] });
     expect(res.map((r) => r.status)).toEqual(["rejected", "saved"]);
     expect(res[0].error).toMatch(message);
+  });
+
+  it("keeps the description of a transfer", async () => {
+    const t = entry({ type: "transfer", accountId: ids.bank, toAccountId: ids.cash, categoryId: null, item: "Payday move" });
+    const res = await verdicts({ entries: [t] });
+    expect(res[0].status).toBe("saved");
+    expect(rows()[0]).toMatchObject({ type: "transfer", item: "Payday move", categoryId: null });
   });
 
   it("refreshes the pages only when something was actually written", async () => {
@@ -189,6 +197,7 @@ describe("entryShapeError (what the phone checks before it queues anything)", ()
   it("names the first thing wrong, in the words the form has always used", () => {
     expect(entryShapeError({ ...ok, date: "soon" })).toBe("Pick a valid date");
     expect(entryShapeError({ ...ok, amount: 0 })).toBe("Enter an amount greater than 0");
+    expect(entryShapeError({ ...ok, amount: 100_000_000_001 })).toMatch(/too large/);
     expect(entryShapeError({ ...ok, accountId: 0 })).toBe("Pick an account");
     expect(entryShapeError({ ...ok, categoryId: null })).toBe("Pick a category");
     expect(entryShapeError({ ...ok, type: "transfer", toAccountId: null })).toBe("Pick the account the money goes to");

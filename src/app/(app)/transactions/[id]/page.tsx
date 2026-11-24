@@ -26,7 +26,7 @@ export default async function EditTransactionPage({ params, searchParams }: { pa
 
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <PageHeader title="Edit entry" back={{ href: back, label: back === "/" ? "Back to Add" : "Back to Activity" }} />
+      <PageHeader title="Edit entry" back={{ href: back, label: back === "/" ? "Back to Add" : back.startsWith("/accounts/") ? "Back to the account" : "Back to Activity" }} />
       <TransactionForm
         accounts={accounts
           .filter((a) => !a.archived || a.id === tx.accountId || a.id === tx.toAccountId)

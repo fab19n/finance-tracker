@@ -46,7 +46,7 @@ export function SwipeTabs({ hrefs, current, children }: { hrefs: readonly string
     const touch = e.changedTouches[0];
     if (!s || !touch) return;
     const to = neighbourTab(current, swipeDirection(touch.clientX - s.x, touch.clientY - s.y, e.timeStamp - s.t), hrefs.length);
-    if (to !== null && hrefs[to]) router.push(hrefs[to]);
+    if (to !== null && hrefs[to]) router.replace(hrefs[to]); // tabs are one place: the system Back leaves the section, it doesn't walk through every swiped tab
   }
 
   return (

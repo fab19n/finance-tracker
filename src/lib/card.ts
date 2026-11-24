@@ -70,10 +70,15 @@ export function contrast(a: string, b: string): number {
 
 const LIGHT_TEXT = "#ffffff";
 const DARK_TEXT = "#0b1411";
+const BLACK_TEXT = "#000000";
 
-/** Whichever of white or a near-black green reads better on `bg`. */
+/**
+ * The text colour for a card of colour `bg`: white or the near-black green, whichever reads better; where neither
+ * reaches 4.5:1 (mid greys sit near 4.35) pure black, which always does (the worst background gives about 4.58).
+ */
 export function textOn(bg: string): string {
-  return contrast(bg, LIGHT_TEXT) >= contrast(bg, DARK_TEXT) ? LIGHT_TEXT : DARK_TEXT;
+  const best = contrast(bg, LIGHT_TEXT) >= contrast(bg, DARK_TEXT) ? LIGHT_TEXT : DARK_TEXT;
+  return contrast(bg, best) >= 4.5 ? best : BLACK_TEXT;
 }
 
 export type CardLook = {

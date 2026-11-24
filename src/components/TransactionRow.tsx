@@ -19,7 +19,7 @@ export function TransactionRow({ tx, showDate = false, viewing = null, backHref 
   const isTransfer = tx.type === "transfer";
   // In one account's list a transfer is money going out or coming in, so it says which and gets a sign.
   const transfer = transferView(tx, viewing);
-  const title = isTransfer ? transfer.title : tx.item || tx.categoryName || "Entry";
+  const title = isTransfer ? tx.item || transfer.title : tx.item || tx.categoryName || "Entry";
   // When the list isn't grouped by day (sorted by amount) the date comes FIRST: the end of the line is what gets cut off.
   const when = showDate ? shortDate(tx.date) : null;
   const subtitle = isTransfer
