@@ -4,9 +4,10 @@ import { connection } from "next/server";
 import { reconcileCashAction } from "@/app/actions/cash";
 import { AccountChips } from "@/components/AccountChips";
 import { MoreHeader } from "@/components/MoreHeader";
-import { detectLeaks, headlineSavings, WHOLE_BOOK_FINDINGS, type Insight, type Severity } from "@/lib/analytics/leakage";
+import { detectLeaks, headlineSavings, slugId, WHOLE_BOOK_FINDINGS, type Insight, type Severity } from "@/lib/analytics/leakage";
 import { detectRecurring, type Recurring } from "@/lib/analytics/recurring";
-import { daysBetween, monthEnd, monthStart, shiftDays, shortDate, todayISO } from "@/lib/dates";
+import { dashboardLinks } from "@/lib/analytics/insight-links";
+import { daysBetween, monthEnd, monthLabel, monthStart, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWhole } from "@/lib/money";
 import { asBillTxs, descriptionMatchesBill, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { getAccountBalances } from "@/lib/queries/accounts";
@@ -37,11 +38,11 @@ function InsightCard({ i, years, rate }: { i: Insight; years: number; rate: numb
   const Icon = sev.icon;
   const saves = i.annualSaving > 0;
   return (
-    <article className="card" aria-labelledby={`h-${i.id}`}>
+    <article className="card" aria-labelledby={slugId("h", i.id)}>
       <span className={`pill ${sev.pill}`}>
         <Icon size={12} aria-hidden /> {sev.label}
       </span>
-      <h3 id={`h-${i.id}`} className="mt-2 text-sm font-black leading-snug md:text-[15px]">
+      <h3 id={slugId("h", i.id)} className="mt-2 text-sm font-black leading-snug md:text-[15px]">
         {i.title}
       </h3>
       <ul className="mt-1.5 space-y-1 text-xs font-semibold leading-relaxed text-muted">
@@ -168,12 +169,10 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const cashOnRecord = cash.accounts.reduce((s, a) => s + a.ledgerBalance, 0);
 
   // headlineSavings sums the three biggest findings, so with more than three the card says "the top 3".
+  // Only findings that carry a saving are counted (the same ones headlineSavings sums).
   const heroLead =
-    insights.length === 1
-      ? "If you acted on this finding"
-      : insights.length <= 3
-        ? `If you acted on all ${insights.length} findings`
-        : "If you acted on the top 3 findings";
+    headline.count === 1 ? "If you acted on the 1 finding that carries a saving" : `If you acted on the ${headline.count} findings that carry a saving`;
+  const homeCycle = plan.cycle.source === "salary";
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -191,11 +190,24 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         </p>
       )}
 
+      <p className="sub px-1">
+        Judged by calendar month ({monthLabel(today.slice(0, 7))}), over the last few months of entries.
+        {homeCycle && (
+          <>
+            {" "}
+            Your Home page counts pay cycles, so a budget can read differently there.{" "}
+            <Link href={dashboardLinks(today).cycle} className="font-extrabold text-accent-strong hover:underline">
+              See this pay cycle on Home
+            </Link>
+          </>
+        )}
+      </p>
+
       {/* Phone: one column in the order headline, cash, findings, habit, regular payments. From lg: findings on the left,
           the cash count and the small cards on the right. The wrappers are `contents` on a phone so `order` can interleave them. */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-2 lg:items-start">
         <div className="contents lg:flex lg:flex-col lg:gap-4">
-          {insights.length > 0 ? (
+          {insights.length > 0 && headline.monthly > 0 ? (
             <section className="hero order-1 text-center" aria-label="Summary">
               <p className="text-xs font-extrabold">{heroLead}</p>
               <p className="num mt-1.5 text-[44px] font-black leading-none tracking-[-0.03em]">{formatRMWhole(headline.monthly)}</p>
@@ -204,6 +216,13 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                 ≈ {formatRMWhole(headline.annual)} a year is at stake. Invested for {settings.horizonYears} years at an assumed {settings.sp500ReturnPct}%, that could
                 become roughly {formatRMWhole(headline.invested)}. Some findings overlap (a latte also sits inside Eating Out), so treat this as a ceiling.
               </p>
+            </section>
+          ) : insights.length > 0 ? (
+            <section className="card order-1">
+              <p className="flex items-center gap-2 text-sm font-black">
+                <Info size={18} className="text-muted" aria-hidden /> {insights.length} {insights.length === 1 ? "thing" : "things"} to know
+              </p>
+              <p className="sub mt-1 leading-relaxed">None of them has a saving we can put a number on. They are below.</p>
             </section>
           ) : (
             <section className="card order-1">

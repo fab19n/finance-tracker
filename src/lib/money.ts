@@ -35,6 +35,11 @@ export function formatRMWhole(sen: number): string {
   return RM_WHOLE.format(sen / 100);
 }
 
+/** 1,235 (whole ringgit, no "RM"): for tight spots like the phone budget rings. Intl puts a NO-BREAK space after the symbol, so strip any currency prefix and space, not a literal "RM ". */
+export function formatRMWholeBare(sen: number): string {
+  return formatRMWhole(sen).replace(/^[^\d-]+/, "");
+}
+
 /** Plain decimal string for form inputs: 1250 -> "12.50". */
 export function senToInput(sen: number): string {
   return (sen / 100).toFixed(2);

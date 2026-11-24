@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { addInvestment } from "@/app/actions/investments";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 
 type Product = "sp500_etf" | "fixed_deposit" | "asb" | "other";
 
@@ -26,7 +28,7 @@ export function AddInvestmentForm({
   const isEtf = product === "sp500_etf";
 
   return (
-    <form action={addInvestment} className="@container space-y-3.5">
+    <ActionForm action={addInvestment} className="@container space-y-3.5">
       <div>
         <label className="label" htmlFor="product">
           What kind of investment?
@@ -138,7 +140,9 @@ export function AddInvestmentForm({
         </span>
       </label>
 
-      <button className="btn-primary w-full md:w-auto">Add investment</button>
-    </form>
+      <SubmitButton pendingLabel="Adding..." className="btn-primary w-full md:w-auto">
+        Add investment
+      </SubmitButton>
+    </ActionForm>
   );
 }

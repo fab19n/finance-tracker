@@ -3,6 +3,7 @@
 import { Lock } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { clearAllDrafts } from "@/lib/import/draft";
 import { forgetSavedPages } from "@/lib/offline/browser";
 
 /**
@@ -12,7 +13,14 @@ import { forgetSavedPages } from "@/lib/offline/browser";
  */
 export function LockNowForm() {
   return (
-    <form action={logout} onSubmit={() => forgetSavedPages()} className="mt-3">
+    <form action={logout} onSubmit={() => {
+        forgetSavedPages();
+        try {
+          clearAllDrafts(localStorage);
+        } catch {
+          /* storage blocked */
+        }
+      }} className="mt-3">
       <ConfirmSubmit
         trigger={
           <>
@@ -21,7 +29,7 @@ export function LockNowForm() {
         }
         triggerClassName="btn w-full !border-danger !text-danger"
         title="Lock now?"
-        body="Signs this device out and clears the pages saved on it. Entries not yet sent stay on the phone."
+        body="Signs this device out and clears the pages and unfinished import reviews saved on it. Entries not yet sent stay on the phone."
         confirmLabel="Lock now"
         tone="neutral"
       />

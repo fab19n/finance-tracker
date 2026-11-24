@@ -109,6 +109,17 @@ const prevMonths = (month: string, n: number) => {
 const dayOf = (iso: string) => Number(iso.slice(8, 10));
 const monthOf = (iso: string) => iso.slice(0, 7);
 
+/** Home for ONE calendar month. `view=month` is explicit because Home defaults to the pay-cycle view once a salary is recorded. */
+export function dashboardMonthHref(month: string): string {
+  return `/dashboard?view=month&month=${month}`;
+}
+
+/** An element id made from user text (a category or item name): letters, digits and dashes only. */
+export function slugId(prefix: string, text: string): string {
+  const slug = text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${prefix}-${slug || "x"}`;
+}
+
 export function detectLeaks(input: LeakInput): Insight[] {
   const { rows, today, categories, assumptions, cash } = input;
   const month = monthOf(today);
@@ -281,8 +292,8 @@ export function detectLeaks(input: LeakInput): Insight[] {
         ? `${b.name} is over budget`
         : `${b.name} is on pace to go over budget`,
       evidence: [
-        `${formatRM(b.spent)} spent of a ${formatRM(b.budget)} budget (${formatPct(b.used)})`,
-        over ? `Over by ${formatRM(b.spent - b.budget)} with ${dim - day} days left` : `Projected to finish at ${formatRM(b.projected)}`,
+        `${formatRM(b.spent)} spent of a ${formatRM(b.budget)} budget (${formatPct(b.used)}), this calendar month`,
+        over ? `Over by ${formatRM(b.spent - b.budget)} with ${dim - day} days left in the month` : `Projected to finish at ${formatRM(b.projected)}`,
       ],
       suggestion: over
         ? "Pause discretionary spending in this category for the rest of the month."
@@ -305,12 +316,12 @@ export function detectLeaks(input: LeakInput): Insight[] {
         severity: wants / lastIncome > 0.4 ? "high" : "medium",
         title: `"Wants" took ${formatPct(wants / lastIncome)} of your income last month`,
         evidence: [
-          `${formatRM(wants)} on wants out of ${formatRM(lastIncome)} income`,
+          `${formatRM(wants)} on wants out of ${formatRM(lastIncome)} income (calendar month ${lastMonth})`,
           `The 50/30/20 guide says about ${formatPct(WANTS_GUIDE)} (${formatRM(Math.round(lastIncome * WANTS_GUIDE))})`,
         ],
         suggestion: "Pick the one or two 'want' categories that gave you the least joy and trim those first.",
         ...money(excess),
-        href: `/dashboard?month=${lastMonth}`,
+        href: dashboardMonthHref(lastMonth),
       });
     }
   }
@@ -474,9 +485,11 @@ export function detectLeaks(input: LeakInput): Insight[] {
 export const WHOLE_BOOK_FINDINGS: InsightKind[] = ["over_budget", "wants_heavy", "planning_gap", "savings_drawdown", "savings_spending", "cash_unaccounted"];
 
 /** Headline: the biggest few findings. They can overlap (a latte also sits inside Eating Out). */
-export function headlineSavings(insights: Insight[], n = 3): { monthly: number; annual: number; invested: number } {
-  const top = [...insights].sort((a, b) => b.annualSaving - a.annualSaving).slice(0, n);
+export function headlineSavings(insights: Insight[], n = 3): { monthly: number; annual: number; invested: number; count: number } {
+  // Only findings that carry a saving count: an informational one adds nothing, so it must not be one of "the top 3".
+  const top = insights.filter((i) => i.annualSaving > 0).sort((a, b) => b.annualSaving - a.annualSaving).slice(0, n);
   return {
+    count: top.length,
     monthly: sum(top.map((i) => i.monthlySaving)),
     annual: sum(top.map((i) => i.annualSaving)),
     invested: sum(top.map((i) => i.investedValue)),

@@ -8,9 +8,12 @@ import {
   toggleAccountArchived,
   toggleCategoryArchived,
 } from "@/app/actions/settings";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { RecentImports } from "@/components/import/RecentImports";
 import { LockNowForm } from "@/components/offline/LockNowForm";
 import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
+import { SubmitButton } from "@/components/SubmitButton";
 import { SwipeTabs } from "@/components/SwipeTabs";
 import { TabLinks } from "@/components/SectionTabs";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
@@ -41,36 +44,115 @@ const ACCOUNT_TYPES = [
 ] as const;
 
 function CategoryForm({ c }: { c?: CategoryWithUsage }) {
+  const f = `cat-${c?.id ?? "new"}`;
   return (
-    <form action={saveCategory} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
+    <ActionForm action={saveCategory} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
       {c && <input type="hidden" name="id" value={c.id} />}
-      <input name="name" defaultValue={c?.name} placeholder="Name" required className="input col-span-2" aria-label="Name" />
-      <select name="type" defaultValue={c?.type ?? "expense"} className="input" aria-label="Type">
-        <option value="expense">Expense</option>
-        <option value="income">Income</option>
-      </select>
-      <select name="nature" defaultValue={c?.nature ?? "want"} className="input" aria-label="Need or want">
-        <option value="need">Need</option>
-        <option value="want">Want</option>
-        <option value="saving">Saving / Income</option>
-      </select>
-      <input
-        name="monthlyBudget"
-        defaultValue={c?.monthlyBudget ? senToInput(c.monthlyBudget) : ""}
-        placeholder="Monthly budget (RM)"
-        inputMode="decimal"
-        className="input col-span-2 md:col-span-6"
-        aria-label="Monthly budget"
-      />
+      <div className="col-span-2 min-w-0">
+        <label className="label" htmlFor={`${f}-name`}>
+          Name
+        </label>
+        <input id={`${f}-name`} name="name" defaultValue={c?.name} placeholder="e.g. Groceries" required className="input" />
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${f}-type`}>
+          Type
+        </label>
+        <select id={`${f}-type`} name="type" defaultValue={c?.type ?? "expense"} className="input">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${f}-nature`}>
+          Need or want
+        </label>
+        <select id={`${f}-nature`} name="nature" defaultValue={c?.nature ?? "want"} className="input">
+          <option value="need">Need</option>
+          <option value="want">Want</option>
+          <option value="saving">Saving / Income</option>
+        </select>
+      </div>
+      <div className="col-span-2 min-w-0 md:col-span-6">
+        <label className="label" htmlFor={`${f}-budget`}>
+          Monthly budget (RM)
+        </label>
+        <input
+          id={`${f}-budget`}
+          name="monthlyBudget"
+          defaultValue={c?.monthlyBudget ? senToInput(c.monthlyBudget) : ""}
+          placeholder="optional"
+          inputMode="decimal"
+          className="input"
+        />
+      </div>
       <ColorField defaultValue={c?.color} />
-      <button className="btn-primary col-span-2 md:col-span-6">{c ? "Save" : "Add category"}</button>
-    </form>
+      <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 md:col-span-6">
+        {c ? "Save" : "Add category"}
+      </SubmitButton>
+    </ActionForm>
   );
 }
 
 /** One heading + intro per tab, so each tab reads on its own. */
 function Intro({ children }: { children: React.ReactNode }) {
   return <div className="sub space-y-1.5 px-1 leading-relaxed">{children}</div>;
+}
+
+/** Edit one account, or (without `a`) add a new one. Every field has a visible label. */
+function AccountForm({ a }: { a?: Account }) {
+  const f = `acct-${a?.id ?? "new"}`;
+  return (
+    <ActionForm action={saveAccount} className={`grid grid-cols-2 gap-2.5 md:grid-cols-5 ${a ? "" : "card"}`}>
+      {a ? <input type="hidden" name="id" value={a.id} /> : <h2 className="h2 col-span-2 md:col-span-5">Add account</h2>}
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${f}-name`}>
+          Name
+        </label>
+        <input id={`${f}-name`} name="name" defaultValue={a?.name} placeholder="e.g. Maybank Savings" required className="input" />
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${f}-type`}>
+          Type
+        </label>
+        <select id={`${f}-type`} name="type" defaultValue={a?.type ?? "bank"} className="input">
+          {ACCOUNT_TYPES.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${f}-opening`}>
+          Opening balance (RM)
+        </label>
+        <input
+          id={`${f}-opening`}
+          name="openingBalance"
+          defaultValue={a ? senToInput(a.openingBalance) : ""}
+          placeholder="0.00"
+          inputMode="decimal"
+          className="input"
+        />
+      </div>
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        <label className="label" htmlFor={`${f}-role`}>
+          Role
+        </label>
+        <select id={`${f}-role`} name="purpose" defaultValue={a?.purpose ?? ""} className="input">
+          {ACCOUNT_ROLES.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </div>
+      <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 self-end md:col-span-1">
+        {a ? "Save" : "Add account"}
+      </SubmitButton>
+    </ActionForm>
+  );
 }
 
 function AccountsTab({ accounts }: { accounts: Account[] }) {
@@ -113,31 +195,12 @@ function AccountsTab({ accounts }: { accounts: Account[] }) {
                   <Link href={`/accounts/${a.id}/card`} className="btn w-full md:ml-2 md:w-auto">
                     Card, colour and Main account
                   </Link>
-                  <form action={saveAccount} className="grid grid-cols-2 gap-2.5 md:grid-cols-5">
-                    <input type="hidden" name="id" value={a.id} />
-                    <input name="name" defaultValue={a.name} required className="input" aria-label="Name" />
-                    <select name="type" defaultValue={a.type} className="input" aria-label="Type">
-                      {ACCOUNT_TYPES.map(([v, l]) => (
-                        <option key={v} value={v}>
-                          {l}
-                        </option>
-                      ))}
-                    </select>
-                    <input name="openingBalance" defaultValue={senToInput(a.openingBalance)} inputMode="decimal" className="input" aria-label="Opening balance" />
-                    <select name="purpose" defaultValue={a.purpose ?? ""} className="input col-span-2 md:col-span-1" aria-label="Role">
-                      {ACCOUNT_ROLES.map(([v, l]) => (
-                        <option key={v} value={v}>
-                          {l}
-                        </option>
-                      ))}
-                    </select>
-                    <button className="btn-primary col-span-2 md:col-span-1">Save</button>
-                  </form>
-                  <form action={toggleAccountArchived}>
+                  <AccountForm a={a} />
+                  <ActionForm action={toggleAccountArchived}>
                     <input type="hidden" name="id" value={a.id} />
                     <input type="hidden" name="archived" value={a.archived ? "0" : "1"} />
                     {a.archived ? (
-                      <button className="btn-danger">Restore account</button>
+                      <SubmitButton className="btn-danger" pendingLabel="Restoring...">Restore account</SubmitButton>
                     ) : (
                       <ConfirmSubmit
                         trigger="Archive account"
@@ -148,33 +211,14 @@ function AccountsTab({ accounts }: { accounts: Account[] }) {
                         tone="neutral"
                       />
                     )}
-                  </form>
+                  </ActionForm>
                 </div>
               </details>
             </li>
           ))}
         </ul>
       </section>
-      <form action={saveAccount} className="card grid grid-cols-2 gap-2.5 md:grid-cols-5">
-        <h2 className="h2 col-span-2 md:col-span-5">Add account</h2>
-        <input name="name" placeholder="New account name" required className="input" aria-label="Name" />
-        <select name="type" defaultValue="bank" className="input" aria-label="Type">
-          {ACCOUNT_TYPES.map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <input name="openingBalance" placeholder="Opening RM" inputMode="decimal" className="input" aria-label="Opening balance" />
-        <select name="purpose" defaultValue="" className="input col-span-2 md:col-span-1" aria-label="Role">
-          {ACCOUNT_ROLES.map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <button className="btn-primary col-span-2 md:col-span-1">Add account</button>
-      </form>
+      <AccountForm />
     </div>
   );
 }
@@ -210,11 +254,11 @@ function CategoriesTab({ categories }: { categories: CategoryWithUsage[] }) {
                     <div className="mt-3 space-y-2">
                       <CategoryForm c={c} />
                       {!c.isSystem && (
-                        <form action={toggleCategoryArchived}>
+                        <ActionForm action={toggleCategoryArchived}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="archived" value={c.archived ? "0" : "1"} />
                           {c.archived ? (
-                            <button className="btn-danger">Restore category</button>
+                            <SubmitButton className="btn-danger" pendingLabel="Restoring...">Restore category</SubmitButton>
                           ) : (
                             <ConfirmSubmit
                               trigger="Archive category"
@@ -225,7 +269,7 @@ function CategoriesTab({ categories }: { categories: CategoryWithUsage[] }) {
                               tone="neutral"
                             />
                           )}
-                        </form>
+                        </ActionForm>
                       )}
                     </div>
                   </details>
@@ -251,7 +295,7 @@ function PaydayTab({ settings }: { settings: AppSettings }) {
           everyday things, and what to move to savings.
         </p>
       </Intro>
-      <form action={saveCycleSettings} className="card grid grid-cols-2 gap-3 md:grid-cols-3">
+      <ActionForm action={saveCycleSettings} className="card grid grid-cols-2 gap-3 md:grid-cols-3">
         <label>
           <span className="label">Usual payday (day of month)</span>
           <input name="paydayDay" type="number" min={1} max={31} defaultValue={settings.paydayDay} className="input" />
@@ -272,8 +316,8 @@ function PaydayTab({ settings }: { settings: AppSettings }) {
           <span className="label">Savings account pays (% p.a.)</span>
           <input name="savingsRatePct" type="number" step="0.01" min={0} max={15} defaultValue={settings.savingsRatePct} className="input" />
         </label>
-        <button className="btn-primary self-end">Save</button>
-      </form>
+        <SubmitButton className="btn-primary self-end" pendingLabel="Saving...">Save</SubmitButton>
+      </ActionForm>
       <p className="sub px-1 leading-relaxed">
         Leave the allowance blank and the app suggests one from what you actually spend. The payday day is only used until you&apos;ve recorded a salary; after that it learns your
         real payday.
@@ -291,7 +335,7 @@ function InvestingTab({ settings }: { settings: AppSettings }) {
           fixed-deposit rate and adjust.
         </p>
       </Intro>
-      <form action={saveAssumptions} className="card grid grid-cols-2 gap-3 md:grid-cols-3">
+      <ActionForm action={saveAssumptions} className="card grid grid-cols-2 gap-3 md:grid-cols-3">
         <label>
           <span className="label">FD rate (% p.a.)</span>
           <input name="fdRatePct" type="number" step="0.01" defaultValue={settings.fdRatePct} className="input" />
@@ -316,8 +360,8 @@ function InvestingTab({ settings }: { settings: AppSettings }) {
             <option value="growth">Growth</option>
           </select>
         </label>
-        <button className="btn-primary self-end">Save assumptions</button>
-      </form>
+        <SubmitButton className="btn-primary self-end" pendingLabel="Saving...">Save assumptions</SubmitButton>
+      </ActionForm>
     </div>
   );
 }
@@ -347,6 +391,8 @@ function DataTab() {
           </a>
         </div>
       </section>
+
+      <RecentImports />
 
       <section className="card space-y-2.5" aria-labelledby="pin-h">
         <div className="flex items-center justify-between gap-3">

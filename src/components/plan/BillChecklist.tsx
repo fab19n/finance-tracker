@@ -1,5 +1,7 @@
 import { Check } from "lucide-react";
 import { payBill } from "@/app/actions/plan";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { shortDate } from "@/lib/dates";
 import { formatRM, senToInput } from "@/lib/money";
 import type { BillInCycle, BillsSummary } from "@/lib/plan/bills";
@@ -64,18 +66,24 @@ export function BillChecklist({ items, summary, today }: { items: Item[]; summar
               {!paid && (
                 <details className="pl-8 pt-1">
                   <summary className="pill cursor-pointer list-none bg-accent-soft text-accent-strong [&::-webkit-details-marker]:hidden">Mark paid →</summary>
-                  <form action={payBill} className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-[1fr_1fr_auto]">
+                  <ActionForm action={payBill} className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-[1fr_1fr_auto]">
                     <input type="hidden" name="billId" value={i.bill.id} />
                     <div>
-                      <label className="label">Amount paid (RM)</label>
-                      <input name="amount" inputMode="decimal" defaultValue={senToInput(i.expected)} required className="input" />
+                      <label className="label" htmlFor={`bill-${i.bill.id}-amount`}>
+                        Amount paid (RM)
+                      </label>
+                      <input id={`bill-${i.bill.id}-amount`} name="amount" inputMode="decimal" defaultValue={senToInput(i.expected)} required className="input" />
                     </div>
                     <div>
-                      <label className="label">Paid on</label>
-                      <input name="date" type="date" defaultValue={today} required className="input" />
+                      <label className="label" htmlFor={`bill-${i.bill.id}-date`}>
+                        Paid on
+                      </label>
+                      <input id={`bill-${i.bill.id}-date`} name="date" type="date" defaultValue={today} required className="input" />
                     </div>
-                    <button className="btn-primary col-span-2 self-end md:col-span-1">Record</button>
-                  </form>
+                    <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2 self-end md:col-span-1">
+                      Record
+                    </SubmitButton>
+                  </ActionForm>
                 </details>
               )}
             </li>

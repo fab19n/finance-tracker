@@ -73,9 +73,12 @@ export const transactions = sqliteTable(
     // Made up on the phone when an entry is typed in, and sent with it. Whatever happens to the connection, sending the same
     // entry twice can never make two rows: the second finds its id already here. Null for everything not typed on a phone.
     clientId: text("client_id"),
+    // The statement import that wrote this entry (import_batches.id), so the whole import can be undone. Null for entries typed by hand.
+    importBatch: text("import_batch"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [
+    index("tx_import_batch_idx").on(t.importBatch),
     index("tx_date_idx").on(t.date),
     // SQLite treats every NULL as different, so the many entries with no clientId never clash.
     uniqueIndex("tx_client_id_idx").on(t.clientId),
@@ -209,6 +212,20 @@ export const importRules = sqliteTable(
   },
   (t) => [uniqueIndex("import_rule_pattern_idx").on(t.pattern)],
 );
+
+/**
+ * One committed statement import, so it can be undone. `openingBefore` is the account's opening balance as it was
+ * BEFORE the import set one (null = the import did not touch the opening balance). Learned rules are not part of it.
+ */
+export const importBatches = sqliteTable("import_batches", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  accountId: integer("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  rowCount: integer("row_count").notNull(),
+  openingBefore: integer("opening_before"),
+});
 
 export type Account = typeof accounts.$inferSelect;
 export type Category = typeof categories.$inferSelect;

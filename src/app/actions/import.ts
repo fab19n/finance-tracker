@@ -8,6 +8,7 @@ import { commitRows, MAX_DESCRIPTION_LENGTH, rowShapeProblem } from "@/lib/impor
 import type { CsvOverrides } from "@/lib/import/csv";
 import { isRealDate } from "@/lib/dates";
 import { buildPreview } from "@/lib/import/preview";
+import { undoImportBatch, type UndoResult } from "@/lib/import/undo";
 import { getSettings } from "@/lib/settings";
 
 const Overrides = z
@@ -71,6 +72,13 @@ const Commit = z.object({
   rows: z.array(Row).max(5000),
   setOpeningBalance: z.number().int().nullable(),
 });
+
+/** Take back a whole import (entries it wrote, the starting balance it set). All or nothing. */
+export async function undoImport(batchId: string): Promise<UndoResult> {
+  const result = undoImportBatch(await getDb(), batchId);
+  if (result.ok) revalidatePath("/", "layout");
+  return result;
+}
 
 /** Save the reviewed rows in one go (all or nothing). */
 export async function commitImport(input: CommitInput): Promise<CommitResult> {

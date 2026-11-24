@@ -1,6 +1,7 @@
 import { AccountChips } from "@/components/AccountChips";
 import { AddEntry } from "@/components/offline/AddEntry";
 import { OutboxList } from "@/components/offline/OutboxList";
+import { SetupCard } from "@/components/setup/SetupCard";
 import { PageHeader } from "@/components/PageHeader";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
 import { TransactionRow } from "@/components/TransactionRow";
@@ -8,6 +9,7 @@ import { todayISO } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { lastAccountId, listCategories, listItemHints } from "@/lib/queries/reference";
+import { setupFacts } from "@/lib/setup";
 import { getPlan } from "@/lib/queries/plan";
 import { listTransactions, sumTransactions } from "@/lib/queries/transactions";
 
@@ -25,10 +27,12 @@ export default async function AddPage() {
   ]);
   const today = todayISO(); // safe: getDb() already deferred this render to request time
   const plan = await getPlan(today);
-  const [todays, totals] = await Promise.all([
+  const [todays, totals, anyEntry] = await Promise.all([
     listTransactions({ from: today, to: today, limit: 100 }),
     sumTransactions({ from: today, to: today }),
+    listTransactions({ limit: 1 }),
   ]);
+  const facts = setupFacts({ accounts: balances, hasSalary: plan.hasSalary, expectedIncome: plan.settings.expectedIncome, hasEntries: anyEntry.length > 0 });
 
   const spendable = balances.filter((a) => a.type !== "investment");
   const defaultAccountId =
@@ -40,6 +44,7 @@ export default async function AddPage() {
         title="Add entry"
         subtitle={<span className="hidden md:inline">Record spending, income or a transfer</span>}
       />
+      <SetupCard facts={facts} />
       {/* One quiet line, not a card (the Entry board): what is left to spend and how long until payday. */}
       <SafeToSpendCard safe={plan.safe} cycle={plan.cycle} compact />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,27.5rem)_minmax(0,1fr)] md:items-start md:gap-4">

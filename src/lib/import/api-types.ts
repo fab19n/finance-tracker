@@ -77,5 +77,6 @@ export type CommitInput = {
 };
 
 export type CommitResult =
-  | { ok: true; imported: number; skipped: number; transfers: number; rulesSaved: number; openingSet: boolean }
+  // batchId names this import so it can be undone; null when nothing was written.
+  | { ok: true; imported: number; skipped: number; transfers: number; rulesSaved: number; openingSet: boolean; batchId: string | null }
   | { ok: false; error: string };

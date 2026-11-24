@@ -2,15 +2,19 @@
 
 import { AlertTriangle, Check, CheckCircle2, FileText, FileUp, Loader2, Lock, Upload, X } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { commitImport, previewStatement } from "@/app/actions/import";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import type { CommitResult, PreviewOk, PreviewResult } from "@/lib/import/api-types";
 import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
 import { dayLabel } from "@/lib/dates";
+import { clearDraft, fingerprint, lastDraft, loadDraft, saveDraft, type Draft } from "@/lib/import/draft";
 import { IMPORT_TOO_LARGE, MAX_IMPORT_BYTES } from "@/lib/import/limits";
+import { confirmEdited, needsLook as rowNeedsLook, rowIncomplete, watchAfterEdit } from "@/lib/import/review";
 import { formatRM } from "@/lib/money";
 import { ColumnMapper } from "./ColumnMapper";
+import { UndoImport } from "./UndoImport";
 
 type Account = { id: number; name: string; type: string; purpose: string | null };
 type Category = { id: number; name: string; type: "income" | "expense"; icon: string };
@@ -28,6 +32,10 @@ type EditRow = ClassifiedRow & {
   remember: boolean;
   /** The user touched this row, so changes to similar rows no longer overwrite it. */
   edited: boolean;
+  /** "Looks right": you checked it, so it leaves "Needs a look" (see lib/import/review.ts). */
+  confirmed: boolean;
+  /** It was flagged when you changed it, so it stays in "Needs a look" until confirmed. */
+  watch: boolean;
 };
 
 type Filter = "attention" | "all" | "skipped";
@@ -64,8 +72,25 @@ function Status({ tone, children }: { tone: Tone; children: ReactNode }) {
 
 function toEdit(r: ClassifiedRow): EditRow {
   const p = r.proposal;
-  return { ...r, kind: p.kind, categoryId: p.categoryId, item: p.item, billId: p.billId, shareId: p.shareId, transferAccountId: p.transferAccountId, remember: false, edited: false };
+  return { ...r, kind: p.kind, categoryId: p.categoryId, item: p.item, billId: p.billId, shareId: p.shareId, transferAccountId: p.transferAccountId, remember: false, edited: false, confirmed: false, watch: false };
 }
+
+/** Local storage, or null where it is blocked (a private window): the review then simply can't be resumed. */
+function store(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+async function fingerprintOf(file: File | null, text: string): Promise<string | null> {
+  if (file) return fingerprint(new Uint8Array(await file.arrayBuffer()));
+  return text.trim() ? fingerprint(text.trim()) : null;
+}
+
+/** What to run again when "Try again" is pressed after the PC couldn't be reached. */
+type Retry = { kind: "read"; overrides?: object; asAccount?: number } | { kind: "save" };
 
 export function ImportWizard({ accounts, categories, bills, shares }: { accounts: Account[]; categories: Category[]; bills: Bill[]; shares: Share[] }) {
   const statementAccounts = accounts.filter((a) => a.type !== "investment");
@@ -87,18 +112,127 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const [ackAccount, setAckAccount] = useState(false);
   const [result, setResult] = useState<Extract<CommitResult, { ok: true }> | null>(null);
   const [pending, start] = useTransition();
+  // The PC couldn't be reached (the call threw): nothing was changed, and what to run again.
+  const [unreachable, setUnreachable] = useState<Retry | null>(null);
+  const [undone, setUndone] = useState(false);
+  // The statement's fingerprint and any saved review of it (see lib/import/draft.ts).
+  const [fp, setFp] = useState<string | null>(null);
+  const [offer, setOffer] = useState<Draft | null>(null);
+  const [unfinished, setUnfinished] = useState<{ fileName: string | null; savedAt: string } | null>(null);
+  const latestDraft = useRef<Draft | null>(null);
 
   const account = accounts.find((a) => a.id === accountId);
 
+  // A review left unfinished on this device (a reload, a phone that went to sleep): say so on the upload screen.
+  useEffect(() => {
+    let live = true;
+    void Promise.resolve().then(() => {
+      const s = store();
+      const last = s ? lastDraft(s) : null;
+      if (live) setUnfinished(last ? { fileName: last.fileName, savedAt: last.savedAt } : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The chosen file (or pasted text) has a saved review: offer to resume it.
+  useEffect(() => {
+    let live = true;
+    void fingerprintOf(file, text).then((f) => {
+      if (!live) return;
+      setFp(f);
+      const s = store();
+      setOffer(f && s ? loadDraft(s, f) : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [file, text]);
+
+  // Keep the review on this device while it is open. Never the PDF password: the draft has no place for it.
+  function flushDraft() {
+    const s = store();
+    if (s && latestDraft.current) saveDraft(s, latestDraft.current);
+  }
+  useEffect(() => {
+    if (!preview || result || !fp) {
+      latestDraft.current = null;
+      return;
+    }
+    latestDraft.current = {
+      v: 1,
+      fp,
+      savedAt: new Date().toISOString(),
+      fileName: file?.name ?? null,
+      accountId: preview.account.id,
+      startDate,
+      setOpening,
+      filter,
+      preview: { ...preview, rows: [] },
+      rows: rows as unknown as Record<string, unknown>[],
+    };
+    const t = setTimeout(flushDraft, 400);
+    return () => clearTimeout(t);
+  }, [preview, result, fp, rows, filter, setOpening, startDate, file]);
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushDraft);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushDraft);
+    };
+  }, []);
+
+  function resume(d: Draft) {
+    const saved = d.rows as unknown as EditRow[];
+    setPreview({ ...(d.preview as unknown as PreviewOk), rows: saved });
+    setRows(saved.map((r) => ({ ...r, confirmed: r.confirmed ?? false, watch: r.watch ?? false })));
+    setAccountId(d.accountId);
+    setStartDate(d.startDate);
+    setSetOpening(d.setOpening);
+    setFilter(d.filter);
+    setShown(PAGE);
+    setAck(false);
+    setAckAccount(false);
+    setError(null);
+    setUnreachable(null);
+    setOffer(null);
+  }
+
+  function startOver() {
+    const s = store();
+    if (s && fp) clearDraft(s, fp);
+    setOffer(null);
+    setUnfinished(null);
+  }
+
+  /** Back to choosing a file. The review stays saved on this device, so choosing the same file again resumes it. */
+  function leaveReview() {
+    setPreview(null);
+    setRows([]);
+    setError(null);
+    setUnreachable(null);
+    setNeedPassword(false);
+    setPassword("");
+    setMapping(null);
+    const s = store();
+    setOffer(fp && s ? loadDraft(s, fp) : null);
+  }
+
   async function read(overrides?: object, asAccount?: number) {
     setError(null);
+    setUnreachable(null);
     setMapping(null);
     if (file && file.size > MAX_IMPORT_BYTES) {
       setError(IMPORT_TOO_LARGE);
       return;
     }
+    // The account only changes once the re-read has worked: a failed one leaves the review (and where it commits) as it was.
     const forAccount = asAccount ?? accountId;
-    if (asAccount) setAccountId(asAccount);
     const fd = new FormData();
     fd.set("accountId", String(forAccount));
     if (file) fd.set("file", file);
@@ -107,17 +241,31 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     if (startDate) fd.set("startDate", startDate);
     if (overrides) fd.set("overrides", JSON.stringify(overrides));
     start(async () => {
-      const res: PreviewResult = await previewStatement(fd);
+      let res: PreviewResult;
+      try {
+        res = await previewStatement(fd);
+      } catch {
+        setUnreachable({ kind: "read", overrides, asAccount });
+        return;
+      }
       if (!res.ok) {
         setError(res.error);
         setNeedPassword(!!res.needPassword);
         if (res.mapping) setMapping(res.mapping);
         return;
       }
+      // Worked: the password was used once and is not kept, and nothing from an earlier attempt stays on screen.
       setNeedPassword(false);
+      setPassword("");
+      setError(null);
+      setOffer(null);
+      setAccountId(res.account.id);
+      setFp(await fingerprintOf(file, text));
+      const edits = res.rows.map(toEdit);
+      const flagged = new Set(res.check.mismatches);
       setPreview(res);
-      setRows(res.rows.map(toEdit));
-      setFilter(res.stats.needsReview > 0 || res.check.mismatches.length > 0 ? "attention" : "all");
+      setRows(edits);
+      setFilter(edits.some((r) => rowNeedsLook(r, flagged)) || res.check.mismatches.length > 0 ? "attention" : "all");
       setShown(PAGE);
       setSetOpening(res.account.existingEntries === 0 && res.openingBalance !== null);
       setAck(false);
@@ -127,20 +275,25 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
 
   const catsFor = (kind: ProposalKind) => categories.filter((c) => c.type === (kind === "income" ? "income" : "expense"));
 
+  const mismatch = useMemo(() => new Set(preview?.check.mismatches ?? []), [preview]);
+
   function patch(key: string, change: Partial<EditRow>) {
     setRows((all) => {
       const target = all.find((r) => r.key === key);
       if (!target) return all;
-      const merged: EditRow = { ...target, ...change, edited: true, remember: change.remember ?? true };
+      const merged: EditRow = { ...target, ...change, edited: true, confirmed: false, remember: change.remember ?? true };
       if (change.kind === "transfer") merged.billId = null;
       if (change.kind && change.kind !== "income") merged.shareId = null; // a share payment is money in, nothing else
       // Carry the decision to the other untouched lines from the same payee going the same way, so one
       // correction fixes them all ("Starbucks" -> Eating Out, everywhere).
       const carried = Object.fromEntries((["kind", "categoryId", "transferAccountId", "item"] as const).filter((k) => k in change).map((k) => [k, merged[k]])) as Partial<EditRow>;
+      merged.watch = watchAfterEdit(target, merged, mismatch);
       return all.map((r) => {
         if (r.key === key) return merged;
         const alike = r.group === target.group && !r.edited && r.proposal.source !== "duplicate" && r.kind !== "skip" && r.amount < 0 === target.amount < 0;
-        return alike ? { ...r, ...carried } : r;
+        if (!alike) return r;
+        const next = { ...r, ...carried };
+        return { ...next, watch: watchAfterEdit(r, next, mismatch) };
       });
     });
   }
@@ -148,42 +301,81 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const problems = useMemo(() => {
     const bad = new Set<string>();
     for (const r of rows) {
-      if (r.kind === "skip") continue;
-      if ((r.kind === "expense" || r.kind === "income") && !r.categoryId) bad.add(r.key);
-      if (r.kind === "transfer" && !r.transferAccountId) bad.add(r.key);
+      if (rowIncomplete(r)) bad.add(r.key);
     }
     return bad;
   }, [rows]);
 
-  const mismatch = useMemo(() => new Set(preview?.check.mismatches ?? []), [preview]);
-  const needsLook = (r: EditRow) => r.kind !== "skip" && (problems.has(r.key) || mismatch.has(r.index) || (!r.edited && r.proposal.confidence === "low") || r.signedBy === "guess");
+  const needsLook = (r: EditRow) => rowNeedsLook(r, mismatch);
+  // ONE count, used by the summary line and the tab alike.
+  const lookCount = rows.filter(needsLook).length;
   const visible = rows.filter((r) => (filter === "all" ? true : filter === "skipped" ? r.kind === "skip" : needsLook(r)));
   const toImport = rows.filter((r) => r.kind !== "skip");
 
+  /** Leaving "Needs a look" counts the lines you changed as looked at. */
+  function chooseFilter(f: Filter) {
+    if (filter === "attention" && f !== "attention") setRows(confirmEdited);
+    setFilter(f);
+    setShown(PAGE);
+  }
+
   function save() {
     if (!preview) return;
+    setError(null);
+    setUnreachable(null);
     start(async () => {
-      const res = await commitImport({
-        accountId,
-        setOpeningBalance: setOpening && preview.openingBalance !== null ? preview.openingBalance : null,
-        rows: rows.map((r) => ({
-          key: r.key,
-          date: r.date,
-          amount: r.amount,
-          description: r.description,
-          kind: r.kind,
-          categoryId: r.kind === "transfer" || r.kind === "skip" ? null : r.categoryId,
-          item: r.item,
-          billId: r.kind === "expense" ? r.billId : null,
-          shareId: r.kind === "income" ? r.shareId : null,
-          transferAccountId: r.kind === "transfer" ? r.transferAccountId : null,
-          remember: r.remember && r.kind !== "skip",
-        })),
-      });
-      if (res.ok) setResult(res);
-      else setError(res.error);
+      let res: CommitResult;
+      try {
+        res = await commitImport({
+          // The account the review was READ for, which is what its duplicates and transfers were worked out against.
+          accountId: preview.account.id,
+          setOpeningBalance: setOpening && preview.openingBalance !== null ? preview.openingBalance : null,
+          rows: rows.map((r) => ({
+            key: r.key,
+            date: r.date,
+            amount: r.amount,
+            description: r.description,
+            kind: r.kind,
+            categoryId: r.kind === "transfer" || r.kind === "skip" ? null : r.categoryId,
+            item: r.item,
+            billId: r.kind === "expense" ? r.billId : null,
+            shareId: r.kind === "income" ? r.shareId : null,
+            transferAccountId: r.kind === "transfer" ? r.transferAccountId : null,
+            remember: r.remember && r.kind !== "skip",
+          })),
+        });
+      } catch {
+        // The review is untouched. Sending again is safe: the PC skips anything it already saved.
+        setUnreachable({ kind: "save" });
+        return;
+      }
+      if (res.ok) {
+        latestDraft.current = null;
+        const s = store();
+        if (s && fp) clearDraft(s, fp);
+        setUndone(false);
+        setResult(res);
+      } else setError(res.error);
     });
   }
+
+  function tryAgain() {
+    if (!unreachable) return;
+    if (unreachable.kind === "save") save();
+    else void read(unreachable.overrides, unreachable.asAccount);
+  }
+
+  const unreachableBanner = unreachable && (
+    <div role="alert" className="banner banner-danger flex-col items-stretch gap-2">
+      <p className="flex gap-2 font-black leading-snug">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+        {preview ? "Couldn't reach your PC. Nothing was imported, your review is kept." : "Couldn't reach your PC. Nothing was imported, your file and choices are kept."}
+      </p>
+      <button type="button" className="btn self-start" disabled={pending} onClick={tryAgain}>
+        {pending && <Loader2 size={16} strokeWidth={3} className="animate-spin" aria-hidden />} Try again
+      </button>
+    </div>
+  );
 
   /**
    * The page around every phase: the one <h1> (with the step in its subtitle, so it can follow the wizard) and a single
@@ -224,10 +416,41 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           <Link href="/transactions?month=all" className="btn">
             View activity
           </Link>
-          <button className="btn" onClick={() => { setResult(null); setPreview(null); setRows([]); setFile(null); setText(""); setPassword(""); }}>
-            Import another statement
-          </button>
+          {(() => {
+            const another = () => {
+              setResult(null);
+              setPreview(null);
+              setRows([]);
+              setFile(null);
+              setText("");
+              setPassword("");
+              setError(null);
+              setUnreachable(null);
+              setNeedPassword(false);
+              setMapping(null);
+              setOffer(null);
+            };
+            // Leaving this screen drops the Undo button (it stays in Settings), so a stray tap is asked about first.
+            return result.batchId && !undone ? (
+              <form onSubmit={(e) => { e.preventDefault(); another(); }}>
+                <ConfirmSubmit
+                  trigger="Import another statement"
+                  triggerClassName="btn"
+                  tone="neutral"
+                  title="Import another statement?"
+                  body="This one is saved. If you change your mind, you can still undo it from Settings, under Appearance & data."
+                  confirmLabel="Import another"
+                  cancelLabel="Stay here"
+                />
+              </form>
+            ) : (
+              <button type="button" className="btn" onClick={another}>
+                Import another statement
+              </button>
+            );
+          })()}
         </div>
+        {result.batchId && <UndoImport batchId={result.batchId} count={result.imported} accountName={account?.name ?? "this account"} onUndone={() => setUndone(true)} />}
       </div>,
     );
   }
@@ -264,6 +487,28 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               <p className="sub mt-0.5 !text-[11px]">{file ? "Tap to choose a different file" : "PDF or CSV"}</p>
               <input id="imp-file" type="file" accept=".pdf,.csv,.txt,application/pdf,text/csv" className="absolute inset-0 size-full cursor-pointer opacity-0" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </div>
+            {offer ? (
+              <div className="banner banner-warn mt-2 flex-col items-stretch gap-2">
+                <p className="font-black leading-snug">You already started reviewing this statement.</p>
+                <p className="text-xs font-semibold leading-snug">
+                  {offer.rows.length} lines, saved on this device {new Date(offer.savedAt).toLocaleString("en-MY", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}. Your changes are kept.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-primary" onClick={() => resume(offer)}>
+                    Resume your last review
+                  </button>
+                  <button type="button" className="btn" onClick={startOver}>
+                    Start over
+                  </button>
+                </div>
+              </div>
+            ) : (
+              unfinished && (
+                <p className="sub mt-2 !text-xs">
+                  You have an unfinished review{unfinished.fileName ? ` of ${unfinished.fileName}` : ""}. Choose the same statement again to pick up where you left off.
+                </p>
+              )
+            )}
             <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-muted">
               <Lock size={12} aria-hidden /> Read on this computer only. Nothing is uploaded anywhere.
             </p>
@@ -317,6 +562,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden /> {error}
             </p>
           )}
+          {unreachableBanner}
 
           <button className="btn-primary w-full" disabled={pending || (!file && !text.trim())}>
             {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" /> : <FileUp size={16} aria-hidden />} Read statement
@@ -392,9 +638,22 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                 </>
               )}
             </p>
-            <button type="button" className="mt-1 inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong" onClick={() => { setPreview(null); setRows([]); }}>
-              ← Choose a different file
-            </button>
+            {rows.some((r) => r.edited || r.confirmed) ? (
+              <form onSubmit={(e) => { e.preventDefault(); leaveReview(); }}>
+                <ConfirmSubmit
+                  trigger="← Choose a different file"
+                  triggerClassName="mt-1 inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong"
+                  title="Leave this review?"
+                  body="Your changes are saved on this device. Choose the same statement again and you can resume them, or start over."
+                  confirmLabel="Choose a different file"
+                  cancelLabel="Keep reviewing"
+                />
+              </form>
+            ) : (
+              <button type="button" className="mt-1 inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong" onClick={leaveReview}>
+                ← Choose a different file
+              </button>
+            )}
           </div>
           <span className={`pill ${PILL[balanceTone]}`}>
             {allGood ? <Check size={12} strokeWidth={3} aria-hidden /> : <AlertTriangle size={12} aria-hidden />}
@@ -478,16 +737,16 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         {stats.duplicates > 0 && <> · {stats.duplicates} already recorded (skipped)</>}
         {stats.holds > 0 && <> · {stats.holds} lines that cancel out: card holds and reversed transfers (skipped)</>}
         {preview.leftOut > 0 && <> · {preview.leftOut} earlier lines left out (before {dayLabel(startDate)})</>}
-        {stats.needsReview > 0 && <> · <strong className="font-black text-warn">{stats.needsReview}</strong> need a look</>}
+        {lookCount > 0 && <> · <strong className="font-black text-warn">{lookCount}</strong> need a look</>}
       </p>
 
-      <div className="no-scrollbar -mx-5 flex gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="tablist" aria-label="Filter lines">
+      <div className="no-scrollbar -mx-5 flex gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Filter lines">
         {([
-          ["attention", `Needs a look (${rows.filter(needsLook).length})`],
+          ["attention", `Needs a look (${lookCount})`],
           ["all", `All (${rows.length})`],
           ["skipped", `Skipped (${rows.filter((r) => r.kind === "skip").length})`],
         ] as const).map(([f, label]) => (
-          <button key={f} type="button" role="tab" aria-selected={filter === f} onClick={() => { setFilter(f); setShown(PAGE); }} className="chip">
+          <button key={f} type="button" aria-pressed={filter === f} onClick={() => chooseFilter(f)} className="chip">
             {label}
           </button>
         ))}
@@ -553,7 +812,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                   ) : (
                     <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">{r.proposal.reason}</p>
                   )}
-                  {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
+                  {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
                 </div>
 
                 {r.kind !== "skip" && (
@@ -587,13 +846,20 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                     Remember for next time
                   </label>
                 )}
+
+                {/* A flagged line stays here after you change it, until you say it is right (or leave the tab). Lines that don't add up are cleared by the tick below instead. */}
+                {needsLook(r) && !off && !problems.has(r.key) && (
+                  <button type="button" className="btn mt-2 w-full md:w-auto" onClick={() => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, confirmed: true } : x)))}>
+                    <Check size={14} strokeWidth={3} aria-hidden /> Looks right
+                  </button>
+                )}
               </li>
             );
           })}
         </ul>
       )}
       {visible.length > shown && (
-        <button className="btn w-full" onClick={() => setShown((n) => n + PAGE)}>
+        <button type="button" className="btn w-full" onClick={() => setShown((n) => n + PAGE)}>
           Show {Math.min(PAGE, visible.length - shown)} more
         </button>
       )}
@@ -604,6 +870,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           <span>{error}</span>
         </p>
       )}
+      {unreachableBanner}
 
       {/* The commit bar. It floats above the phone's tab bar (the floating bar and the raised Add button, about 100 px, plus the iPhone's safe area), and this one shadow is the
           design's single exception to "no shadows": the bar lies over white cards, so nothing else would set it apart. */}

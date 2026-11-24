@@ -1,3 +1,5 @@
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { AlertCircle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
 import { connection } from "next/server";
 import { refreshPrices } from "@/app/actions/investments";
@@ -74,13 +76,13 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
         subtitle={count === 0 ? "Nothing invested yet" : `${count} investment${count === 1 ? "" : "s"}`}
         actions={
           canRefresh && (
-            <form action={refreshPrices}>
-              <button className="btn">
+            <ActionForm action={refreshPrices}>
+              <SubmitButton className="btn" pendingLabel="Refreshing...">
                 <RefreshCw size={14} strokeWidth={2.5} aria-hidden />
                 <span className="md:hidden">Refresh</span>
                 <span className="hidden md:inline">Refresh prices</span>
-              </button>
-            </form>
+              </SubmitButton>
+            </ActionForm>
           )
         }
       />

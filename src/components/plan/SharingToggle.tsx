@@ -1,4 +1,6 @@
 import { ChevronDown } from "lucide-react";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { setSharing } from "@/app/actions/shares";
 
 /**
@@ -14,7 +16,7 @@ export function SharingToggle({ billId, billName, sharing }: { billId: number; b
         </span>
         <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 transition group-open:rotate-180" aria-hidden />
       </summary>
-      <form action={setSharing} className="mt-3 space-y-2.5">
+      <ActionForm action={setSharing} className="mt-3 space-y-2.5">
         <input type="hidden" name="billId" value={billId} />
         <select name="sharing" defaultValue={sharing} className="input" aria-label={`How ${billName} is split`}>
           <option value="monthly">Everyone pays an equal part of every month (a lump sum covers the oldest months)</option>
@@ -26,8 +28,8 @@ export function SharingToggle({ billId, billName, sharing }: { billId: number; b
         <p className="sub leading-relaxed">
           Switching to turns sets each person&apos;s amount to the bill&apos;s usual amount, and you then plan whose month is whose. Nothing you have received is changed.
         </p>
-        <button className="btn">Save</button>
-      </form>
+        <SubmitButton className="btn" pendingLabel="Saving...">Save</SubmitButton>
+      </ActionForm>
     </details>
   );
 }

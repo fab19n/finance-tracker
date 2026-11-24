@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { archiveInvestment, recordInvestmentFlow, recordValuation, updateHolding } from "@/app/actions/investments";
 
 type Funding = { id: number; name: string }[];
@@ -63,7 +65,7 @@ export function HoldingActions({
       {open && (
         <div id={panelId} className="mt-3 space-y-4 rounded-2xl bg-card-subtle p-3.5">
           {open === "value" && !isFd && (
-            <form action={recordValuation} className="grid grid-cols-2 gap-2.5">
+            <ActionForm action={recordValuation} className="grid grid-cols-2 gap-2.5">
               <input type="hidden" name="accountId" value={accountId} />
               <div>
                 <label className="label" htmlFor={`${uid}-worth`}>
@@ -77,12 +79,12 @@ export function HoldingActions({
                 </label>
                 <input id={`${uid}-asof`} name="date" type="date" defaultValue={today} required className="input" />
               </div>
-              <button className="btn-primary col-span-2">Update value</button>
-            </form>
+              <SubmitButton pendingLabel="Updating..." className="btn-primary col-span-2">Update value</SubmitButton>
+            </ActionForm>
           )}
 
           {(open === "in" || open === "out") && (
-            <form key={open} action={recordInvestmentFlow} className="grid grid-cols-2 gap-2.5">
+            <ActionForm key={open} action={recordInvestmentFlow} className="grid grid-cols-2 gap-2.5">
               <input type="hidden" name="accountId" value={accountId} />
               <input type="hidden" name="direction" value={open} />
               <div>
@@ -109,14 +111,16 @@ export function HoldingActions({
                   ))}
                 </select>
               </div>
-              <button className="btn-primary col-span-2">{open === "in" ? "Add money" : "Take out"}</button>
-            </form>
+              <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2">
+                {open === "in" ? "Add money" : "Take out"}
+              </SubmitButton>
+            </ActionForm>
           )}
 
           {open === "more" && (
             <>
               {!isFd && (
-                <form action={updateHolding} className="grid grid-cols-2 gap-2.5">
+                <ActionForm action={updateHolding} className="grid grid-cols-2 gap-2.5">
                   <input type="hidden" name="accountId" value={accountId} />
                   <div>
                     <label className="label" htmlFor={`${uid}-ticker`}>
@@ -140,14 +144,14 @@ export function HoldingActions({
                       ))}
                     </select>
                   </div>
-                  <button className="btn self-end">Save price tracking</button>
-                </form>
+                  <SubmitButton pendingLabel="Saving..." className="btn self-end">Save price tracking</SubmitButton>
+                </ActionForm>
               )}
 
-              <form action={archiveInvestment}>
+              <ActionForm action={archiveInvestment}>
                 <input type="hidden" name="accountId" value={accountId} />
-                <button className="btn-danger">Archive this investment</button>
-              </form>
+                <SubmitButton pendingLabel="Archiving..." className="btn-danger">Archive this investment</SubmitButton>
+              </ActionForm>
             </>
           )}
         </div>

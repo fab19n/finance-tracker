@@ -10,6 +10,7 @@ import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { monthlyCommitments } from "@/lib/plan/bills";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { qs, type SearchParams } from "@/lib/queries/filters";
+import { getBillUsage } from "@/lib/queries/bill-usage";
 import { listBills, listSalaries } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
@@ -21,7 +22,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
   await connection();
   const sp = await searchParams;
   const error = first(sp.error);
-  const [allBills, categories, accounts, salaries, settings] = await Promise.all([listBills(), listCategories(), getAccountBalances(), listSalaries(), getSettings()]);
+  const [allBills, categories, accounts, salaries, settings, usage] = await Promise.all([listBills(), listCategories(), getAccountBalances(), listSalaries(), getSettings(), getBillUsage()]);
 
   // One account on its own (?account=): only the bills paid from it. (An investment account pays none, so it isn't offered.)
   const payingAccounts = accounts.filter((a) => a.type !== "investment");
@@ -109,7 +110,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                   <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="mt-3">
-                  <BillForm bill={b} categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} />
+                  <BillForm bill={b} usage={usage.get(b.id)} categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} />
                 </div>
               </details>
             </li>

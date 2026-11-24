@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { accounts, billShares, billTurns, categories, importRules, recurringBill
 import { isRealDate } from "@/lib/dates";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
+import { ALREADY_RECORDED } from "@/lib/plan/messages";
 import { getRoleAccounts } from "@/lib/queries/plan";
 
 const DATE = z.string().refine((s) => isRealDate(s), "Pick a valid date");
@@ -96,6 +97,12 @@ export async function deleteBill(formData: FormData): Promise<void> {
   done("/plan/bills");
 }
 
+/**
+ * "Made in the last minute": the double-tap guards below only refuse a twin that was recorded moments ago (a double tap, or
+ * a retry after a lost reply). A genuine second payment of the same amount on the same day, recorded later, still goes through.
+ */
+const justNow = () => sql`${transactions.createdAt} >= datetime('now', '-60 seconds')`;
+
 const PayInput = z.object({ billId: z.string().min(1), amount: z.string(), date: DATE });
 
 /** "Mark paid": records the payment as spending from the bill's account and links it to the bill. */
@@ -108,6 +115,13 @@ export async function payBill(formData: FormData): Promise<void> {
   const db = await getDb();
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(p.data!.billId))).get();
   if (!bill) done("/plan", "That bill no longer exists");
+  // A double tap (or a retry after a lost reply) sends the same bill, day and amount twice: record it once.
+  const twin = db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(and(eq(transactions.billId, bill!.id), eq(transactions.date, p.data!.date), eq(transactions.amount, amount!), eq(transactions.type, "expense"), justNow()))
+    .get();
+  if (twin) done("/plan", ALREADY_RECORDED);
   db.insert(transactions)
     .values({
       date: p.data!.date,
@@ -140,6 +154,21 @@ export async function recordSalary(formData: FormData): Promise<void> {
   if (!salary || salary.archived || salary.type !== "income") {
     done("/plan", 'Salary needs an income category named "Salary". Add or restore it in Settings > Categories, then record the pay again');
   }
+  const twin = db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.type, "income"),
+        eq(transactions.accountId, spending!.id),
+        eq(transactions.categoryId, salary!.id),
+        eq(transactions.date, p.data!.date),
+        eq(transactions.amount, amount!),
+        justNow(),
+      ),
+    )
+    .get();
+  if (twin) done("/plan", ALREADY_RECORDED);
   db.insert(transactions)
     .values({ date: p.data!.date, type: "income", amount: amount!, accountId: spending!.id, categoryId: salary!.id, item: "Salary" })
     .run();
@@ -158,6 +187,21 @@ export async function recordPaydayTransfer(formData: FormData): Promise<void> {
   const { spending, savings } = await getRoleAccounts();
   if (!spending || !savings) done("/plan", "Choose your spending and savings accounts in Settings first");
   const db = await getDb();
+  const twin = db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.type, "transfer"),
+        eq(transactions.accountId, spending!.id),
+        eq(transactions.toAccountId, savings!.id),
+        eq(transactions.date, p.data!.date),
+        eq(transactions.amount, amount!),
+        justNow(),
+      ),
+    )
+    .get();
+  if (twin) done("/plan", ALREADY_RECORDED);
   db.insert(transactions)
     .values({
       date: p.data!.date,

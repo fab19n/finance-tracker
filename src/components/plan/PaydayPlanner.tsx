@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { recordPaydayTransfer } from "@/app/actions/plan";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { formatPct, formatRM, parseSen, senToInput } from "@/lib/money";
 import { planPayday } from "@/lib/plan/payday";
 
@@ -33,6 +35,7 @@ const FROM_ALLOWANCE = {
  * "what if I allow RM 1,200 for everyday things?" before touching any money.
  */
 export function PaydayPlanner(p: Props) {
+  const uid = useId();
   const [income, setIncome] = useState(p.income ? senToInput(p.income) : "");
   const [allowance, setAllowance] = useState(p.allowance ? senToInput(p.allowance) : "");
   const [buffer, setBuffer] = useState(senToInput(p.buffer));
@@ -144,20 +147,24 @@ export function PaydayPlanner(p: Props) {
         </div>
       )}
 
-      <form action={recordPaydayTransfer} className="grid grid-cols-2 gap-2.5" key={plan.moveToSavings}>
+      <ActionForm action={recordPaydayTransfer} className="grid grid-cols-2 gap-2.5" key={plan.moveToSavings}>
         <div>
-          <label className="label">Amount you moved to savings (RM)</label>
-          <input name="amount" inputMode="decimal" defaultValue={senToInput(plan.moveToSavings)} required className="input" />
+          <label className="label" htmlFor={`${uid}-moved`}>
+            Amount you moved to savings (RM)
+          </label>
+          <input id={`${uid}-moved`} name="amount" inputMode="decimal" defaultValue={senToInput(plan.moveToSavings)} required className="input" />
         </div>
         <div>
-          <label className="label">Date</label>
-          <input name="date" type="date" defaultValue={p.today} required className="input" />
+          <label className="label" htmlFor={`${uid}-moved-on`}>
+            Date
+          </label>
+          <input id={`${uid}-moved-on`} name="date" type="date" defaultValue={p.today} required className="input" />
         </div>
-        <button className="btn-primary col-span-2 w-full" disabled={!p.canRecord}>
+        <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2 w-full" disabled={!p.canRecord}>
           I moved it
-        </button>
+        </SubmitButton>
         {!p.canRecord && <p className="sub col-span-2">Choose your spending and savings accounts in Settings to record the transfer here.</p>}
-      </form>
+      </ActionForm>
     </div>
   );
 }

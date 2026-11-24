@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { DB } from "@/db/open";
 import { accounts, categories, importRules, recurringBills, transactions } from "@/db/schema";
 
@@ -159,6 +159,70 @@ describe("payBill / recordSalary / recordPaydayTransfer", () => {
     const { recordPaydayTransfer } = await import("@/app/actions/plan");
     await redirected(recordPaydayTransfer(fd({ amount: "1,800", date: "2026-09-28" })));
     expect(txs()).toMatchObject([{ type: "transfer", amount: RM(1800), accountId: main, toAccountId: savings }]);
+  });
+});
+
+describe("a double tap records once", () => {
+  it("'Mark paid' twice for the same bill, day and amount adds one entry and says so", async () => {
+    const { saveBill, payBill } = await import("@/app/actions/plan");
+    await redirected(saveBill(bill()));
+    const b = bills()[0];
+    const pay = (over: Record<string, string> = {}) => payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08", ...over }));
+    expect(await redirected(pay())).toBe("/plan");
+    expect(readable(await redirected(pay()))).toMatch(/Already recorded/);
+    expect(txs()).toHaveLength(1);
+    // a different amount or day is a different payment
+    await redirected(pay({ amount: "90" }));
+    await redirected(pay({ date: "2026-11-08" }));
+    expect(txs()).toHaveLength(3);
+  });
+  it("'Record salary' twice for the same day and amount adds one entry", async () => {
+    const { recordSalary } = await import("@/app/actions/plan");
+    await redirected(recordSalary(fd({ amount: "5400", date: "2026-09-28" })));
+    expect(readable(await redirected(recordSalary(fd({ amount: "5400", date: "2026-09-28" }))))).toMatch(/Already recorded/);
+    expect(txs()).toHaveLength(1);
+    await redirected(recordSalary(fd({ amount: "5400", date: "2026-10-28" })));
+    expect(txs()).toHaveLength(2);
+  });
+  it("'I moved it' twice for the same day and amount adds one transfer", async () => {
+    const { recordPaydayTransfer } = await import("@/app/actions/plan");
+    await redirected(recordPaydayTransfer(fd({ amount: "1800", date: "2026-09-28" })));
+    expect(readable(await redirected(recordPaydayTransfer(fd({ amount: "1800", date: "2026-09-28" }))))).toMatch(/Already recorded/);
+    expect(txs()).toHaveLength(1);
+    await redirected(recordPaydayTransfer(fd({ amount: "1900", date: "2026-09-28" })));
+    expect(txs()).toHaveLength(2);
+  });
+});
+
+describe("the double-tap guard only covers moments ago", () => {
+  it("a same-day same-amount payment recorded earlier does not block a genuine second one", async () => {
+    const { saveBill, payBill } = await import("@/app/actions/plan");
+    await redirected(saveBill(bill()));
+    const b = bills()[0];
+    const pay = () => payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08" }));
+    await redirected(pay());
+    h.db.run(sql`UPDATE transactions SET created_at = datetime('now', '-10 minutes')`);
+    expect(await redirected(pay())).toBe("/plan");
+    expect(txs()).toHaveLength(2);
+  });
+});
+
+describe("what deleting a bill takes with it", () => {
+  it("counts the payments, people, turns and import rules per bill", async () => {
+    const { saveBill, payBill } = await import("@/app/actions/plan");
+    const { getBillUsage } = await import("@/lib/queries/bill-usage");
+    const { billShares, billTurns } = await import("@/db/schema");
+    await redirected(saveBill(bill()));
+    await redirected(saveBill(bill({ name: "Spotify" })));
+    const [a, b] = bills();
+    await redirected(payBill(fd({ billId: String(a.id), amount: "88.90", date: "2026-10-08" })));
+    const p = h.db.insert(billShares).values({ billId: a.id, name: "Sam", share: 500, startMonth: "2026-01" }).returning().get();
+    h.db.insert(billShares).values({ billId: a.id, name: "Lee", share: 500, startMonth: "2026-01" }).run();
+    h.db.insert(billTurns).values([{ billId: a.id, month: "2026-10", shareId: p.id }, { billId: a.id, month: "2026-11", shareId: null }]).run();
+    h.db.insert(importRules).values({ pattern: "netflix", kind: "expense", billId: a.id }).run();
+    const usage = await getBillUsage();
+    expect(usage.get(a.id)).toEqual({ payments: 1, people: 2, turns: 2, rules: 1 });
+    expect(usage.get(b.id)).toBeUndefined();
   });
 });
 

@@ -2,7 +2,7 @@ import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { DB } from "@/db/open";
 import { isRealDate } from "@/lib/dates";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
-import { accounts, billShares, categories, importRules, recurringBills, transactions } from "@/db/schema";
+import { accounts, billShares, categories, importBatches, importRules, recurringBills, transactions } from "@/db/schema";
 import type { CommitInput, CommitResult, CommitRow } from "./api-types";
 import { rulePattern } from "./classify";
 
@@ -91,6 +91,8 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
   let transfers = 0;
   let rulesSaved = 0;
   let openingSet = false;
+  // Every entry this run writes carries this id, which is what "Undo this import" deletes by.
+  const batchId = crypto.randomUUID();
 
   db.transaction((tx) => {
     for (const r of todo) {
@@ -109,6 +111,7 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
             item: r.item.trim() || null,
             note,
             importKey: r.key,
+            importBatch: batchId,
           })
           .run();
         transfers++;
@@ -125,6 +128,7 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
             billId: r.kind === "expense" ? r.billId : null,
             shareId: r.kind === "income" ? r.shareId ?? null : null,
             importKey: r.key,
+            importBatch: batchId,
           })
           .run();
       }
@@ -161,7 +165,14 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
       tx.update(accounts).set({ openingBalance: input.setOpeningBalance }).where(eq(accounts.id, account.id)).run();
       openingSet = true;
     }
+
+    // The record that makes the import undoable; written in the same transaction, so it exists exactly when the entries do.
+    if (imported > 0 || openingSet) {
+      tx.insert(importBatches)
+        .values({ id: batchId, accountId: account.id, rowCount: imported, openingBefore: openingSet ? account.openingBalance : null })
+        .run();
+    }
   });
 
-  return { ok: true, imported, skipped: input.rows.length - imported, transfers, rulesSaved, openingSet };
+  return { ok: true, imported, skipped: input.rows.length - imported, transfers, rulesSaved, openingSet, batchId: imported > 0 || openingSet ? batchId : null };
 }

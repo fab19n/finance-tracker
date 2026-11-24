@@ -39,7 +39,7 @@ import {
   shortMonthLabel,
   todayISO,
 } from "@/lib/dates";
-import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
+import { formatPct, formatRM, formatRMWhole, formatRMWholeBare } from "@/lib/money";
 import { asBillTxs, evaluateBills, toBudgetBills } from "@/lib/plan/bills";
 import { currentCycle, cycleLabel } from "@/lib/plan/cycle";
 import { getAccountBalances } from "@/lib/queries/accounts";
@@ -134,7 +134,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       : null;
   const series = monthlySeries(rows, months6);
   const cumulative = cumulativeSpend(rows, month, prev, dayNow);
-  const split = needWantSplit(rows, month);
+  const split = needWantSplit(rows, month, hasPay);
   // Budgets are for the whole book: a category's limit measured against one account's share of it would say "on track" about
   // money that is simply paid from somewhere else. So they sit out an account view.
   // The pace is against the period's real length (a cycle named after a 30-day month can run 31 days), and a bill is not a
@@ -157,7 +157,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // "income used" bar, since the pay is not what lands in every account.
   const overspent = !accountChoice && hasPay && totals.net < 0;
   const used = !accountChoice && hasPay && totals.income > 0 ? totals.expense / totals.income : null;
-  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? "Net so far" : totals.net >= 0 ? "Left over" : "Overspent";
+  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? (isCurrent ? "Net so far" : "Net") : totals.net >= 0 ? "Left over" : "Overspent";
   // Days until this period ends (the day before the next payday for a pay cycle), counting today. Only for the one in progress.
   const daysLeft = isCurrent ? Math.max(1, daysBetween(today, period ? period.end : monthEnd(month)) + 1) : null;
   const heroSign = (accountChoice || !hasPay) && totals.net < 0 ? "−" : "";
@@ -220,7 +220,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {formatRMWhole(Math.abs(totals.net))}
           </p>
           {accountChoice ? (
-            <p className="mt-3 text-xs font-extrabold">money in minus money out, {unit} so far</p>
+            <p className="mt-3 text-xs font-extrabold">money in minus money out, {isCurrent ? `${unit} so far` : `this ${unit}`}</p>
           ) : used !== null ? (
             <div className="mt-4 flex items-center gap-2.5">
               <div className="h-2 flex-1 rounded-full bg-hero-track">
@@ -284,7 +284,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <section className="card lg:order-1 lg:col-span-7" aria-labelledby="pace">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="pace" className="h2">
-                Spent so far
+                {isCurrent ? "Spent so far" : "Spent"}
               </h2>
               <span className="num font-display text-base font-semibold">{formatRM(totals.expense)}</span>
             </div>
@@ -331,7 +331,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                       <BudgetRing used={b.used} status={b.status} />
                       <p className="text-xs font-extrabold leading-tight">{b.name}</p>
                       <p className="num text-[11px] font-bold text-muted">
-                        {formatRMWhole(b.spent).replace("RM ", "")} / {formatRMWhole(b.budget).replace("RM ", "")}
+                        {formatRMWholeBare(b.spent)} / {formatRMWholeBare(b.budget)}
                       </p>
                       <span className={`pill !px-2 !py-0.5 ${BUDGET_PILL[b.status]}`}>
                         {b.status === "over"
@@ -339,7 +339,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                           : b.settled
                             ? "Bills paid"
                             : b.status === "watch"
-                              ? `Watch · ${formatRMWhole(b.projected).replace("RM ", "")}`
+                              ? `Watch · ${formatRMWholeBare(b.projected)}`
                               : "On track"}
                       </span>
                     </Link>
@@ -551,7 +551,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <li className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-[3px] bg-series-2" aria-hidden /> Spent
               </li>
-              <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} is so far</li>
+              <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} {isCurrent ? "is so far" : "is complete"}</li>
             </ul>
             <ChartTable
               caption={`Income and spending by ${unit}`}

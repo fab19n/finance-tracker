@@ -1,7 +1,7 @@
+import { SalaryForm } from "@/components/plan/SalaryForm";
 import { FileUp } from "lucide-react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { recordSalary } from "@/app/actions/plan";
 import { AccountChips } from "@/components/AccountChips";
 import { AccountCycleCard } from "@/components/plan/AccountCycleCard";
 import { AccountOutlookCard } from "@/components/plan/AccountOutlookCard";
@@ -9,6 +9,7 @@ import { BillChecklist } from "@/components/plan/BillChecklist";
 import { PaydayPlanner } from "@/components/plan/PaydayPlanner";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
+import { SetupCard } from "@/components/setup/SetupCard";
 import { SavingsCheck } from "@/components/plan/SavingsCheck";
 import { todayISO } from "@/lib/dates";
 import { formatPct, formatRM, formatRMWhole, senToInput } from "@/lib/money";
@@ -18,7 +19,8 @@ import { billsPaidFrom, safeToSpend } from "@/lib/plan/safe";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getPlan } from "@/lib/queries/plan";
-import { sumTransactions, sumTransferFlow } from "@/lib/queries/transactions";
+import { setupFacts } from "@/lib/setup";
+import { listTransactions, sumTransactions, sumTransferFlow } from "@/lib/queries/transactions";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -29,6 +31,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const today = todayISO();
   const [plan, balances] = await Promise.all([getPlan(today), getAccountBalances(true)]);
   const { cycle, safe, roles, commitments, planner } = plan;
+  const anyEntry = await listTransactions({ limit: 1 });
+  const facts = setupFacts({ accounts: balances, hasSalary: plan.hasSalary, expectedIncome: plan.settings.expectedIncome, hasEntries: anyEntry.length > 0 });
+  // Before pay is known and a spending account is chosen, "bills + allowance + buffer" against a pay of RM 0 would read as a
+  // deficit (the default buffer alone does). There is nothing to plan yet, so say so instead of showing a red alert.
+  const planReady = planner.income > 0;
   const needsSalary = !plan.hasSalary || cycle.paydayOverdue;
 
   // One account on its own (?account=): the bills it pays and what is left in it after them, and what it did this cycle.
@@ -72,6 +79,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
         }
       />
 
+      {!accountChoice && <SetupCard facts={facts} />}
+
       {error && (
         <p role="alert" className="banner banner-danger">
           {error}
@@ -104,24 +113,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                   Salary landing in your spending account is what starts a pay cycle. Record it and everything on this page lines up with your real month.
                 </p>
               </div>
-              <form action={recordSalary} className="grid grid-cols-2 gap-2.5 md:grid-cols-[1fr_1fr_auto]">
-                <div>
-                  <label className="label !text-foreground" htmlFor="salary-amount">
-                    Take-home pay (RM)
-                  </label>
-                  <input id="salary-amount" name="amount" inputMode="decimal" defaultValue={planner.income ? senToInput(planner.income) : ""} placeholder="5400" required className="input" />
-                </div>
-                <div>
-                  <label className="label !text-foreground" htmlFor="salary-date">
-                    Received on
-                  </label>
-                  <input id="salary-date" name="date" type="date" defaultValue={today} required className="input" />
-                </div>
-                <button className="btn-primary col-span-2 self-end md:col-span-1" disabled={!roles.spending}>
-                  Record salary
-                </button>
-                {!roles.spending && <p className="col-span-2 text-xs font-extrabold text-warn md:col-span-3">Choose your spending account in Settings first.</p>}
-              </form>
+              <SalaryForm defaultAmount={planner.income ? senToInput(planner.income) : ""} today={today} canRecord={!!roles.spending} />
             </section>
           )}
 
@@ -171,6 +163,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
 
         {!accountChoice && (
           <div className="space-y-3 md:space-y-4">
+            {planReady ? (
             <section className="space-y-2" aria-labelledby="payday-h">
               <div className="px-1">
                 <h2 id="payday-h" className="h2">
@@ -192,6 +185,16 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 today={today}
               />
             </section>
+            ) : (
+              <section className="card" aria-labelledby="payday-h">
+                <h2 id="payday-h" className="h2">
+                  Payday plan
+                </h2>
+                <p className="sub mt-1 leading-relaxed">
+                  Record your salary and choose your spending account first. The plan splits your pay between bills, everyday spending and savings, and needs both to add up.
+                </p>
+              </section>
+            )}
 
             <section className="space-y-2" aria-labelledby="check-h">
               <div className="px-1">

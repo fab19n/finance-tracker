@@ -213,7 +213,8 @@ export type NeedWantSplit = {
   vsIncome: boolean;
 };
 
-export function needWantSplit(rows: FlowRow[], month: string): NeedWantSplit {
+/** `incomeKnown` lets a page pass its own "is there a real paycheck" test (a few sen of interest is not pay); default is any income. */
+export function needWantSplit(rows: FlowRow[], month: string, incomeKnown?: boolean): NeedWantSplit {
   let need = 0;
   let want = 0;
   for (const r of rows) {
@@ -223,7 +224,7 @@ export function needWantSplit(rows: FlowRow[], month: string): NeedWantSplit {
   }
   const { income } = monthTotals(rows, month);
   const spent = need + want;
-  const vsIncome = income > 0;
+  const vsIncome = income > 0 && incomeKnown !== false;
   const base = vsIncome ? income : spent;
   const saved = vsIncome ? Math.max(0, income - spent) : 0;
   const pct = (v: number) => (base > 0 ? v / base : 0);

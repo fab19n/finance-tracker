@@ -3,6 +3,7 @@
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect } from "react";
+import { isUnreachable } from "@/lib/offline/unreachable";
 
 /** Failed fetches (a PC that did not answer) and server-action failures: the only errors where the outbox line is relevant. */
 const NETWORK = /fetch|network|load failed|server action|failed to connect|timeout/i;
@@ -12,7 +13,7 @@ export default function ErrorScreen({ error, reset }: { error: Error & { digest?
   useEffect(() => {
     console.error(error);
   }, [error]);
-  const network = NETWORK.test(`${error.name} ${error.message}`);
+  const network = isUnreachable(error) || NETWORK.test(`${error.name} ${error.message}`);
   return (
     <div className="mx-auto max-w-sm py-10">
       <section className="card flex flex-col items-center px-6 py-8 text-center" role="alert">

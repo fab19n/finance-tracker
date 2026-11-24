@@ -1,3 +1,5 @@
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { ChevronDown } from "lucide-react";
 import { coverMonth, saveTurns } from "@/app/actions/shares";
 import { dayLabel, shiftMonth, shortMonthLabel } from "@/lib/dates";
@@ -116,7 +118,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           </p>
         )}
         {claims.map((c) => (
-          <form key={c.txId} action={coverMonth} className="flex flex-wrap items-center gap-2 rounded-2xl bg-card-subtle p-3">
+          <ActionForm key={c.txId} action={coverMonth} className="flex flex-wrap items-center gap-2 rounded-2xl bg-card-subtle p-3">
             <input type="hidden" name="billId" value={view.bill.id} />
             <input type="hidden" name="shareId" value={c.person.share.id} />
             <span className="basis-full text-[13px] font-semibold leading-snug">
@@ -131,12 +133,12 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                     </option>
                   ))}
                 </select>
-                <button className="btn">Count it</button>
+                <SubmitButton className="btn" pendingLabel="Counting...">Count it</SubmitButton>
               </>
             ) : (
               <span className="sub basis-full">No month is open this cycle: set it in the planner below.</span>
             )}
-          </form>
+          </ActionForm>
         ))}
       </div>
 
@@ -255,7 +257,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           Who covers which month
           <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
         </summary>
-        <form action={saveTurns} className="mt-3 space-y-3">
+        <ActionForm action={saveTurns} className="mt-3 space-y-3">
           <input type="hidden" name="billId" value={view.bill.id} />
           <p className="sub leading-relaxed">
             The first month of each cycle is yours. The others go to whoever says they&apos;ll cover them: pick them here when they do (leave a month on &ldquo;nobody yet&rdquo; until then). A person&apos;s payment settles <strong className="text-foreground">the month they covered</strong>.
@@ -276,8 +278,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               </label>
             ))}
           </div>
-          <button className="btn-primary w-full md:w-auto">Save</button>
-        </form>
+          <SubmitButton className="btn-primary w-full md:w-auto" pendingLabel="Saving...">Save</SubmitButton>
+        </ActionForm>
       </details>
 
       <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing="turns" />

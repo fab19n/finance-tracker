@@ -1,73 +1,110 @@
 import { deleteBill, saveBill } from "@/app/actions/plan";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { SubmitButton } from "@/components/SubmitButton";
 import { senToInput } from "@/lib/money";
+import { deleteBillBody, NO_USAGE, type BillUsage } from "@/lib/plan/bill-delete";
 import type { BillRow } from "@/lib/queries/plan";
 
 type Option = { id: number; name: string; icon?: string };
 
-/** Add / edit form for one recurring bill. A server component: plain fields posting to the action. */
+/** Add / edit form for one recurring bill: plain fields posting to the action, each with its own label. */
 export function BillForm({
   bill,
   categories,
   accounts,
   defaultAccountId,
+  usage = NO_USAGE,
 }: {
   bill?: BillRow;
   categories: Option[];
   accounts: Option[];
   /** For a NEW bill: which account "Paid from" starts on (the account the Bills page is filtered to). */
   defaultAccountId?: number;
+  /** For an existing bill: what deleting it would take with it (counted by the page), so the confirmation can say so. */
+  usage?: BillUsage;
 }) {
   const fixed = bill ? bill.amountMin === bill.amountMax : true;
+  const f = `bill-${bill?.id ?? "new"}`;
   return (
     <div className="space-y-2">
-      <form action={saveBill} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
+      <ActionForm action={saveBill} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
         {bill && <input type="hidden" name="id" value={bill.id} />}
-        <input name="name" defaultValue={bill?.name} placeholder="Bill name" required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Name" />
-        <select name="categoryId" defaultValue={bill?.categoryId ?? ""} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Category">
-          <option value="" disabled>
-            Category…
-          </option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+        <div className="col-span-2 min-w-0 md:col-span-2">
+          <label className="label" htmlFor={`${f}-name`}>
+            Bill name
+          </label>
+          <input id={`${f}-name`} name="name" defaultValue={bill?.name} placeholder="e.g. Netflix" required className="input" />
+        </div>
+        <div className="col-span-2 min-w-0 md:col-span-2">
+          <label className="label" htmlFor={`${f}-category`}>
+            Category
+          </label>
+          <select id={`${f}-category`} name="categoryId" defaultValue={bill?.categoryId ?? ""} required className="input">
+            <option value="" disabled>
+              Choose…
             </option>
-          ))}
-        </select>
-        <select name="accountId" defaultValue={bill?.accountId ?? defaultAccountId} required className="input col-span-2 min-w-0 md:col-span-2" aria-label="Paid from">
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              Paid from {a.name}
-            </option>
-          ))}
-        </select>
-        <input name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : ""} placeholder="Amount RM" inputMode="decimal" required className="input min-w-0" aria-label="Amount" />
-        <input
-          name="amountMax"
-          defaultValue={bill && !fixed ? senToInput(bill.amountMax) : ""}
-          placeholder="…up to (if it varies)"
-          inputMode="decimal"
-          className="input min-w-0"
-          aria-label="Up to"
-        />
-        <input name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="Due day" className="input min-w-0" aria-label="Due day of month" />
-        <input name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="Words on the bank statement (netflix, tnb)" className="input col-span-2 min-w-0 md:col-span-2" aria-label="Statement keywords" />
-        <label className="col-span-2 flex min-h-10 items-center gap-2 text-[13px] font-extrabold md:col-span-1">
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2 min-w-0 md:col-span-2">
+          <label className="label" htmlFor={`${f}-account`}>
+            Paid from
+          </label>
+          <select id={`${f}-account`} name="accountId" defaultValue={bill?.accountId ?? defaultAccountId} required className="input">
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-0">
+          <label className="label" htmlFor={`${f}-amount`}>
+            Amount (RM)
+          </label>
+          <input id={`${f}-amount`} name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : ""} placeholder="88.90" inputMode="decimal" required className="input" />
+        </div>
+        <div className="min-w-0">
+          <label className="label" htmlFor={`${f}-max`}>
+            Up to (if it varies)
+          </label>
+          <input id={`${f}-max`} name="amountMax" defaultValue={bill && !fixed ? senToInput(bill.amountMax) : ""} placeholder="optional" inputMode="decimal" className="input" />
+        </div>
+        <div className="min-w-0">
+          <label className="label" htmlFor={`${f}-due`}>
+            Due day of month
+          </label>
+          <input id={`${f}-due`} name="dueDay" type="number" min={1} max={31} defaultValue={bill?.dueDay ?? ""} placeholder="1-31" className="input" />
+        </div>
+        <div className="col-span-2 min-w-0 md:col-span-2">
+          <label className="label" htmlFor={`${f}-keywords`}>
+            Words on the bank statement
+          </label>
+          <input id={`${f}-keywords`} name="matchKeywords" defaultValue={bill?.matchKeywords ?? ""} placeholder="netflix, tnb" className="input" />
+        </div>
+        <label className="col-span-2 flex min-h-11 items-center gap-2 text-[13px] font-extrabold md:col-span-1">
           <input type="checkbox" name="active" defaultChecked={bill?.active ?? true} className="size-4 accent-accent-strong" /> Active
         </label>
-        <button className="btn-primary col-span-2 w-full md:col-span-6">{bill ? "Save bill" : "Add bill"}</button>
-      </form>
+        <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 w-full md:col-span-6">
+          {bill ? "Save bill" : "Add bill"}
+        </SubmitButton>
+      </ActionForm>
       {bill && (
-        <form action={deleteBill}>
+        <ActionForm action={deleteBill}>
           <input type="hidden" name="id" value={bill.id} />
           <ConfirmSubmit
-            trigger="Delete this bill (payments already recorded stay)"
+            trigger="Delete this bill"
             triggerClassName="btn-danger"
             title={`Delete ${bill.name}?`}
-            body="The bill goes away. Payments you already recorded for it stay in your books."
+            body={deleteBillBody(usage)}
             confirmLabel="Delete bill"
           />
-        </form>
+        </ActionForm>
       )}
     </div>
   );

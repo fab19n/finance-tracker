@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, type ReactNode } from "react";
+import { useActionPending } from "./ActionForm";
 
 /**
  * A button that asks "are you sure?" before the surrounding <form> is submitted. It is a native <dialog>, opened with
@@ -36,6 +37,8 @@ export function ConfirmSubmit({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // Inside an ActionForm both buttons dim while the action runs, so a confirmed delete can't be sent twice.
+  const pending = useActionPending();
   return (
     <>
       <button
@@ -43,7 +46,7 @@ export function ConfirmSubmit({
         className={triggerClassName}
         aria-label={triggerLabel}
         title={triggerLabel}
-        disabled={disabled}
+        disabled={disabled || pending}
         onClick={() => ref.current?.showModal()}
       >
         {trigger}
@@ -69,9 +72,10 @@ export function ConfirmSubmit({
             </button>
             <button
               type="submit"
+              disabled={pending}
               className={
                 tone === "danger"
-                  ? "inline-flex min-h-11 items-center justify-center rounded-full bg-danger px-[18px] py-3 text-sm font-extrabold text-danger-fg transition hover:opacity-90"
+                  ? "inline-flex min-h-11 items-center justify-center rounded-full bg-danger px-[18px] py-3 text-sm font-extrabold text-danger-fg transition hover:opacity-90 disabled:opacity-50"
                   : "btn-primary"
               }
             >
