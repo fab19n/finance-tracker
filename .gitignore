@@ -50,3 +50,6 @@ next-env.d.ts
 
 # this repo installs with pnpm only (pnpm-lock.yaml); an npm lockfile would fork the dependency versions
 package-lock.json
+
+# server signing secret for PIN sessions (normally lives in data/)
+session-secret

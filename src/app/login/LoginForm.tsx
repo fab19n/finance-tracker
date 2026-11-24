@@ -8,7 +8,7 @@ import { KoopangLogo } from "@/components/KoopangLogo";
 /**
  * The PIN screen: one masked field of any length (a real password input, so a keyboard and a password manager both work),
  * and an Unlock button. The server's two answers are shown as it words them: "That PIN isn't right." and, after five wrong
- * tries, "Too many wrong attempts. Wait a minute and try again." There is no biometric, keypad or greeting by design.
+ * tries, "Too many wrong attempts. Try again in 45 s." There is no biometric, keypad or greeting by design.
  * A phone shows it bare on the page; from md up it sits in a card.
  */
 export function LoginForm({ next }: { next: string }) {

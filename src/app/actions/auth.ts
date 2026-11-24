@@ -1,36 +1,38 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE, AUTH_MAX_AGE, authToken, safeEqual } from "@/lib/auth-token";
-
-// Slow down guessing: after 5 wrong PINs, refuse everything for a minute.
-let failures = 0;
-let lockedUntil = 0;
+import { AUTH_COOKIE, AUTH_MAX_AGE } from "@/lib/auth-token";
+import { safeBackPath } from "@/lib/back";
+import { issueSession, pinMatches } from "@/lib/session";
+import { beginAttempt, loginThrottle, lockMessage, recordSuccess } from "@/lib/session-throttle";
 
 export type LoginState = { error?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const pin = process.env.APP_PIN;
-  const next = String(formData.get("next") ?? "/dashboard");
-  const dest = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const dest = safeBackPath(formData.get("next")) ?? "/dashboard";
   if (!pin) redirect(dest);
 
-  if (Date.now() < lockedUntil) return { error: "Too many wrong attempts. Wait a minute and try again." };
+  // Count the attempt NOW, before any await: parallel guesses then see each other's count.
+  const state = loginThrottle();
+  const begun = beginAttempt(state, Date.now());
+  if (!begun.ok) return { error: lockMessage(begun.waitSec) };
 
   const attempt = String(formData.get("pin") ?? "");
-  if (!safeEqual(await authToken(attempt), await authToken(pin))) {
-    failures += 1;
-    if (failures >= 5) {
-      lockedUntil = Date.now() + 60_000;
-      failures = 0;
-    }
-    return { error: "That PIN isn't right." };
+  if (!(await pinMatches(attempt, pin))) return { error: "That PIN isn't right." };
+
+  recordSuccess(state);
+  let secure = false;
+  try {
+    secure = (await headers()).get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+  } catch {
+    /* no request headers available: leave the flag off */
   }
-  failures = 0;
-  (await cookies()).set(AUTH_COOKIE, await authToken(pin), {
+  (await cookies()).set(AUTH_COOKIE, await issueSession(pin), {
     httpOnly: true,
     sameSite: "lax",
+    secure,
     path: "/",
     maxAge: AUTH_MAX_AGE,
   });

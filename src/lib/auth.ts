@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE, authToken, safeEqual } from "./auth-token";
+import { AUTH_COOKIE } from "./auth-token";
+import { checkSession } from "./session";
 
 /** The lock is opt-in: set APP_PIN in .env.local to turn it on. */
 export const pinEnabled = () => !!process.env.APP_PIN;
@@ -13,5 +14,5 @@ export async function requireAuth(): Promise<void> {
   const pin = process.env.APP_PIN;
   if (!pin) return;
   const cookie = (await cookies()).get(AUTH_COOKIE)?.value;
-  if (!cookie || !safeEqual(cookie, await authToken(pin))) redirect("/login");
+  if (!(await checkSession(cookie, pin))) redirect("/login");
 }

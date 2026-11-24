@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE, authToken, safeEqual } from "@/lib/auth-token";
+import { AUTH_COOKIE } from "@/lib/auth-token";
+import { checkSession } from "@/lib/session";
 
 /**
  * Optional PIN lock for when the app is opened from a phone on your Wi-Fi.
  * Off unless APP_PIN is set in .env.local. (This is a convenience lock for a home network,
  * not bank-grade security - don't expose the app to the internet.)
+ * The cookie is a signed, expiring token (see lib/auth-token.ts); it cannot be computed from the PIN alone.
  */
 export async function proxy(request: NextRequest) {
   const pin = process.env.APP_PIN;
@@ -14,7 +16,7 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/login") return NextResponse.next();
 
   const cookie = request.cookies.get(AUTH_COOKIE)?.value;
-  if (cookie && safeEqual(cookie, await authToken(pin))) return NextResponse.next();
+  if (await checkSession(cookie, pin)) return NextResponse.next();
 
   const url = request.nextUrl.clone();
   url.pathname = "/login";
