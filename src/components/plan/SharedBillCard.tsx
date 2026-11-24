@@ -37,7 +37,7 @@ function Cell({ state, name, month, notCharged, detail }: { state: "paid" | "par
  * A shared bill. Split in equal parts every month (Netflix): who owes what, who has paid through when, and a grid of who
  * has covered which month. Paid in turns (Spotify): see RotationCard.
  */
-export function SharedBillCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string }[]; defaultStart: string; today: string }) {
+export function SharedBillCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string }) {
   if (view.rotation) return <RotationCard view={view} people={people} bills={bills} defaultStart={defaultStart} today={today} />;
   const shown = view.months.slice(-MONTHS_SHOWN);
   const hidden = view.months.length - shown.length;
@@ -62,6 +62,8 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
           {formatRM(view.bill.amount)} a month · it costs you <strong className="text-foreground">{formatRM(view.yourMonthlyCost)}</strong> once the others pay their part
         </p>
       </div>
+
+      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing={view.bill.sharing} />
 
       <p className={`banner font-extrabold ${view.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
         <span className="min-w-0">
@@ -207,7 +209,6 @@ export function SharedBillCard({ view, people, bills, defaultStart, today }: { v
         </div>
       )}
 
-      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing={view.bill.sharing} />
     </section>
   );
 }

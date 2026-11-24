@@ -335,7 +335,7 @@ describe("coverMonth: whoever says they'll cover a month gets it", () => {
     const { coverMonth, saveTurns } = await import("@/app/actions/shares");
     const { sp, ana, ben } = await setup();
     await redirected(saveTurns(fd({ billId: String(sp), "turn:2026-09": "you", "turn:2026-11": String(ben) })));
-    expect(await redirected(coverMonth(fd({ billId: String(sp), shareId: String(ana), month: "2026-10" })))).toBe("/plan/shared");
+    expect(await redirected(coverMonth(fd({ billId: String(sp), shareId: String(ana), month: "2026-10" })))).toBe("/plan/shared?saved=monthCovered");
     expect(turnsOf(sp)).toEqual({ "2026-09": null, "2026-10": ana, "2026-11": ben });
   });
 

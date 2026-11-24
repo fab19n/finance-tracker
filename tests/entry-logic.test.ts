@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { savedMessage } from "@/lib/entry-shape";
-import { categoryIconName, dayChoice, submitLabel, visibleCategories } from "@/components/entry/entry-logic";
+import { categoryIconName, dayChoice, largeAmountWarning, nextRadioIndex, quickHints, submitLabel, visibleCategories } from "@/components/entry/entry-logic";
 
 const norm = (s: string) => s.replace(/\s/g, " ");
 const base = { editing: false, correcting: false, anyway: false };
@@ -87,5 +87,57 @@ describe("savedMessage", () => {
   it("leaves out a name it does not have", () => {
     expect(norm(savedMessage({ type: "expense", amount: 500 }))).toBe("Added RM 5.00");
     expect(norm(savedMessage({ type: "transfer", amount: 500, account: "Bank" }))).toBe("Added RM 5.00");
+  });
+});
+
+describe("categoryIconName: words inside other words", () => {
+  it("does not read 'rent' inside 'parents', or 'tax' inside 'taxi'", () => {
+    expect(categoryIconName("Parents")).toBe("shared");
+    expect(categoryIconName("Taxi")).toBe("car");
+    expect(categoryIconName("Road tax")).toBe("plan");
+    expect(categoryIconName("Rental")).toBe("home");
+  });
+  it("puts 'Investment Income' with investments, not cash", () => {
+    expect(categoryIconName("Investment Income")).toBe("invest");
+    expect(categoryIconName("Income")).toBe("cash");
+  });
+});
+
+describe("largeAmountWarning", () => {
+  it("only speaks up from RM 10,000", () => {
+    expect(largeAmountWarning(null)).toBeNull();
+    expect(largeAmountWarning(540000)).toBeNull();
+    expect(largeAmountWarning(999_999)).toBeNull();
+    expect(norm(largeAmountWarning(1_000_000)!)).toContain("RM 10,000.00");
+  });
+});
+
+describe("quickHints", () => {
+  const h = (item: string, type: "income" | "expense", categoryId: number | null, count = 1) => ({ item, type, categoryId, amount: 500, count });
+  it("takes the first six of this type, one per item, in the order given", () => {
+    const hints = [h("A", "expense", 1), h("a ", "expense", 1), h("Salary", "income", 2), ...["B", "C", "D", "E", "F", "G"].map((n) => h(n, "expense", 1))];
+    expect(quickHints(hints, "expense", [1, 2]).map((x) => x.item)).toEqual(["A", "B", "C", "D", "E", "F"]);
+    expect(quickHints(hints, "income", [1, 2]).map((x) => x.item)).toEqual(["Salary"]);
+  });
+  it("drops entries whose category can no longer be picked, and offers none for a transfer", () => {
+    const hints = [h("Old", "expense", 9), h("Kopi", "expense", 1), h("Loose", "expense", null)];
+    expect(quickHints(hints, "expense", [1]).map((x) => x.item)).toEqual(["Kopi", "Loose"]);
+    expect(quickHints(hints, "transfer", [1])).toEqual([]);
+  });
+});
+
+describe("nextRadioIndex", () => {
+  it("moves with the arrows and wraps", () => {
+    expect(nextRadioIndex("ArrowRight", 0, 3)).toBe(1);
+    expect(nextRadioIndex("ArrowRight", 2, 3)).toBe(0);
+    expect(nextRadioIndex("ArrowLeft", 0, 3)).toBe(2);
+    expect(nextRadioIndex("ArrowDown", 1, 3)).toBe(2);
+    expect(nextRadioIndex("ArrowUp", 1, 3)).toBe(0);
+  });
+  it("jumps with Home and End, and ignores other keys", () => {
+    expect(nextRadioIndex("Home", 2, 3)).toBe(0);
+    expect(nextRadioIndex("End", 0, 3)).toBe(2);
+    expect(nextRadioIndex("Enter", 0, 3)).toBeNull();
+    expect(nextRadioIndex("ArrowRight", 0, 0)).toBeNull();
   });
 });

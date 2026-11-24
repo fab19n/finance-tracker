@@ -11,14 +11,14 @@ import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 import { pickShare, SHARE_CANDIDATE_CATEGORIES } from "@/lib/plan/shares";
 import { selectShares } from "@/lib/queries/shares";
+import { withParams, type SavedKey } from "@/lib/saved-notice";
 
 const MONTH = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Pick a valid month");
 const BACK = "/plan/shared";
 
-function done(error?: string, linked?: number): never {
+function done(error?: string, linked?: number, saved?: SavedKey): never {
   revalidatePath("/", "layout");
-  const q = error ? `?error=${encodeURIComponent(error)}` : linked ? `?linked=${linked}` : "";
-  redirect(`${BACK}${q}`);
+  redirect(withParams(BACK, error ? { error } : linked ? { linked: String(linked) } : saved ? { saved } : {}));
 }
 
 /** File a received payment under the person who sent it: it counts towards their months, and is "Reimbursements". */
@@ -60,7 +60,8 @@ const ShareInput = z.object({
   id: z.string().optional(),
   billId: z.string().min(1, "Choose which bill is shared"),
   name: z.string().trim().min(1, "Enter the person's name").max(60),
-  share: z.string(),
+  // Not sent for a bill paid in turns: a turn is the whole month, which the app fills in.
+  share: z.string().optional(),
   startMonth: MONTH,
   endMonth: z.string().optional(),
   matchKeywords: z.string().max(200).optional(),
@@ -73,9 +74,6 @@ export async function saveShare(formData: FormData): Promise<void> {
   if (!p.success) done(p.error.issues[0]?.message);
   const v = p.data!;
 
-  const share = parseSen(v.share);
-  if (share === null || share <= 0) done("Enter what they owe each month, e.g. 22.25");
-  if (!withinLimit(share!)) done(MAX_AMOUNT_MESSAGE);
   let endMonth: string | null = null;
   if (v.endMonth?.trim()) {
     if (!MONTH.safeParse(v.endMonth).success) done("Pick a valid 'until' month, or leave it blank");
@@ -86,6 +84,11 @@ export async function saveShare(formData: FormData): Promise<void> {
   const db = await getDb();
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(v.billId))).get();
   if (!bill) done("That bill no longer exists");
+
+  // A part of the month is only asked for on a bill split in equal parts.
+  const share = bill!.sharing === "turns" ? 0 : parseSen(v.share ?? "");
+  if (share === null || (bill!.sharing !== "turns" && share <= 0)) done("Enter what they owe each month, e.g. 22.25");
+  if (!withinLimit(share!)) done(MAX_AMOUNT_MESSAGE);
 
   // On a bill paid in turns one person pays the WHOLE month, so what a payment from them is expected to be is the
   // bill's usual amount whatever was typed (the same figure setSharing uses); a typed part would be stored as a
@@ -123,7 +126,7 @@ export async function saveShare(formData: FormData): Promise<void> {
     linked = linkPastPayments(db, id);
   });
   if (missing) done("That person is no longer on a shared bill");
-  done(undefined, linked);
+  done(undefined, linked, "person");
 }
 
 /** Remove someone from a plan. Money they sent stays in your records, just no longer counted towards them. */
@@ -137,7 +140,7 @@ export async function deleteShare(formData: FormData): Promise<void> {
     tx.delete(billTurns).where(eq(billTurns.shareId, id)).run();
     tx.delete(billShares).where(eq(billShares.id, id)).run();
   });
-  done();
+  done(undefined, undefined, "personRemoved");
 }
 
 const SharingInput = z.object({ billId: z.string().min(1), sharing: z.enum(["monthly", "turns"], { message: "Choose how the bill is split" }) });
@@ -157,7 +160,7 @@ export async function setSharing(formData: FormData): Promise<void> {
     tx.update(recurringBills).set({ sharing: p.data!.sharing }).where(eq(recurringBills.id, bill!.id)).run();
     if (p.data!.sharing === "turns") tx.update(billShares).set({ share: Math.round((bill!.amountMin + bill!.amountMax) / 2) }).where(eq(billShares.billId, bill!.id)).run();
   });
-  done();
+  done(undefined, undefined, "split");
 }
 
 const CoverInput = z.object({ billId: z.string().min(1), shareId: z.string().min(1, "Choose who covered it"), month: MONTH });
@@ -178,7 +181,7 @@ export async function coverMonth(formData: FormData): Promise<void> {
   const taken = db.select().from(billTurns).where(and(eq(billTurns.billId, billId), eq(billTurns.month, p.data!.month))).get();
   if (taken) done("Somebody already has that month");
   db.insert(billTurns).values({ billId, month: p.data!.month, shareId }).run();
-  done();
+  done(undefined, undefined, "monthCovered");
 }
 
 /**
@@ -210,7 +213,7 @@ export async function saveTurns(formData: FormData): Promise<void> {
       if (shareId !== -1) tx.insert(billTurns).values({ billId, month, shareId }).run();
     }
   });
-  done();
+  done(undefined, undefined, "turns");
 }
 
 const AssignInput = z.object({ txId: z.string().min(1), shareId: z.string().min(1, "Choose who it is from") });
@@ -226,7 +229,7 @@ export async function assignPayment(formData: FormData): Promise<void> {
   const who = people.find((s) => s.id === Number(p.data!.shareId));
   if (!who) done("Choose who it is from");
   claim(db, tx!.id, who!);
-  done();
+  done(undefined, undefined, "counted");
 }
 
 /** Undo an assignment (it stays recorded as money in). */

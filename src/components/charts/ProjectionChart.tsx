@@ -13,7 +13,7 @@ export function ProjectionChart({ data }: { data: ProjectionPoint[] }) {
   return (
     <div className="h-64 w-full" role="img" aria-label="Projected growth: fixed deposit, S&P 500, and your mix">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 12, right: 16, bottom: 4, left: 0 }}>
+        <LineChart accessibilityLayer={false} data={data} margin={{ top: 12, right: 16, bottom: 4, left: 0 }}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="year" tickLine={false} tick={{ fontSize: 11 }} tickFormatter={(y: number) => (y === 0 ? "now" : `${y}y`)} />
           <YAxis tickLine={false} axisLine={false} width={44} tick={{ fontSize: 11 }} tickFormatter={compactRM} domain={[0, "auto"]} />

@@ -6,6 +6,12 @@ import { formatRMWhole } from "@/lib/money";
 import { ChartTooltip } from "./ChartTooltip";
 import { ACTIVE_DOT, AreaGradient, endDotRenderer, useGradientId } from "./parts";
 
+/** "Oct ’26": the month and the year with an apostrophe, so it is never read as "October 26th". */
+function axisMonth(iso: string): string {
+  const [mon, yy] = shortMonthLabel(iso.slice(0, 7)).split(" ");
+  return `${mon} ’${yy}`;
+}
+
 type Point = { date: string; value: number; contributed: number };
 
 /**
@@ -20,10 +26,10 @@ export function GrowthChart({ data }: { data: Point[] }) {
   return (
     <div className="h-[170px] w-full" role="img" aria-label="Investment value compared with money contributed over time">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 4, left: 10 }}>
+        <ComposedChart accessibilityLayer={false} data={data} margin={{ top: 28, right: 10, bottom: 4, left: 10 }}>
           <AreaGradient id={gid} />
           <CartesianGrid vertical={false} />
-          <XAxis dataKey="date" tickFormatter={(d: string) => shortMonthLabel(d.slice(0, 7))} tickLine={false} axisLine={false} minTickGap={40} interval="preserveStartEnd" />
+          <XAxis dataKey="date" tickFormatter={(d: string) => axisMonth(d)} tickLine={false} axisLine={false} minTickGap={40} interval="preserveStartEnd" />
           <YAxis hide tickCount={3} domain={[0, "auto"]} />
           <Tooltip content={<ChartTooltip labelFormatter={(l) => dayLabel(String(l))} />} cursor={{ className: "viz-cursor-line", strokeWidth: 1 }} />
           <Area type="monotone" dataKey="value" stroke="none" fill={`url(#${gid})`} activeDot={false} legendType="none" tooltipType="none" isAnimationActive={false} />

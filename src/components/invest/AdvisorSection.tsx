@@ -30,8 +30,8 @@ export function AdvisorSection({ advice, settings }: { advice: Advice; settings:
         </h2>
         <p className="sub mt-0.5 leading-relaxed">
           A step-by-step path built from your own numbers. Change the assumptions in{" "}
-          <Link href="/settings" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
-            Settings
+          <Link href="/settings?tab=investing" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+            Settings (Investing tab)
           </Link>
           .
         </p>
@@ -46,13 +46,13 @@ export function AdvisorSection({ advice, settings }: { advice: Advice; settings:
           </div>
           <div className="card">
             <div className="flex items-baseline justify-between gap-3">
-              <p className="label !mb-0">Emergency fund</p>
+              <p className="label !mb-0">Emergency fund (all your cash accounts)</p>
               <p className="text-xs font-extrabold">
                 {ef.monthsCovered.toFixed(1)} of {settings.emergencyMonths} months
               </p>
             </div>
             <div className="mt-3">
-              <Meter used={efUsed} status={ef.funded ? "ok" : efUsed >= 0.5 ? "watch" : "over"} />
+              <Meter label="Emergency fund" used={efUsed} status={ef.funded ? "ok" : efUsed >= 0.5 ? "watch" : "over"} />
             </div>
             <p className="mt-2 text-xs font-extrabold">
               {ef.funded
@@ -85,8 +85,9 @@ export function AdvisorSection({ advice, settings }: { advice: Advice; settings:
       {alloc && proj && (
         <div className="card space-y-4">
           <div>
-            <h3 className="h2">Your suggested split</h3>
-            <p className="sub mt-0.5">
+            <h3 className="h2">Example split (an illustration)</h3>
+            <p className="mt-0.5 text-xs font-extrabold">An illustration worked out from your numbers and the assumptions in Settings. It is not personal financial advice: read the notes at the bottom first.</p>
+            <p className="sub mt-1">
               {ef.funded ? "Starting now" : `Once the emergency fund is full (in about ${ef.monthsToFill ?? "a few"} months)`}, per month
               {advice.lumpSum > 0 ? " plus the idle cash once" : ""}
             </p>
@@ -185,8 +186,8 @@ export function AdvisorSection({ advice, settings }: { advice: Advice; settings:
         </div>
       )}
 
-      <aside className="card !p-4 text-xs font-bold text-muted" aria-label="Important notes">
-        <p className="mb-1.5 font-extrabold text-foreground">Please read</p>
+      <aside className="card !p-4 text-[13px] font-semibold text-muted" aria-label="Important notes">
+        <p className="mb-1.5 font-extrabold text-foreground">Please read: these are not advice</p>
         <ul className="list-disc space-y-1 pl-4 leading-relaxed">
           {advice.notes.map((n) => (
             <li key={n}>{n}</li>

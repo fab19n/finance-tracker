@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+
 /** Table-view twin of a chart: every value reachable without hover or colour. */
 export function ChartTable({
   caption,
@@ -9,8 +11,11 @@ export function ChartTable({
   rows: (string | number)[][];
 }) {
   return (
-    <details className="mt-3 text-sm">
-      <summary className="cursor-pointer text-xs font-extrabold text-muted hover:text-foreground">View as table</summary>
+    <details className="group mt-2 text-sm">
+      <summary className="flex min-h-11 cursor-pointer items-center gap-1 text-xs font-extrabold text-muted hover:text-foreground">
+        <ChevronRight size={14} aria-hidden className="shrink-0 transition-transform group-open:rotate-90" />
+        View as table
+      </summary>
       <div className="mt-2 max-h-72 overflow-auto rounded-2xl bg-card-subtle">
         <table className="w-full text-left text-xs">
           <caption className="sr-only">{caption}</caption>

@@ -19,17 +19,17 @@ describe("commitRows validation", () => {
   it("refuses a date that has the shape but isn't a day, naming the row", () => {
     const r = commitRows(db, { accountId: acc, rows: [row(), row({ key: "k2", date: "2026-02-31" })], setOpeningBalance: null });
     expect(r).toMatchObject({ ok: false });
-    expect(r.ok ? "" : r.error).toMatch(/Row 2 .*date isn't valid/);
+    expect(r.ok ? "" : r.error).toMatch(/The line on 2026-02-31 .*date isn't valid/);
   });
   it("refuses an amount beyond the ceiling and an over-long Item, naming the row", () => {
     const big = commitRows(db, { accountId: acc, rows: [row({ amount: -(2 ** 52) })], setOpeningBalance: null });
-    expect(big.ok ? "" : big.error).toMatch(/Row 1 .*too large/);
+    expect(big.ok ? "" : big.error).toMatch(/The line on .*too large/);
     const long = commitRows(db, { accountId: acc, rows: [row({ item: "x".repeat(121) })], setOpeningBalance: null });
-    expect(long.ok ? "" : long.error).toMatch(/Row 1 .*Item is too long/);
+    expect(long.ok ? "" : long.error).toMatch(/The line on .*Item is too long/);
   });
   it("rowShapeProblem names the row, counting only lines being imported", () => {
     const msg = rowShapeProblem([{ kind: "skip", item: "x".repeat(500) }, { kind: "expense", date: "2026-05-01", description: "SHOP", item: "x".repeat(130) }]);
-    expect(msg).toMatch(/Row 1 \(2026-05-01 SHOP\): the Item is 130 characters/);
+    expect(msg).toMatch(/The line on 2026-05-01 \(SHOP\): the Item is 130 characters/);
     expect(rowShapeProblem([{ kind: "expense", item: "ok" }])).toBeNull();
   });
 });

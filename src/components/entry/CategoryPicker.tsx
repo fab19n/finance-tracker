@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, LayoutGrid } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { DuoIcon } from "@/components/DuoIcon";
 import { initials } from "@/lib/initials";
 import { categoryIconName, visibleCategories } from "./entry-logic";
@@ -24,10 +24,11 @@ export function CategoryPicker({
   onChange: (id: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const labelId = useId();
   const { shown, foldable } = visibleCategories(categories, value, expanded);
   return (
-    <div role="group" aria-labelledby="category-label">
-      <span id="category-label" className="label">
+    <div role="group" aria-labelledby={labelId}>
+      <span id={labelId} className="label">
         Category
       </span>
       <div className="grid grid-cols-3 gap-x-1 gap-y-1">

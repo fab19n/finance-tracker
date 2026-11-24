@@ -20,7 +20,8 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Koopang",
+  // Each page sets its own title ("Activity"); the tab then reads "Activity · Koopang", and a page without one is just "Koopang".
+  title: { default: "Koopang", template: "%s · Koopang" },
   description: "Track every ringgit, find the leaks, grow the surplus.",
   // The manifest link is added automatically from src/app/manifest.ts.
   // The tab icon: the K. An SVG for browsers that take one (sharp at any size), the PNG as a fallback, and src/app/favicon.ico

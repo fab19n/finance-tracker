@@ -8,7 +8,7 @@ import { formatRM } from "@/lib/money";
 import { offlineStore } from "@/lib/offline/browser";
 import { failed } from "@/lib/offline/offline-store";
 import type { OutboxEntry } from "@/lib/offline/types";
-import { useOfflineState } from "./hooks";
+import { useOfflineState, when } from "./hooks";
 
 function Item({ item, busy, editing }: { item: OutboxEntry; busy: boolean; editing: boolean }) {
   const store = offlineStore();
@@ -44,30 +44,30 @@ function Item({ item, busy, editing }: { item: OutboxEntry; busy: boolean; editi
           Your PC didn&apos;t accept this: {item.error}
         </p>
       ) : (
-        <p className="text-xs font-bold text-muted">Saved on this phone. Waiting for your PC.</p>
+        <p className="text-xs font-bold text-muted">Saved on this phone {when(item.queuedAt)}. Waiting for your PC.</p>
       )}
       {editing && <p className="text-xs font-extrabold text-accent-strong">Being corrected in the form above.</p>}
 
       <div className="flex flex-wrap gap-2">
         {isFailed && (
-          <button type="button" className="btn !px-3 !py-1.5 text-xs" disabled={busy} onClick={() => void store.retry(id)}>
+          <button type="button" className="btn min-h-11 !px-3 text-xs" disabled={busy} onClick={() => void store.retry(id)}>
             <RotateCw size={14} aria-hidden /> Retry
           </button>
         )}
         <button
           type="button"
-          className="btn !px-3 !py-1.5 text-xs"
+          className="btn min-h-11 !px-3 text-xs"
           disabled={busy || editing}
           onClick={() => {
             store.startEdit(id);
-            document.getElementById("add-entry")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            document.getElementById("add-entry")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
           }}
         >
           <Pencil size={14} aria-hidden /> {isFailed ? "Edit and retry" : "Edit"}
         </button>
         <button
           type="button"
-          className={`btn-danger !px-3 !py-1.5 text-xs ${sure ? "bg-danger-soft" : ""}`}
+          className={`btn-danger min-h-11 !px-3 text-xs ${sure ? "bg-danger-soft" : ""}`}
           disabled={busy}
           onBlur={() => setSure(false)}
           onClick={() => (sure ? void store.discard(id) : setSure(true))}
@@ -94,12 +94,14 @@ export function OutboxList() {
           Waiting to send
         </h2>
         {bad > 1 && (
-          <button type="button" className="btn !px-3 !py-1.5" disabled={s.syncing} onClick={() => void offlineStore().retryAll()}>
+          <button type="button" className="btn min-h-11 !px-3" disabled={s.syncing} onClick={() => void offlineStore().retryAll()}>
             <RotateCw size={14} aria-hidden /> Retry all
           </button>
         )}
       </div>
-      <p className="sub">Kept safely on this phone. The balances and totals on screen don&apos;t include them yet.</p>
+      <p className="sub">
+        Kept safely on this phone. They are sent when you open the app with your PC reachable. The balances, totals and &quot;safe to spend&quot; on screen don&apos;t include them yet.
+      </p>
       <ul className="space-y-2">
         {s.entries.map((item) => (
           <Item key={item.entry.clientId} item={item} busy={s.syncing} editing={s.editingId === item.entry.clientId} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { clearDraft, DRAFT_LAST_KEY, DRAFT_PREFIX, fingerprint, lastDraft, loadDraft, parseDraft, saveDraft, type Draft, type DraftStore } from "@/lib/import/draft";
-import { confirmEdited, needsLook, rowIncomplete, watchAfterEdit, type ReviewRow } from "@/lib/import/review";
+import { confirmEdited, needsLook, rowIncomplete, skippedDrift, watchAfterEdit, type ReviewRow } from "@/lib/import/review";
 
 const row = (o: Partial<ReviewRow & { edited: boolean }> = {}): ReviewRow & { edited: boolean } => ({
   index: 0, kind: "expense", categoryId: 3, transferAccountId: null, proposal: { confidence: "low" }, confirmed: false, watch: false, edited: false, ...o,
@@ -88,5 +88,19 @@ describe("review draft", () => {
     expect(() => clearDraft(full, "a")).not.toThrow();
     expect(DRAFT_PREFIX).toContain("money-tracker:");
     expect(DRAFT_LAST_KEY).toContain("money-tracker:");
+  });
+});
+
+describe("skippedDrift", () => {
+  const row = (kind: string, amount: number, source = "default") => ({ kind, amount, proposal: { source } });
+  it("is null when only duplicates, cancelled holds or nothing are left out", () => {
+    expect(skippedDrift([row("expense", -500), row("skip", -900, "duplicate")])).toBeNull();
+    expect(skippedDrift([row("skip", -1000, "hold"), row("skip", 1000, "hold")])).toBeNull();
+  });
+  it("says how far the account ends from the bank's closing balance", () => {
+    // A RM 12.00 spend left out: the books end RM 12.00 above the bank.
+    expect(skippedDrift([row("skip", -1200)])).toEqual({ count: 1, sen: 1200 });
+    // Money in left out: the books end below it.
+    expect(skippedDrift([row("skip", 5000), row("expense", -100)])).toEqual({ count: 1, sen: -5000 });
   });
 });

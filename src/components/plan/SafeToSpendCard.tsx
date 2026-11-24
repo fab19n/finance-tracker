@@ -19,7 +19,7 @@ export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeTo
       <p className="flex items-center gap-2 text-xs font-semibold text-muted">
         <ShieldCheck size={16} aria-hidden className="shrink-0" />
         <span>
-          Choose your spending account to see what is left to spend.{" "}
+          Choose your spending account to see what is safe to spend.{" "}
           <Link href="/settings?tab=accounts" className="font-extrabold text-accent-strong underline">
             Set it in Settings
           </Link>
@@ -50,7 +50,7 @@ export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeTo
       <section aria-label="Safe to spend" className="flex items-center gap-2 text-xs font-semibold text-muted">
         {short ? <AlertTriangle size={16} aria-hidden className="shrink-0 text-danger" /> : <ShieldCheck size={16} aria-hidden className="shrink-0" />}
         <span className="min-w-0">
-          Left to spend{" "}
+          Safe to spend{" "}
           <b className={`num font-extrabold ${short ? "text-danger" : "text-foreground"}`}>
             {short ? "−" : ""}
             {formatRM(Math.abs(safe.safe))}
@@ -99,7 +99,7 @@ export function SafeToSpendCard({ safe, cycle, compact = false }: { safe: SafeTo
       </p>
       {cycle.paydayOverdue && (
         <p className="banner banner-warn mt-3 !py-2 text-xs">
-          Payday was expected {shortDate(cycle.nextPayday)}. Record your salary on the Plan page to start the new cycle.
+          Payday was expected {shortDate(cycle.nextPayday)}. Record your salary in the box above to start the new cycle.
         </p>
       )}
     </section>

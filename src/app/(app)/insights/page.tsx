@@ -1,4 +1,5 @@
-import { AlertCircle, AlertTriangle, ArrowRight, Check, CheckCircle2, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, Check, CheckCircle2, ChevronRight, Info } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { reconcileCashAction } from "@/app/actions/cash";
@@ -31,17 +32,26 @@ const RECURRING_SHOWN = 5;
 /** The logging-habit strip is the last 14 days (fewer when the data is younger); the sentence under it counts 30. */
 const STRIP_DAYS = 14;
 
+export const metadata: Metadata = { title: "Insights" };
+
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-function InsightCard({ i, years, rate }: { i: Insight; years: number; rate: number }) {
+function InsightCard({ i, counted }: { i: Insight; counted: boolean }) {
   const sev = SEVERITY[i.severity];
   const Icon = sev.icon;
   const saves = i.annualSaving > 0;
   return (
     <article className="card" aria-labelledby={slugId("h", i.id)}>
-      <span className={`pill ${sev.pill}`}>
-        <Icon size={12} aria-hidden /> {sev.label}
-      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`pill ${sev.pill}`}>
+          <Icon size={12} aria-hidden /> {sev.label}
+        </span>
+        {counted && (
+          <span className="pill bg-card-subtle text-muted">
+            <Check size={12} aria-hidden /> In the total above
+          </span>
+        )}
+      </div>
       <h3 id={slugId("h", i.id)} className="mt-2 text-sm font-black leading-snug md:text-[15px]">
         {i.title}
       </h3>
@@ -56,14 +66,14 @@ function InsightCard({ i, years, rate }: { i: Insight; years: number; rate: numb
       <p className="mt-2 text-xs font-bold leading-relaxed">{i.suggestion}</p>
       {saves && (
         <p className="mt-2 text-[11px] font-bold leading-relaxed text-muted">
-          ≈ {formatRMWhole(i.annualSaving)} a year. Invested for {years} years at an assumed {rate}%, that grows to roughly {formatRMWhole(i.investedValue)}.
+          ≈ {formatRMWhole(i.annualSaving)} a year.
         </p>
       )}
       {(saves || i.href) && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           {saves && <span className="pill bg-good-soft text-good">Save about {formatRMWhole(i.monthlySaving)}/mo</span>}
           {i.href && (
-            <Link href={i.href} className="ml-auto inline-flex min-h-8 items-center gap-1 whitespace-nowrap text-xs font-extrabold text-accent-strong hover:underline">
+            <Link href={i.href} className="ml-auto inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-extrabold text-accent-strong underline underline-offset-2">
               See the entries <ArrowRight size={14} aria-hidden />
             </Link>
           )}
@@ -73,7 +83,7 @@ function InsightCard({ i, years, rate }: { i: Insight; years: number; rate: numb
   );
 }
 
-/** One regular payment. "Add as bill" opens the bills page (there is no prefill); a payment that already matches a bill says so instead. */
+/** One regular payment. "Add as bill" opens the bills page with the name and amount in the address; a payment that already matches a bill says so instead. */
 function RecurringRow({ r, isBill }: { r: Recurring; isBill: boolean }) {
   return (
     <li className="rounded-2xl bg-card-subtle p-3">
@@ -90,7 +100,11 @@ function RecurringRow({ r, isBill }: { r: Recurring; isBill: boolean }) {
             <Check size={12} aria-hidden /> Already a bill
           </span>
         ) : (
-          <Link href="/plan/bills" className="pill bg-card py-1.5 text-accent-strong hover:underline">
+          <Link
+            href={`/plan/bills${qs({ name: r.item, amount: (r.amount / 100).toFixed(2) })}`}
+            className="pill min-h-11 bg-card px-3.5 text-accent-strong underline underline-offset-2"
+            aria-label={`Add ${r.item} as a bill`}
+          >
             Add as bill
           </Link>
         )}
@@ -172,6 +186,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   // Only findings that carry a saving are counted (the same ones headlineSavings sums).
   const heroLead =
     headline.count === 1 ? "If you acted on the 1 finding that carries a saving" : `If you acted on the ${headline.count} findings that carry a saving`;
+  const counted = new Set(headline.ids);
   const homeCycle = plan.cycle.source === "salary";
 
   return (
@@ -184,7 +199,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         <p className="sub px-1">
           Showing only what {accountChoice.name}&apos;s own entries can tell. Findings that need every account step aside: budgets, wants against your whole income,
           the payday and savings routine{cashView ? "" : ", the cash count"} and your logging habit.{" "}
-          <Link href="/insights" className="font-extrabold text-accent-strong hover:underline">
+          <Link href="/insights" className="font-extrabold text-accent-strong underline underline-offset-2">
             See everything
           </Link>
         </p>
@@ -196,7 +211,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           <>
             {" "}
             Your Home page counts pay cycles, so a budget can read differently there.{" "}
-            <Link href={dashboardLinks(today).cycle} className="font-extrabold text-accent-strong hover:underline">
+            <Link href={dashboardLinks(today).cycle} className="font-extrabold text-accent-strong underline underline-offset-2">
               See this pay cycle on Home
             </Link>
           </>
@@ -212,9 +227,9 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
               <p className="text-xs font-extrabold">{heroLead}</p>
               <p className="num mt-1.5 text-[44px] font-black leading-none tracking-[-0.03em]">{formatRMWhole(headline.monthly)}</p>
               <p className="mt-1.5 text-[13px] font-extrabold">a month back in your pocket</p>
-              <p className="mt-3 text-[11px] font-bold leading-relaxed">
+              <p className="mt-3 text-xs font-bold leading-relaxed">
                 ≈ {formatRMWhole(headline.annual)} a year is at stake. Invested for {settings.horizonYears} years at an assumed {settings.sp500ReturnPct}%, that could
-                become roughly {formatRMWhole(headline.invested)}. Some findings overlap (a latte also sits inside Eating Out), so treat this as a ceiling.
+                become roughly {formatRMWhole(headline.invested)}. Some findings overlap (a latte also sits inside Eating Out), so treat this as a ceiling. The findings it counts are marked below.
               </p>
             </section>
           ) : insights.length > 0 ? (
@@ -238,21 +253,21 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           )}
 
           {insights.length > 0 && (
-            <section className="order-3 space-y-2.5" aria-label="Findings">
+            <section className="order-2 space-y-2.5" aria-label="Findings">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-1">
                 <h2 className="h2">What we found</h2>
                 <p className="sub">Estimates, not verdicts</p>
               </div>
               {insights.map((i) => (
-                <InsightCard key={i.id} i={i} years={settings.horizonYears} rate={settings.sp500ReturnPct} />
+                <InsightCard key={i.id} i={i} counted={counted.has(i.id)} />
               ))}
             </section>
           )}
         </div>
 
         <div className="contents lg:flex lg:flex-col lg:gap-4">
-          {(!accountChoice || accountChoice.type === "cash") && (
-            <section id="cash" className="card order-2 scroll-mt-20 space-y-3" aria-labelledby="cash-h">
+          {(!accountChoice || accountChoice.type === "cash") && cash.accounts.length > 0 && (
+            <section id="cash" className="card order-3 scroll-mt-20 space-y-3" aria-labelledby="cash-h">
               <div>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <h2 id="cash-h" className="h2">
@@ -291,10 +306,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                 </p>
               )}
 
-              {cash.accounts.length === 0 ? (
-                <p className="sub">Add a &quot;Cash in hand&quot; account in Settings to use this.</p>
-              ) : (
-                <form action={reconcileCashAction} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
+              <form action={reconcileCashAction} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
                   <div className="col-span-2">
                     <label className="label" htmlFor="cash-account">
                       Account
@@ -315,7 +327,6 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <button className="btn-primary self-end">Reconcile</button>
                 </form>
-              )}
               <p className={`text-xs ${needsCount ? "font-extrabold text-warn" : "font-bold text-muted"}`}>
                 {daysSinceRecon === null
                   ? "You haven't counted your cash yet - try it now."
@@ -368,8 +379,11 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                 ))}
               </ul>
               {recurring.length > RECURRING_SHOWN && (
-                <details className="mt-2.5">
-                  <summary className="cursor-pointer text-xs font-extrabold text-accent-strong">{recurring.length - RECURRING_SHOWN} more</summary>
+                <details className="group mt-2.5">
+                  <summary className="flex min-h-11 cursor-pointer items-center gap-1 text-xs font-extrabold text-accent-strong">
+                    <ChevronRight size={14} aria-hidden className="shrink-0 transition-transform group-open:rotate-90" />
+                    {recurring.length - RECURRING_SHOWN} more
+                  </summary>
                   <ul className="mt-2 space-y-1.5">
                     {recurring.slice(RECURRING_SHOWN).map((r) => (
                       <RecurringRow key={r.item} r={r} isBill={isBill(r.item)} />

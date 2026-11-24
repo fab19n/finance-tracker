@@ -3,6 +3,7 @@
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
+import { useNavigating } from "@/components/PendingMark";
 
 /**
  * The search box on Activity. The server does the searching, over the WHOLE selected period (the list on screen is only a
@@ -14,7 +15,16 @@ import { useRef, useState, useTransition } from "react";
 export function ActivitySearch({ q, others }: { q: string; others: Record<string, string> }) {
   const router = useRouter();
   const [value, setValue] = useState(q);
+  // The address changed under us (the "Search: ..." pill or "Clear" removed the text): show what the list is really filtered by.
+  // Done while rendering, not in an effect, so there is no frame with the old text; and only when the text differs from what
+  // was typed (the address holds it trimmed), so a space typed at the end is not eaten when the search catches up.
+  const [seenQ, setSeenQ] = useState(q);
+  if (q !== seenQ) {
+    setSeenQ(q);
+    if (q !== value.trim()) setValue(q);
+  }
   const [pending, start] = useTransition();
+  useNavigating(pending);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function go(text: string) {
@@ -50,7 +60,7 @@ export function ActivitySearch({ q, others }: { q: string; others: Record<string
           const text = e.target.value;
           timer.current = setTimeout(() => go(text), 450);
         }}
-        placeholder="Search item, note, category"
+        placeholder="Search entries"
         aria-label="Search entries"
         aria-busy={pending}
         autoComplete="off"

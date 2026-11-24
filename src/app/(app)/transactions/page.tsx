@@ -1,4 +1,5 @@
 import { Download, Plus, X } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
@@ -8,6 +9,7 @@ import { FilterSheet } from "@/components/activity/FilterSheet";
 import { MonthNav } from "@/components/MonthNav";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
+import { PendingMark } from "@/components/PendingMark";
 import { TransactionRow } from "@/components/TransactionRow";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
@@ -20,7 +22,12 @@ import { getSettings } from "@/lib/settings";
 import { listCategories } from "@/lib/queries/reference";
 import { listTransactions, sumTransactions, sumTransferFlow, type TxRow } from "@/lib/queries/transactions";
 
+export const metadata: Metadata = { title: "Activity" };
+
 const PAGE_SIZE = 100;
+
+/** A removable filter pill: a 44 px target, with a visible x and a spoken "Remove". */
+const PILL = "pill min-h-11 bg-accent-soft px-3.5 text-accent-strong";
 
 const TYPES = [
   ["", "All"],
@@ -164,7 +171,7 @@ export default async function TransactionsPage({
           path="/transactions"
           query={new URLSearchParams(present({ q: base.q, category, account, type, min: base.min, max: base.max, sort: base.sort })).toString()}
           sublabel={
-            <Link href={qs({ ...base, month: "all" })} className="font-extrabold text-accent-strong hover:underline">
+            <Link href={qs({ ...base, month: "all" })} className="inline-flex min-h-11 items-center font-extrabold text-accent-strong hover:underline">
               Show all time
             </Link>
           }
@@ -173,7 +180,7 @@ export default async function TransactionsPage({
       ) : (
         <div className="max-w-sm rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-center">
           <p className="text-xs font-extrabold">{periodText}</p>
-          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined })} className="text-[11px] font-extrabold text-accent-strong hover:underline">
+          <Link href={qs({ ...base, month: undefined, from: undefined, to: undefined })} className="inline-flex min-h-11 items-center text-[11px] font-extrabold text-accent-strong hover:underline">
             Back to monthly
           </Link>
         </div>
@@ -183,15 +190,11 @@ export default async function TransactionsPage({
       <AccountChips label="Filter by account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={qs({ ...base, account: undefined, page: undefined })} />
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="md:w-80 md:shrink-0">
-          <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort })} />
-        </div>
-        <div className="no-scrollbar -mx-5 flex items-center gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Type">
-          {TYPES.map(([value, label]) => (
-            <Link key={label} href={qs({ ...base, type: value })} aria-current={type === value ? "true" : undefined} className="chip">
-              {label}
-            </Link>
-          ))}
+        {/* Search and Filter side by side: they are the two ways to narrow the list, so they sit together. */}
+        <div className="flex items-center gap-2 md:w-[27rem] md:shrink-0">
+          <div className="min-w-0 flex-1">
+            <ActivitySearch q={q} others={present({ month: view.month, type, category, account, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort })} />
+          </div>
           <FilterSheet
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
             values={{ category, from: base.from, to: base.to, min: base.min, max: base.max, sort: base.sort }}
@@ -201,35 +204,47 @@ export default async function TransactionsPage({
             applied={applied}
           />
         </div>
+        <div className="no-scrollbar -mx-5 flex items-center gap-1.5 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0" role="group" aria-label="Type">
+          {TYPES.map(([value, label]) => (
+            <Link key={label} href={qs({ ...base, type: value })} aria-current={type === value ? "true" : undefined} className="chip">
+              {label}
+              <PendingMark />
+            </Link>
+          ))}
+        </div>
       </div>
 
       {(q.trim() || categoryChoice || amount || sortText) && (
         <ul className="flex flex-wrap items-center gap-2" aria-label="Applied filters">
           {q.trim() && (
             <li>
-              <Link href={qs({ ...base, q: undefined })} className="pill bg-accent-soft text-accent-strong">
+              <Link href={qs({ ...base, q: undefined })} className={PILL}>
                 Search: {q.trim()} <X size={12} aria-label="Remove" />
+                <PendingMark />
               </Link>
             </li>
           )}
           {categoryChoice && (
             <li>
-              <Link href={qs({ ...base, category: undefined })} className="pill bg-accent-soft text-accent-strong">
+              <Link href={qs({ ...base, category: undefined })} className={PILL}>
                 {categoryChoice.name} <X size={12} aria-label="Remove" />
+                <PendingMark />
               </Link>
             </li>
           )}
           {amount && (
             <li>
-              <Link href={qs({ ...base, min: undefined, max: undefined, page: undefined })} className="pill bg-accent-soft text-accent-strong">
+              <Link href={qs({ ...base, min: undefined, max: undefined, page: undefined })} className={PILL}>
                 {amount} <X size={12} aria-label="Remove" />
+                <PendingMark />
               </Link>
             </li>
           )}
           {sortText && (
             <li>
-              <Link href={qs({ ...base, sort: undefined, page: undefined })} className="pill bg-accent-soft text-accent-strong">
+              <Link href={qs({ ...base, sort: undefined, page: undefined })} className={PILL}>
                 {sortText} <X size={12} aria-label="Remove" />
+                <PendingMark />
               </Link>
             </li>
           )}
@@ -278,6 +293,7 @@ export default async function TransactionsPage({
           period={periodText}
           statementHref={`/transactions/export${qs({ ...base, format: "statement" })}`}
           note={narrowed ? "This is the whole account's balance, not only the entries listed below." : undefined}
+          collapsible
         />
       )}
 
@@ -296,7 +312,7 @@ export default async function TransactionsPage({
         </div>
       ) : byAmount ? (
         // Ordered by amount, the days are all mixed up, so no day headings: one list, each row says its date.
-        <section>
+        <section data-dim-on-pending>
           <div className="px-1 pb-2 pt-1">
             <h2 className="text-[13px] font-black">{sortText}</h2>
           </div>
@@ -310,7 +326,7 @@ export default async function TransactionsPage({
         groups.map((g) => {
           const spent = g.items.filter((i) => i.type === "expense").reduce((s, i) => s + i.amount, 0);
           return (
-            <section key={g.date}>
+            <section key={g.date} data-dim-on-pending>
               <div className="flex items-baseline justify-between px-1 pb-2 pt-1">
                 <h2 className="text-[13px] font-black">{dayLabel(g.date)}</h2>
                 {spent > 0 && <span className="num sub !text-[11px]">Spent {formatRM(spent)}</span>}
@@ -329,6 +345,7 @@ export default async function TransactionsPage({
         <div className="flex items-center justify-between">
           {view.page > 1 ? (
             <Link href={qs({ ...base, page: view.page - 1 })} className="btn">
+              <PendingMark />
               {sortText ? "‹ Previous" : "‹ Newer"}
             </Link>
           ) : (

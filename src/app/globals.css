@@ -293,13 +293,13 @@ html.swipe-tabs body {
   }
   /* Secondary button: a white pill with a hairline. */
   .btn {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-xs font-extrabold transition hover:bg-card-subtle active:scale-[0.98] disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border-[1.5px] border-line bg-card px-4 py-2 text-xs font-extrabold transition hover:bg-card-subtle active:scale-[0.98] disabled:opacity-50;
   }
   .btn-primary {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-[18px] py-3 text-sm font-extrabold text-accent-fg transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-bold text-danger transition hover:bg-danger-soft;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-bold text-danger transition hover:bg-danger-soft;
   }
   .pill {
     @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-extrabold;
@@ -310,7 +310,7 @@ html.swipe-tabs body {
      colour alone, it is also the heavier weight and the filled pill. Both
      work as links (aria-current), buttons (aria-selected) or the .on class. */
   .chip {
-    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] border-line bg-card px-3.5 py-[7px] text-xs font-bold text-muted transition hover:text-foreground;
+    @apply inline-flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-[1.5px] border-line bg-card px-3.5 py-[7px] text-xs font-bold text-muted transition hover:text-foreground;
   }
   .chip.on,
   .chip[aria-current="page"],
@@ -324,7 +324,7 @@ html.swipe-tabs body {
     @apply flex gap-1 rounded-full border-[1.5px] border-line bg-card p-[3px];
   }
   .seg-item {
-    @apply flex-1 whitespace-nowrap rounded-full px-2.5 py-[7px] text-center text-xs font-bold text-muted transition hover:text-foreground;
+    @apply flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-full px-2.5 py-[7px] text-center text-xs font-bold text-muted transition hover:text-foreground;
   }
   .seg-item.on,
   .seg-item[aria-current="page"],
@@ -576,4 +576,32 @@ html.swipe-tabs body {
 }
 .viz-bar-spent-rect {
   fill: var(--series-2);
+}
+
+/* Where a tap only changes the address (Activity's month, type, account, search), the route shows no loading screen, so the
+   list is dimmed while the next one is on its way (see PendingMark). */
+body[data-navigating] [data-dim-on-pending] {
+  opacity: 0.5;
+  transition: opacity 0.15s ease 0.1s;
+}
+
+/* Reduced motion: no spinning or pulsing, no smooth scrolling, no press-scale, whatever a component asks for. The spinner
+   icons stay on screen (still), and every state they stand for is also said in words. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  /* Tailwind 4 scales with the "scale" property, so only that is switched off (a transform would also undo centring). */
+  *:active {
+    scale: none !important;
+  }
 }

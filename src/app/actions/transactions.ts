@@ -10,7 +10,7 @@ import { safeBackPath } from "@/lib/back";
 import { shortDate } from "@/lib/dates";
 import { checkEntry } from "@/lib/entries";
 import { savedMessage } from "@/lib/entry-shape";
-import { formatRM, parseSen } from "@/lib/money";
+import { amountError, formatRM, parseSen } from "@/lib/money";
 import { findLookalikes } from "@/lib/queries/lookalikes";
 
 export type FormState = { ok: boolean; error?: string; message?: string; nonce?: number };
@@ -37,7 +37,7 @@ export async function saveTransaction(_prev: FormState, formData: FormData): Pro
   const v = parsed.data;
 
   const amount = parseSen(v.amount);
-  if (amount === null || amount <= 0) return { ok: false, error: "Enter an amount greater than 0" };
+  if (amount === null || amount <= 0) return { ok: false, error: amountError(v.amount) ?? "Enter an amount greater than 0" };
 
   const db = await getDb();
   // The same rule book the phone's sync uses (src/lib/entries.ts), so an entry is judged identically either way in.
@@ -103,7 +103,7 @@ export async function adoptLookalike(_prev: FormState, formData: FormData): Prom
   const v = parsed.data;
 
   const amount = parseSen(v.amount);
-  if (amount === null || amount <= 0) return { ok: false, error: "Enter an amount greater than 0" };
+  if (amount === null || amount <= 0) return { ok: false, error: amountError(v.amount) ?? "Enter an amount greater than 0" };
 
   const db = await getDb();
   const item = v.item?.trim() || null;

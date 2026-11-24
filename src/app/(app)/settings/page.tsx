@@ -1,4 +1,5 @@
 import { Download, FileText, ListOrdered } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   saveAccount,
@@ -11,13 +12,15 @@ import {
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { RecentImports } from "@/components/import/RecentImports";
-import { LockNowForm } from "@/components/offline/LockNowForm";
+import { ThisPhoneCard } from "@/components/offline/ThisPhoneCard";
 import { BACK_TO_MORE, PageHeader } from "@/components/PageHeader";
 import { SubmitButton } from "@/components/SubmitButton";
 import { SwipeTabs } from "@/components/SwipeTabs";
 import { TabLinks } from "@/components/SectionTabs";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
+import { CategoryFields } from "@/components/settings/CategoryFields";
 import { ColorField } from "@/components/settings/ColorField";
+import { SavedNotice } from "@/components/settings/SavedNotice";
 import { pinEnabled } from "@/lib/auth";
 import { initials } from "@/lib/initials";
 import { formatRM, senToInput } from "@/lib/money";
@@ -26,6 +29,8 @@ import type { SearchParams } from "@/lib/queries/filters";
 import { listCategories, type CategoryWithUsage } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 import { parseSettingsTab, settingsHref, SETTINGS_TABS } from "@/lib/settings-tabs";
+
+export const metadata: Metadata = { title: "Settings" };
 
 type Account = Awaited<ReturnType<typeof getAccountBalances>>[number];
 type AppSettings = Awaited<ReturnType<typeof getSettings>>;
@@ -54,38 +59,7 @@ function CategoryForm({ c }: { c?: CategoryWithUsage }) {
         </label>
         <input id={`${f}-name`} name="name" defaultValue={c?.name} placeholder="e.g. Groceries" required className="input" />
       </div>
-      <div className="min-w-0">
-        <label className="label" htmlFor={`${f}-type`}>
-          Type
-        </label>
-        <select id={`${f}-type`} name="type" defaultValue={c?.type ?? "expense"} className="input">
-          <option value="expense">Expense</option>
-          <option value="income">Income</option>
-        </select>
-      </div>
-      <div className="min-w-0">
-        <label className="label" htmlFor={`${f}-nature`}>
-          Need or want
-        </label>
-        <select id={`${f}-nature`} name="nature" defaultValue={c?.nature ?? "want"} className="input">
-          <option value="need">Need</option>
-          <option value="want">Want</option>
-          <option value="saving">Saving / Income</option>
-        </select>
-      </div>
-      <div className="col-span-2 min-w-0 md:col-span-6">
-        <label className="label" htmlFor={`${f}-budget`}>
-          Monthly budget (RM)
-        </label>
-        <input
-          id={`${f}-budget`}
-          name="monthlyBudget"
-          defaultValue={c?.monthlyBudget ? senToInput(c.monthlyBudget) : ""}
-          placeholder="optional"
-          inputMode="decimal"
-          className="input"
-        />
-      </div>
+      <CategoryFields idPrefix={f} type={c?.type} nature={c?.nature} budget={c?.monthlyBudget ? senToInput(c.monthlyBudget) : ""} />
       <ColorField defaultValue={c?.color} />
       <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 md:col-span-6">
         {c ? "Save" : "Add category"}
@@ -147,6 +121,7 @@ function AccountForm({ a }: { a?: Account }) {
             </option>
           ))}
         </select>
+        <p className="mt-1 text-[11px] font-bold leading-snug text-muted">Each role belongs to one account: choosing it here takes it from the account that has it now.</p>
       </div>
       <SubmitButton pendingLabel="Saving..." className="btn-primary col-span-2 self-end md:col-span-1">
         {a ? "Save" : "Add account"}
@@ -200,13 +175,17 @@ function AccountsTab({ accounts }: { accounts: Account[] }) {
                     <input type="hidden" name="id" value={a.id} />
                     <input type="hidden" name="archived" value={a.archived ? "0" : "1"} />
                     {a.archived ? (
-                      <SubmitButton className="btn-danger" pendingLabel="Restoring...">Restore account</SubmitButton>
+                      <SubmitButton className="btn" pendingLabel="Restoring...">Restore account</SubmitButton>
                     ) : (
                       <ConfirmSubmit
                         trigger="Archive account"
-                        triggerClassName="btn-danger"
+                        triggerClassName="btn-danger min-h-11"
                         title={`Archive ${a.name}?`}
-                        body="It stops showing in the pickers. Its entries and balance stay, and you can restore it any time."
+                        body={
+                          a.purpose
+                            ? `It stops showing in the pickers. Its entries and balance stay, and you can restore it any time. It is your ${a.purpose === "spending" ? "Spending" : "Savings"} account: archiving it releases that role, and the Plan will ask you to choose another account.`
+                            : "It stops showing in the pickers. Its entries and balance stay, and you can restore it any time."
+                        }
                         confirmLabel="Archive"
                         tone="neutral"
                       />
@@ -228,8 +207,8 @@ function CategoriesTab({ categories }: { categories: CategoryWithUsage[] }) {
     <div className="space-y-3 md:space-y-4">
       <Intro>
         <p>
-          Tag each expense as a <strong className="text-foreground">need</strong> or <strong className="text-foreground">want</strong> - the dashboard compares your split with
-          the 50/30/20 guideline. Add a monthly budget to be warned when you overspend.
+          Tag each expense as a <strong className="text-foreground">need</strong> or <strong className="text-foreground">want</strong> - Home compares your split with
+          the 50/30/20 guideline. Add a monthly budget to an expense category to be warned when you overspend (income categories have none).
         </p>
       </Intro>
       {(["expense", "income"] as const).map((kind) => (
@@ -258,11 +237,11 @@ function CategoriesTab({ categories }: { categories: CategoryWithUsage[] }) {
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="archived" value={c.archived ? "0" : "1"} />
                           {c.archived ? (
-                            <SubmitButton className="btn-danger" pendingLabel="Restoring...">Restore category</SubmitButton>
+                            <SubmitButton className="btn" pendingLabel="Restoring...">Restore category</SubmitButton>
                           ) : (
                             <ConfirmSubmit
                               trigger="Archive category"
-                              triggerClassName="btn-danger"
+                              triggerClassName="btn-danger min-h-11"
                               title={`Archive ${c.name}?`}
                               body="It stops showing when you add an entry. Entries already in it stay, and you can restore it any time."
                               confirmLabel="Archive"
@@ -394,6 +373,8 @@ function DataTab() {
 
       <RecentImports />
 
+      <ThisPhoneCard pinOn={locked} />
+
       <section className="card space-y-2.5" aria-labelledby="pin-h">
         <div className="flex items-center justify-between gap-3">
           <h2 id="pin-h" className="h2">
@@ -403,16 +384,15 @@ function DataTab() {
         </div>
         {locked ? (
           <>
-            <p className="sub leading-relaxed">PIN is on. Anyone on your Wi-Fi must enter the PIN to see your data.</p>
-            <LockNowForm />
-            <p className="sub leading-relaxed">Signs this device out and clears the pages saved on it. Entries not yet sent stay on the phone.</p>
+            <p className="sub leading-relaxed">PIN is on. Anyone who opens this address (on your Wi-Fi, or over Tailscale from a device on your tailnet) must enter the PIN to see your data.</p>
+            <p className="sub leading-relaxed">&ldquo;Lock now&rdquo; (in the card above) signs this device out and clears what this phone has saved.</p>
             <p className="sub leading-relaxed">
               To change the PIN, edit the <code className={CODE}>.env.local</code> file and restart the app.
             </p>
           </>
         ) : (
           <p className="sub leading-relaxed">
-            Anyone on your Wi-Fi who opens this address can see your data. To require a PIN, add a line like <code className={CODE}>APP_PIN=482915</code> to a file named{" "}
+            Anyone who can open this address (on your Wi-Fi, or a device on your Tailscale network) can see your data. To require a PIN, add a line like <code className={CODE}>APP_PIN=482915</code> to a file named{" "}
             <code className={CODE}>.env.local</code> in the project folder and restart the app.
           </p>
         )}
@@ -443,6 +423,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           {error}
         </p>
       )}
+      <SavedNotice saved={sp.saved} note={sp.note} />
 
       {tab === "accounts" && <AccountsTab accounts={accounts} />}
       {tab === "categories" && <CategoriesTab categories={categories} />}

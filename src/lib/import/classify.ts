@@ -1,4 +1,5 @@
 import { descriptionMatchesBill, normalizeName, type BillDef } from "@/lib/plan/bills";
+import { dayLabel } from "@/lib/dates";
 import { pickShare, type ShareDef } from "@/lib/plan/shares";
 import { stripBoilerplate } from "./boilerplate";
 import { BUILTIN_RULES } from "./builtin-rules";
@@ -187,7 +188,7 @@ export function classifyRows(rows: StatementRow[], ctx: ClassifyContext): Classi
         kind: "skip",
         source: "duplicate",
         confidence: "high",
-        reason: `Looks like the ${near.e.type} you already recorded on ${near.e.date}`,
+        reason: `Looks like the ${near.e.type} you already recorded on ${dayLabel(near.e.date)}`,
         matchedId: near.e.id,
       });
     }

@@ -63,7 +63,7 @@ function Mark({ cell, name, month }: { cell: TurnCell | undefined; name: string;
  * your two latest cycles as a checklist (a mark only in the months that are THEIRS), who owes you for a month they
  * covered, and, for money that has arrived for a month nobody has been given yet, a one-tap "which month?".
  */
-export function RotationCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string }[]; defaultStart: string; today: string }) {
+export function RotationCard({ view, people, bills, defaultStart, today }: { view: SharedBillView; people: ShareRow[]; bills: { id: number; name: string; sharing?: "monthly" | "turns" }[]; defaultStart: string; today: string }) {
   const r = view.rotation!;
   const thisMonth = today.slice(0, 7);
   const columns = rotationWindow(r.schedule, thisMonth);
@@ -88,6 +88,8 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           {formatRM(view.bill.amount)} a month · <strong className="text-foreground">one person pays the whole month</strong>, in turn
         </p>
       </div>
+
+      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing="turns" />
 
       <div className="space-y-2">
         <p className={`banner font-extrabold ${r.owedToYou > 0 ? "banner-warn" : "banner-good"}`}>
@@ -186,7 +188,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
       </ul>
 
       <div>
-        <div className="overflow-x-auto" tabIndex={0} aria-label="Who covered which month, for your two latest cycles">
+        <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Who covered which month, for your two latest cycles. Scrolls sideways on a small screen; use the arrow keys.">
           <table className="w-full table-fixed border-collapse text-xs" style={{ minWidth: 54 + columns.length * 34 }}>
             <caption className="sr-only">Who covers each month, for your two latest cycles</caption>
             <colgroup>
@@ -194,7 +196,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
             </colgroup>
             <thead className="text-muted">
               <tr>
-                <th className="py-1.5 pr-2 text-left text-[10.5px] font-bold">Month</th>
+                <th className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-[10.5px] font-bold">Month</th>
                 {columns.map((m) => (
                   <th key={m} scope="col" className="px-0 py-1.5 text-center text-[10.5px] font-bold leading-tight">
                     {shortMonthLabel(m).split(" ")[0]}
@@ -206,7 +208,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
             <tbody>
               {columns.some((m) => whoIn(m) === undefined) && (
                 <tr className="border-t border-line">
-                  <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">Open</th>
+                  <th scope="row" className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-xs font-extrabold text-muted">Open</th>
                   {columns.map((m) => (
                     <td key={m} className="px-0 py-1">
                       {whoIn(m) === undefined ? <MonthBadge kind="open" label={`${shortMonthLabel(m)}: open, nobody has covered it yet`} /> : <NoMonth label={`${shortMonthLabel(m)}: covered`} />}
@@ -215,7 +217,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
                 </tr>
               )}
               <tr className="border-t border-line">
-                <th scope="row" className="py-1.5 pr-2 text-left text-xs font-extrabold text-muted">You</th>
+                <th scope="row" className="sticky left-0 z-10 bg-card py-1.5 pr-2 text-left text-xs font-extrabold text-muted">You</th>
                 {columns.map((m) =>
                   whoIn(m) === "you" ? (
                     <td key={m} className="px-0 py-1">
@@ -230,7 +232,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
               </tr>
               {r.people.map((p) => (
                 <tr key={p.share.id} className="border-t border-line">
-                  <th scope="row" className="truncate py-1.5 pr-2 text-left text-xs font-extrabold">
+                  <th scope="row" className="sticky left-0 z-10 truncate bg-card py-1.5 pr-2 text-left text-xs font-extrabold">
                     {p.share.name}
                   </th>
                   {columns.map((m) => (
@@ -247,7 +249,7 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="unpaid" label="covered, month has come, not paid yet" small /> not paid yet</span>
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="later" label="covered, still to come" small /> covered, still to come</span>
           <span className="inline-flex items-center gap-1.5"><MonthBadge kind="you" label="your month" small /> your month</span>
-          <span className="inline-flex items-center gap-1.5"><MonthBadge kind="open" label="open" small /> open: nobody has covered it yet</span>
+          {columns.some((m) => whoIn(m) === undefined) && <span className="inline-flex items-center gap-1.5"><MonthBadge kind="open" label="open" small /> open: nobody has covered it yet</span>}
           <span>· not their month</span>
         </p>
       </div>
@@ -282,7 +284,6 @@ export function RotationCard({ view, people, bills, defaultStart, today }: { vie
         </ActionForm>
       </details>
 
-      <SharingToggle billId={view.bill.id} billName={view.bill.name} sharing="turns" />
     </section>
   );
 }

@@ -11,7 +11,7 @@ import type { ClassifiedRow, ProposalKind } from "@/lib/import/classify";
 import { dayLabel } from "@/lib/dates";
 import { clearDraft, fingerprint, lastDraft, loadDraft, saveDraft, type Draft } from "@/lib/import/draft";
 import { IMPORT_TOO_LARGE, MAX_IMPORT_BYTES } from "@/lib/import/limits";
-import { confirmEdited, needsLook as rowNeedsLook, rowIncomplete, watchAfterEdit } from "@/lib/import/review";
+import { confirmEdited, needsLook as rowNeedsLook, rowIncomplete, skippedDrift, watchAfterEdit } from "@/lib/import/review";
 import { formatRM } from "@/lib/money";
 import { ColumnMapper } from "./ColumnMapper";
 import { UndoImport } from "./UndoImport";
@@ -120,6 +120,10 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const [offer, setOffer] = useState<Draft | null>(null);
   const [unfinished, setUnfinished] = useState<{ fileName: string | null; savedAt: string } | null>(null);
   const latestDraft = useRef<Draft | null>(null);
+  // Re-reading a CSV with other columns, from the review screen.
+  const [remap, setRemap] = useState(false);
+  // The password box takes focus when it appears, so a keyboard or screen-reader user lands on what is being asked.
+  const passwordBox = useRef<HTMLInputElement>(null);
 
   const account = accounts.find((a) => a.id === accountId);
 
@@ -135,6 +139,10 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       live = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (needPassword) passwordBox.current?.focus();
+  }, [needPassword, error]);
 
   // The chosen file (or pasted text) has a saved review: offer to resume it.
   useEffect(() => {
@@ -219,6 +227,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     setNeedPassword(false);
     setPassword("");
     setMapping(null);
+    setRemap(false);
     const s = store();
     setOffer(fp && s ? loadDraft(s, fp) : null);
   }
@@ -259,6 +268,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
       setPassword("");
       setError(null);
       setOffer(null);
+      setRemap(false);
       setAccountId(res.account.id);
       setFp(await fingerprintOf(file, text));
       const edits = res.rows.map(toEdit);
@@ -311,6 +321,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
   const lookCount = rows.filter(needsLook).length;
   const visible = rows.filter((r) => (filter === "all" ? true : filter === "skipped" ? r.kind === "skip" : needsLook(r)));
   const toImport = rows.filter((r) => r.kind !== "skip");
+  const drift = skippedDrift(rows);
 
   /** Leaving "Needs a look" counts the lines you changed as looked at. */
   function chooseFilter(f: Filter) {
@@ -397,7 +408,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
     return page(
       "All done",
       <div className="card space-y-3.5">
-        <p className="flex items-center gap-2.5 text-lg font-black">
+        <p role="status" className="flex items-center gap-2.5 text-lg font-black">
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-good-soft text-good">
             <CheckCircle2 size={20} aria-hidden />
           </span>
@@ -510,7 +521,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               )
             )}
             <p className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-muted">
-              <Lock size={12} aria-hidden /> Read on this computer only. Nothing is uploaded anywhere.
+              <Lock size={12} aria-hidden /> Read by your own PC and never sent to any outside service. From a phone, the file travels to your PC.
             </p>
           </div>
 
@@ -534,7 +545,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                 <label className="label" htmlFor="imp-pw">
                   This PDF is password-protected
                 </label>
-                <input id="imp-pw" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="PDF password (not saved)" className="input" />
+                <input id="imp-pw" ref={passwordBox} type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="PDF password (not saved)" className="input" />
               </div>
             )}
           </div>
@@ -551,7 +562,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           </div>
 
           <details>
-            <summary className="inline-flex min-h-8 cursor-pointer list-none items-center text-xs font-extrabold text-accent-strong [&::-webkit-details-marker]:hidden">
+            <summary className="inline-flex min-h-11 cursor-pointer list-none items-center text-xs font-extrabold text-accent-strong [&::-webkit-details-marker]:hidden">
               Or paste the statement text instead
             </summary>
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} placeholder="Select all in your PDF viewer, copy, and paste here…" className="input mt-2 font-mono text-xs" />
@@ -564,8 +575,8 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           )}
           {unreachableBanner}
 
-          <button className="btn-primary w-full" disabled={pending || (!file && !text.trim())}>
-            {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" /> : <FileUp size={16} aria-hidden />} Read statement
+          <button type="submit" className="btn-primary w-full" disabled={pending || (!file && !text.trim())}>
+            {pending ? <Loader2 size={16} strokeWidth={3} className="animate-spin" aria-hidden /> : <FileUp size={16} aria-hidden />} {pending ? "Reading the statement…" : "Read statement"}
           </button>
         </form>
 
@@ -642,7 +653,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               <form onSubmit={(e) => { e.preventDefault(); leaveReview(); }}>
                 <ConfirmSubmit
                   trigger="← Choose a different file"
-                  triggerClassName="mt-1 inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong"
+                  triggerClassName="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong"
                   title="Leave this review?"
                   body="Your changes are saved on this device. Choose the same statement again and you can resume them, or start over."
                   confirmLabel="Choose a different file"
@@ -650,7 +661,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                 />
               </form>
             ) : (
-              <button type="button" className="mt-1 inline-flex min-h-8 items-center text-xs font-extrabold text-accent-strong" onClick={leaveReview}>
+              <button type="button" className="mt-1 inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong" onClick={leaveReview}>
                 ← Choose a different file
               </button>
             )}
@@ -664,7 +675,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
         {allGood ? (
           <p className="sub !text-xs">{balanceMessage}</p>
         ) : (
-          <p className={BANNER[balanceTone]}>
+          <p role="status" className={BANNER[balanceTone]}>
             <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
             <span>{balanceMessage}</span>
           </p>
@@ -721,6 +732,32 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
           </div>
         )}
 
+        {preview.closingBalance !== null && (
+          <p className={drift ? `${BANNER.warn} !text-xs` : "sub !text-xs"} role={drift ? "status" : undefined}>
+            {drift && <AlertTriangle size={14} className="mt-px shrink-0" aria-hidden />}
+            <span>
+              The statement ends at <strong className="font-black">{formatRM(preview.closingBalance)}</strong>.{" "}
+              {drift
+                ? `You are leaving out ${drift.count} ${drift.count === 1 ? "line" : "lines"} that ${drift.count === 1 ? "isn't" : "aren't"} in your books yet, so ${preview.account.name} will end ${formatRM(Math.abs(drift.sen))} ${drift.sen > 0 ? "above" : "below"} that. Check the Skipped tab if that is not what you meant.`
+                : "Every line that is not already in your books is being imported."}
+            </span>
+          </p>
+        )}
+
+        {preview.csv && (
+          <div>
+            <button type="button" className="inline-flex min-h-11 items-center text-xs font-extrabold text-accent-strong" aria-expanded={remap} onClick={() => setRemap((v) => !v)}>
+              {remap ? "Hide the column choices" : "Dates, amounts or payees look wrong? Change the columns"}
+            </button>
+            {remap && (
+              <div className="mt-2 space-y-2">
+                <p className="sub !text-xs">Reading the file again with other columns starts this review over; changes you have made here are not carried across.</p>
+                <ColumnMapper sample={preview.csv.sample} headers={preview.csv.headers} initial={preview.csv.layout} busy={pending} onApply={(o) => void read(o)} />
+              </div>
+            )}
+          </div>
+        )}
+
         {preview.openingBalance !== null && preview.account.existingEntries === 0 && (
           <label className="flex items-start gap-2.5 rounded-2xl bg-card-subtle p-3 text-[13px] font-bold">
             <input type="checkbox" checked={setOpening} onChange={(e) => setSetOpening(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-accent-strong" />
@@ -774,7 +811,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-black">{r.description}</p>
+                    <p className="break-words text-[13px] font-black">{r.description}</p>
                     <p className="sub !text-[11px]">{dayLabel(r.date)}</p>
                   </div>
                   <p className={`num shrink-0 text-sm font-black ${r.kind === "transfer" || r.kind === "skip" ? "text-muted" : r.amount > 0 ? "text-income" : ""}`}>
@@ -810,7 +847,17 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                       ))}
                     </select>
                   ) : (
-                    <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">{r.proposal.reason}</p>
+                    <p className="col-span-3 self-center text-xs font-bold leading-snug text-muted md:col-span-3">
+                      {r.proposal.reason}
+                      {r.proposal.source === "duplicate" && r.proposal.matchedId ? (
+                        <>
+                          {" "}
+                          <Link href={`/transactions/${r.proposal.matchedId}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline">
+                            See that entry (opens in a new tab)
+                          </Link>
+                        </>
+                      ) : null}
+                    </p>
                   )}
                   {r.kind !== "skip" && <input aria-label="Item" className="input col-span-5 py-2 md:col-span-1" value={r.item} maxLength={120} onChange={(e) => patch(r.key, { item: e.target.value })} placeholder="Item" />}
                 </div>
@@ -841,7 +888,7 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
                 )}
 
                 {r.kind !== "skip" && r.edited && (
-                  <label className="mt-1 flex min-h-8 items-center gap-2 text-[11px] font-bold text-muted">
+                  <label className="mt-1 flex min-h-11 items-center gap-2 text-[11px] font-bold text-muted">
                     <input type="checkbox" checked={r.remember} onChange={(e) => setRows((all) => all.map((x) => (x.key === r.key ? { ...x, remember: e.target.checked } : x)))} className="size-4 shrink-0 accent-accent-strong" />
                     Remember for next time
                   </label>
@@ -892,12 +939,12 @@ export function ImportWizard({ accounts, categories, bills, shares }: { accounts
               {toImport.length} {toImport.length === 1 ? "line" : "lines"} to import
             </p>
             {problems.size > 0 ? (
-              <p className="mt-0.5 flex items-start gap-1 text-[11px] font-bold leading-snug text-warn">
+              <button type="button" className="mt-0.5 flex min-h-11 items-start gap-1 text-left text-[11px] font-bold leading-snug text-warn underline" onClick={() => chooseFilter("attention")}>
                 <AlertTriangle size={12} className="mt-px shrink-0" aria-hidden />
                 <span>
-                  {problems.size} line{problems.size === 1 ? " needs" : "s need"} a category or account before you can import.
+                  {problems.size} line{problems.size === 1 ? " needs" : "s need"} a category or account before you can import. Show {problems.size === 1 ? "it" : "them"}.
                 </span>
-              </p>
+              </button>
             ) : (
               <p className="sub !text-[11px]">Every line is sorted</p>
             )}

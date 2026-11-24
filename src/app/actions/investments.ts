@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { eq, min, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { isRealDate, todayISO } from "@/lib/dates";
 import { fetchFxToMyr, fetchQuote, holdingValueSen } from "@/lib/investing/prices";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
+import { savedParams, type SavedKey } from "@/lib/saved-notice";
 
 const DATE = z.string().refine((s) => isRealDate(s), "Pick a valid date");
 const MAX_UNITS = 1_000_000_000_000;
@@ -21,12 +22,13 @@ function accountById(db: DB, raw: unknown) {
   return Number.isInteger(id) && id > 0 ? db.select().from(accounts).where(eq(accounts.id, id)).get() : undefined;
 }
 
-function done(error?: string, extra = ""): never {
+function done(error?: string, saved?: SavedKey): never {
   revalidatePath("/", "layout");
   const q = new URLSearchParams();
   if (error) q.set("error", error);
+  else if (saved) for (const [k, v] of Object.entries(savedParams(saved))) if (v) q.set(k, v);
   const s = q.toString();
-  redirect(`/invest${s ? `?${s}` : ""}${extra}`);
+  redirect(`/invest${s ? `?${s}` : ""}`);
 }
 
 const AddInput = z.object({
@@ -75,6 +77,15 @@ export async function addInvestment(formData: FormData): Promise<void> {
     const source = accountById(db, from);
     if (!source) done("The account the money comes from no longer exists");
     if (source!.type === "investment") done("Fund an investment from a bank, cash or e-wallet account, not from another investment");
+    // A transfer dated before the account's first entry would take money out of a balance that did not hold it yet.
+    const first = db
+      .select({ date: min(transactions.date) })
+      .from(transactions)
+      .where(or(eq(transactions.accountId, from), eq(transactions.toAccountId, from)))
+      .get()?.date;
+    if (first && v.date < first) {
+      done(`${source!.name} has no entries before ${first}, so a transfer out on ${v.date} would take money it did not hold yet. Pick a date on or after ${first}, or untick "Also record the transfer" (the investment is still added).`);
+    }
   }
 
   db.transaction((tx) => {
@@ -113,7 +124,7 @@ export async function addInvestment(formData: FormData): Promise<void> {
         .run();
     }
   });
-  done();
+  done(undefined, "investmentAdded");
 }
 
 const ValuationInput = z.object({
@@ -136,7 +147,7 @@ export async function recordValuation(formData: FormData): Promise<void> {
     .values({ accountId: inv!.id, date: p.data!.date, value: value!, source: "manual" })
     .onConflictDoUpdate({ target: [valuations.accountId, valuations.date], set: { value: value!, source: "manual" } })
     .run();
-  done();
+  done(undefined, "value");
 }
 
 const FlowInput = z.object({
@@ -172,7 +183,7 @@ export async function recordInvestmentFlow(formData: FormData): Promise<void> {
       note: p.data!.direction === "in" ? "Investment contribution" : "Investment withdrawal",
     })
     .run();
-  done();
+  done(undefined, "flow");
 }
 
 export async function archiveInvestment(formData: FormData): Promise<void> {
@@ -181,7 +192,7 @@ export async function archiveInvestment(formData: FormData): Promise<void> {
   if (!acc || acc.type !== "investment") done("That isn't an investment account");
   const id = acc!.id;
   db.update(accounts).set({ archived: true }).where(eq(accounts.id, id)).run();
-  done();
+  done(undefined, "investmentArchived");
 }
 
 /** Fetch live prices for every holding that has a ticker and units, and store today's value. */
@@ -234,5 +245,5 @@ export async function updateHolding(formData: FormData): Promise<void> {
     .set({ ticker: p.data!.ticker?.trim() || null, units, priceCurrency: p.data!.priceCurrency?.trim() || "USD" })
     .where(eq(holdings.accountId, inv!.id))
     .run();
-  done();
+  done(undefined, "holding");
 }

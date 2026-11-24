@@ -1,5 +1,6 @@
 import { SalaryForm } from "@/components/plan/SalaryForm";
 import { FileUp } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
@@ -9,18 +10,22 @@ import { BillChecklist } from "@/components/plan/BillChecklist";
 import { PaydayPlanner } from "@/components/plan/PaydayPlanner";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { SafeToSpendCard } from "@/components/plan/SafeToSpendCard";
+import { SavedNotice } from "@/components/settings/SavedNotice";
 import { SetupCard } from "@/components/setup/SetupCard";
 import { SavingsCheck } from "@/components/plan/SavingsCheck";
 import { todayISO } from "@/lib/dates";
 import { formatPct, formatRM, formatRMWhole, senToInput } from "@/lib/money";
 import { monthlyCommitments, summarizeBills } from "@/lib/plan/bills";
 import { cycleLabel } from "@/lib/plan/cycle";
+import { planPayday } from "@/lib/plan/payday";
 import { billsPaidFrom, safeToSpend } from "@/lib/plan/safe";
 import { getAccountBalances } from "@/lib/queries/accounts";
 import { qs, type SearchParams } from "@/lib/queries/filters";
 import { getPlan } from "@/lib/queries/plan";
 import { setupFacts } from "@/lib/setup";
 import { listTransactions, sumTransactions, sumTransferFlow } from "@/lib/queries/transactions";
+
+export const metadata: Metadata = { title: "Plan" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -36,6 +41,14 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   // Before pay is known and a spending account is chosen, "bills + allowance + buffer" against a pay of RM 0 would read as a
   // deficit (the default buffer alone does). There is nothing to plan yet, so say so instead of showing a red alert.
   const planReady = planner.income > 0;
+  // The payday transfer already recorded for the cycle in progress: the planner then says so instead of offering it again.
+  const movedThisCycle = plan.flows[0] && !plan.flows[0].complete ? plan.flows[0].deposited : 0;
+  // Safe to spend counts everything in the spending account. If the payday split would still move money to savings, say so.
+  const split = planReady ? planPayday({ income: planner.income, bills: planner.bills, allowance: planner.allowance, buffer: planner.buffer }) : null;
+  const unmovedNote =
+    split && split.moveToSavings > 0 && movedThisCycle === 0 && roles.savings && safe.configured
+      ? `You have not moved anything to savings this cycle yet. Your payday plan would move ${formatRM(split.moveToSavings)} and keep ${formatRM(split.keepInMain)} in ${roles.spending?.name ?? "your spending account"}; the figure above counts all of it, so it falls by that much once you record the move.`
+      : null;
   const needsSalary = !plan.hasSalary || cycle.paydayOverdue;
 
   // One account on its own (?account=): the bills it pays and what is left in it after them, and what it did this cycle.
@@ -86,6 +99,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           {error}
         </p>
       )}
+      <SavedNotice saved={sp.saved} />
 
       {/* The whole plan, or one account on its own (each chip shows its real balance now). */}
       <AccountChips label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref="/plan" />
@@ -113,7 +127,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                   Salary landing in your spending account is what starts a pay cycle. Record it and everything on this page lines up with your real month.
                 </p>
               </div>
-              <SalaryForm defaultAmount={planner.income ? senToInput(planner.income) : ""} today={today} canRecord={!!roles.spending} />
+              <SalaryForm defaultAmount={planner.income ? senToInput(planner.income) : ""} today={today} canRecord={!!roles.spending} account={accountChoice?.id} />
             </section>
           )}
 
@@ -123,6 +137,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
           ) : (
             <SafeToSpendCard safe={safe} cycle={cycle} />
           )}
+          {unmovedNote && (!accountChoice || isSpending) && <p className="sub px-1 leading-relaxed">{unmovedNote}</p>}
 
           {accountChoice && cycleTotals && cycleMoved && (
             <AccountCycleCard
@@ -156,7 +171,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 </Link>
               </p>
             ) : (
-              <BillChecklist items={billItems} summary={billSummary} today={today} />
+              <BillChecklist items={billItems} summary={billSummary} today={today} account={accountChoice?.id} />
             )}
           </section>
         </div>
@@ -183,6 +198,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 usualTransfer={planner.usualTransfer}
                 canRecord={!!(roles.spending && roles.savings)}
                 today={today}
+                alreadyMoved={movedThisCycle}
               />
             </section>
             ) : (

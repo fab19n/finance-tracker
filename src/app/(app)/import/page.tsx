@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { ImportWizard } from "@/components/import/ImportWizard";
 import { selectBills } from "@/lib/queries/plan";
 import { listAccounts, listCategories } from "@/lib/queries/reference";
 import { selectShares } from "@/lib/queries/shares";
 import { getDb } from "@/db/client";
+
+export const metadata: Metadata = { title: "Import statement" };
 
 export default async function ImportPage() {
   await connection();

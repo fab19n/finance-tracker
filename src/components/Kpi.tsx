@@ -1,4 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { kpiSizeClass } from "@/lib/analytics/dashboard-text";
 
 export type Delta = {
   /** signed ratio vs the previous period, e.g. 0.12 for +12% */
@@ -6,6 +7,8 @@ export type Delta = {
   /** whether going up is good news (income) or bad news (spending) */
   upIsGood: boolean;
   vs: string; // e.g. "vs Sep"
+  /** The earlier period's name on its own ("Sep", "Sep cycle"), for "nothing in Sep to compare". */
+  prevName?: string;
 };
 
 /** Stat tile: label, proportional-figure value, optional delta with arrow + text (never colour alone). */
@@ -25,7 +28,7 @@ export function Kpi({
   let deltaEl: React.ReactNode = null;
   if (delta) {
     if (delta.ratio === null) {
-      deltaEl = <span className="text-muted">no {delta.vs.replace("vs ", "")} data</span>;
+      deltaEl = <span className="text-muted">{delta.prevName ? `nothing in ${delta.prevName} to compare` : "nothing to compare yet"}</span>;
     } else {
       const up = delta.ratio > 0.005;
       const down = delta.ratio < -0.005;
@@ -45,10 +48,10 @@ export function Kpi({
     }
   }
   return (
-    <div className="rounded-[20px] bg-card px-3.5 py-3.5 md:p-[22px]">
+    <div className="min-w-0 rounded-3xl bg-card px-3.5 py-3.5 md:p-[22px]">
       <p className="text-[11px] font-extrabold text-muted md:text-xs">{label}</p>
       <p
-        className={`num figure mt-0.5 text-base tracking-[-0.02em] md:mt-1 md:text-2xl ${
+        className={`num figure mt-0.5 break-words tracking-[-0.02em] md:mt-1 ${kpiSizeClass(value)} ${
           tone === "bad" ? "text-danger" : tone === "good" ? "text-good" : ""
         }`}
       >

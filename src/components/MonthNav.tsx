@@ -1,9 +1,10 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { PendingMark } from "@/components/PendingMark";
 import { monthLabel, shiftMonth } from "@/lib/dates";
 
-const BTN = "grid size-8 shrink-0 place-items-center rounded-full transition";
+const BTN = "grid size-11 shrink-0 place-items-center rounded-full transition";
 
 /**
  * The period navigator: a pill with prev / label / next. Cannot navigate past `maxMonth` (or before `minMonth`); the end it
@@ -39,6 +40,7 @@ export function MonthNav({
         {canPrev ? (
           <Link href={href(before)} aria-label="Previous month" className={`${BTN} bg-card-subtle hover:bg-nav-active`}>
             <ChevronLeft size={16} strokeWidth={2.5} />
+            <PendingMark />
           </Link>
         ) : (
           <span aria-hidden className={`${BTN} pointer-events-none text-ink-muted`}>
@@ -49,6 +51,7 @@ export function MonthNav({
         {canNext ? (
           <Link href={href(next)} aria-label="Next month" className={`${BTN} bg-card-subtle hover:bg-nav-active`}>
             <ChevronRight size={16} strokeWidth={2.5} />
+            <PendingMark />
           </Link>
         ) : (
           <span aria-hidden className={`${BTN} pointer-events-none text-ink-muted`}>

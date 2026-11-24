@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
 import { recordPaydayTransfer } from "@/app/actions/plan";
 import { ActionForm } from "@/components/ActionForm";
@@ -17,6 +18,8 @@ type Props = {
   usualTransfer: number | null;
   canRecord: boolean;
   today: string;
+  /** What this cycle's payday transfer to savings already came to (0 = none recorded yet). */
+  alreadyMoved?: number;
 };
 
 const FROM_INCOME = {
@@ -36,6 +39,7 @@ const FROM_ALLOWANCE = {
  */
 export function PaydayPlanner(p: Props) {
   const uid = useId();
+  const moved = p.alreadyMoved ?? 0;
   const [income, setIncome] = useState(p.income ? senToInput(p.income) : "");
   const [allowance, setAllowance] = useState(p.allowance ? senToInput(p.allowance) : "");
   const [buffer, setBuffer] = useState(senToInput(p.buffer));
@@ -54,6 +58,35 @@ export function PaydayPlanner(p: Props) {
     { label: "Buffer", value: bufferSen, cls: "bg-ink-muted" },
     { label: "To savings", value: plan.moveToSavings, cls: "bg-series-3" },
   ];
+
+  const transferForm = (
+    <ActionForm action={recordPaydayTransfer} className="grid grid-cols-2 gap-2.5" key={plan.moveToSavings}>
+      <div>
+        <label className="label" htmlFor={`${uid}-moved`}>
+          Amount you moved to savings (RM)
+        </label>
+        <input id={`${uid}-moved`} name="amount" inputMode="decimal" defaultValue={senToInput(plan.moveToSavings)} required className="input" />
+      </div>
+      <div>
+        <label className="label" htmlFor={`${uid}-moved-on`}>
+          Date
+        </label>
+        <input id={`${uid}-moved-on`} name="date" type="date" defaultValue={p.today} required className="input" />
+      </div>
+      <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2 w-full" disabled={!p.canRecord}>
+        I moved it
+      </SubmitButton>
+      {!p.canRecord && (
+        <p className="sub col-span-2">
+          Choose your spending and savings accounts in{" "}
+          <Link href="/settings?tab=accounts" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+            Settings
+          </Link>{" "}
+          to record the transfer here.
+        </p>
+      )}
+    </ActionForm>
+  );
 
   return (
     <div className="card space-y-3.5">
@@ -77,7 +110,11 @@ export function PaydayPlanner(p: Props) {
       </div>
       <p className="sub leading-relaxed">
         Pay: {FROM_INCOME[p.incomeFrom]}. Allowance for groceries, fuel, Touch &apos;n Go, food and small things: {FROM_ALLOWANCE[p.allowanceFrom]}.
-        Bills use the highest amount each is expected to be ({formatRM(p.bills)}).
+        Bills use the highest amount each is expected to be ({formatRM(p.bills)}). These four boxes are for trying things out and are not saved;{" "}
+        <Link href="/settings?tab=payday" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+          change your saved defaults in Settings
+        </Link>
+        .
       </p>
 
       <div>
@@ -108,13 +145,17 @@ export function PaydayPlanner(p: Props) {
         </ul>
       </div>
 
-      {allowanceSen === 0 && plan.deficit === 0 && (
+      {allowanceSen === 0 && plan.deficit === 0 && incomeSen > 0 && (
         <p className="banner banner-warn leading-snug">
           Nothing is set aside for groceries, fuel, Touch &apos;n Go and food yet, so &quot;move to savings&quot; below is overstated. Enter an everyday allowance above, even a rough guess.
         </p>
       )}
 
-      {plan.deficit > 0 ? (
+      {incomeSen <= 0 ? (
+        <p role="status" className="banner banner-warn leading-snug">
+          Enter your take-home pay above and the plan shows what to keep and what to move. Until then there is nothing to split.
+        </p>
+      ) : plan.deficit > 0 ? (
         <p role="alert" className="banner banner-danger leading-snug">
           Bills + allowance + buffer come to {formatRM(plan.keepInMain)}, which is {formatRM(plan.deficit)} more than your pay. Lower the allowance or
           review the bills.
@@ -147,24 +188,19 @@ export function PaydayPlanner(p: Props) {
         </div>
       )}
 
-      <ActionForm action={recordPaydayTransfer} className="grid grid-cols-2 gap-2.5" key={plan.moveToSavings}>
-        <div>
-          <label className="label" htmlFor={`${uid}-moved`}>
-            Amount you moved to savings (RM)
-          </label>
-          <input id={`${uid}-moved`} name="amount" inputMode="decimal" defaultValue={senToInput(plan.moveToSavings)} required className="input" />
-        </div>
-        <div>
-          <label className="label" htmlFor={`${uid}-moved-on`}>
-            Date
-          </label>
-          <input id={`${uid}-moved-on`} name="date" type="date" defaultValue={p.today} required className="input" />
-        </div>
-        <SubmitButton pendingLabel="Recording..." className="btn-primary col-span-2 w-full" disabled={!p.canRecord}>
-          I moved it
-        </SubmitButton>
-        {!p.canRecord && <p className="sub col-span-2">Choose your spending and savings accounts in Settings to record the transfer here.</p>}
-      </ActionForm>
+      {moved > 0 && (
+        <p role="status" className="banner banner-good font-extrabold leading-snug">
+          You have already moved {formatRM(moved)} to savings this pay cycle. Only record another transfer if you really made a second one.
+        </p>
+      )}
+      {moved > 0 ? (
+        <details>
+          <summary className="btn cursor-pointer list-none [&::-webkit-details-marker]:hidden">Record another transfer</summary>
+          <div className="mt-2.5">{transferForm}</div>
+        </details>
+      ) : (
+        transferForm
+      )}
     </div>
   );
 }

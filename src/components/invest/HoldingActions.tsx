@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { ActionForm } from "@/components/ActionForm";
+import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { SubmitButton } from "@/components/SubmitButton";
 import { archiveInvestment, recordInvestmentFlow, recordValuation, updateHolding } from "@/app/actions/investments";
 
@@ -150,7 +151,14 @@ export function HoldingActions({
 
               <ActionForm action={archiveInvestment}>
                 <input type="hidden" name="accountId" value={accountId} />
-                <SubmitButton pendingLabel="Archiving..." className="btn-danger">Archive this investment</SubmitButton>
+                <ConfirmSubmit
+                  trigger="Archive this investment"
+                  triggerClassName="btn-danger min-h-11"
+                  title="Archive this investment?"
+                  body="It leaves this page. Its values and the money you moved in and out stay in your books, and you can bring it back with Restore on its account in Settings > Accounts."
+                  confirmLabel="Archive"
+                  tone="neutral"
+                />
               </ActionForm>
             </>
           )}

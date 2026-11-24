@@ -34,13 +34,13 @@ export function IdleSavingsCard({
           <div>
             <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs font-extrabold">
               <span>
-                Covers <strong className="font-black">{op.monthsCovered.toFixed(1)} months</strong> of your costs ({formatRM(op.monthlyCosts)}/month)
+                Your savings account alone covers <strong className="font-black">{op.monthsCovered.toFixed(1)} months</strong> of your costs ({formatRM(op.monthlyCosts)}/month)
               </span>
               <span className="font-bold text-muted">
                 goal {op.targetMonths} months = {formatRMWhole(op.goal)}
               </span>
             </div>
-            <Meter used={used} status={op.funded ? "ok" : used >= 0.5 ? "watch" : "over"} />
+            <Meter label="Idle savings put to work" used={used} status={op.funded ? "ok" : used >= 0.5 ? "watch" : "over"} />
           </div>
 
           <ul className="space-y-2.5 rounded-2xl bg-card-subtle p-3.5 text-xs font-bold leading-relaxed">
@@ -75,9 +75,13 @@ export function IdleSavingsCard({
               <Info size={16} className="mt-0.5 shrink-0" aria-hidden />
               <span>
                 At your assumed rates ({savingsRatePct}% savings vs {fdRatePct}% fixed deposit) there&apos;s nothing to gain by moving it. Check current rates and update them
-                in{" "}
-                <Link href="/settings" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
-                  Settings
+                in Settings: the fixed-deposit rate on the{" "}
+                <Link href="/settings?tab=investing" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+                  Investing tab
+                </Link>
+                , the savings rate on the{" "}
+                <Link href="/settings?tab=payday" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+                  Payday tab
                 </Link>
                 .
               </span>

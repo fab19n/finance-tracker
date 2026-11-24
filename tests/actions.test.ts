@@ -200,7 +200,7 @@ describe("deleteTransaction", () => {
 describe("settings actions", () => {
   it("creates and edits accounts, including a negative opening balance (an overdraft)", async () => {
     const { saveAccount, toggleAccountArchived } = await import("@/app/actions/settings");
-    expect(await redirected(saveAccount(fd({ name: "Maybank Savings", type: "bank", openingBalance: "1,500.50" })))).toBe("/settings");
+    expect(await redirected(saveAccount(fd({ name: "Maybank Savings", type: "bank", openingBalance: "1,500.50" })))).toBe("/settings?saved=account");
     const created = h.db.select().from(accounts).all().find((x) => x.name === "Maybank Savings")!;
     expect(created.openingBalance).toBe(150_050);
 
@@ -245,11 +245,11 @@ describe("settings actions", () => {
 
   it("sends each form back to the Settings tab it was on, with any error shown there", async () => {
     const { saveCategory, toggleCategoryArchived, saveAssumptions, saveCycleSettings } = await import("@/app/actions/settings");
-    expect(await redirected(saveCategory(fd({ name: "Hobbies", type: "expense", nature: "want" })))).toBe("/settings?tab=categories");
+    expect(await redirected(saveCategory(fd({ name: "Hobbies", type: "expense", nature: "want" })))).toBe("/settings?tab=categories&saved=category");
     expect(await redirected(saveCategory(fd({ name: " ", type: "expense", nature: "want" })))).toMatch(/^\/settings\?tab=categories&error=.*needs%20a%20name/);
     expect(await redirected(toggleCategoryArchived(fd({ id: String(ids.unaccounted), archived: "1" })))).toMatch(/^\/settings\?tab=categories&error=/);
-    expect(await redirected(saveAssumptions(fd({ fdRatePct: "3.5", sp500ReturnPct: "8", emergencyMonths: "4", horizonYears: "15", riskProfile: "growth" })))).toBe("/settings?tab=investing");
-    expect(await redirected(saveCycleSettings(fd({ paydayDay: "26", savingsRatePct: "2.5" })))).toBe("/settings?tab=payday");
+    expect(await redirected(saveAssumptions(fd({ fdRatePct: "3.5", sp500ReturnPct: "8", emergencyMonths: "4", horizonYears: "15", riskProfile: "growth" })))).toBe("/settings?tab=investing&saved=assumptions");
+    expect(await redirected(saveCycleSettings(fd({ paydayDay: "26", savingsRatePct: "2.5" })))).toBe("/settings?tab=payday&saved=payday");
     expect(await redirected(saveCycleSettings(fd({ paydayDay: "99", savingsRatePct: "2.5" })))).toMatch(/^\/settings\?tab=payday&error=/);
   });
 
@@ -279,7 +279,7 @@ describe("investment actions", () => {
         fd({ product: "fixed_deposit", name: "Maybank FD 12M", amount: "10,000", date: "2026-10-01", fromAccountId: String(ids.bank), annualRatePct: "3.05", maturityDate: "2027-10-01", compounding: "simple", recordTransfer: "on" }),
       ),
     );
-    expect(url).toBe("/invest");
+    expect(url).toBe("/invest?saved=investmentAdded");
     const acc = h.db.select().from(accounts).all().find((x) => x.name === "Maybank FD 12M")!;
     expect(acc.type).toBe("investment");
     expect(h.db.select().from(holdings).where(eq(holdings.accountId, acc.id)).get()).toMatchObject({ product: "fixed_deposit", principal: 1_000_000, annualRatePct: 3.05, startDate: "2026-10-01", maturityDate: "2027-10-01", compounding: "simple" });

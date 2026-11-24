@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PendingMark } from "@/components/PendingMark";
 import { ScrollChosenIntoView } from "@/components/ScrollChosenIntoView";
 import { formatRM } from "@/lib/money";
 
@@ -31,6 +32,7 @@ export function AccountChips({
       {allHref !== undefined && (
         <Link href={allHref} aria-current={selectedId === null ? "true" : undefined} className={`${base} justify-center ${selectedId === null ? chosen : idle}`}>
           <span className="text-[11px] font-extrabold">All accounts</span>
+          <PendingMark />
         </Link>
       )}
       {accounts.map((a) => {
@@ -39,6 +41,7 @@ export function AccountChips({
           <Link key={a.id} href={a.href} aria-current={on ? "true" : undefined} className={`${base} ${on ? chosen : idle}`}>
             <span className="text-[11px] font-extrabold">{a.name}</span>
             <span className={`num text-[11px] font-bold ${on ? "" : a.balance < 0 ? "text-danger" : "text-muted"}`}>{formatRM(a.balance)}</span>
+            <PendingMark />
           </Link>
         );
       })}

@@ -28,6 +28,8 @@ export function ColumnMapper({
 
   const [date, setDate] = useState<number | "">(initial?.date ?? "");
   const [description, setDescription] = useState<number | "">(initial?.description?.[0] ?? "");
+  // Some banks put the payee in one column and the reference in another: both can be joined into the description.
+  const [description2, setDescription2] = useState<number | "">(initial?.description?.[1] ?? "");
   const [shape, setShape] = useState<"amount" | "split">(initial && initial.amount === null && (initial.debit !== null || initial.credit !== null) ? "split" : "amount");
   const [amount, setAmount] = useState<number | "">(initial?.amount ?? "");
   const [debit, setDebit] = useState<number | "">(initial?.debit ?? "");
@@ -71,7 +73,7 @@ export function ColumnMapper({
         </table>
       </div>
 
-      <label className="flex min-h-8 items-center gap-2">
+      <label className="flex min-h-11 items-center gap-2">
         <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} className="size-4 shrink-0 accent-accent-strong" />
         The first row holds column names
       </label>
@@ -79,6 +81,7 @@ export function ColumnMapper({
       <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-3">
         {pick(date, setDate, "Date")}
         {pick(description, setDescription, "Description")}
+        {pick(description2, setDescription2, "More description (optional)", true)}
         <label className="block min-w-0">
           <span className="label">Date order</span>
           <select className="input" value={dateFormat} onChange={(e) => setDateFormat(e.target.value as "dmy" | "mdy" | "ymd")}>
@@ -90,10 +93,10 @@ export function ColumnMapper({
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-1">
-        <label className="flex min-h-8 items-center gap-2">
+        <label className="flex min-h-11 items-center gap-2">
           <input type="radio" checked={shape === "amount"} onChange={() => setShape("amount")} className="size-4 shrink-0 accent-accent-strong" /> One amount column (+ / −)
         </label>
-        <label className="flex min-h-8 items-center gap-2">
+        <label className="flex min-h-11 items-center gap-2">
           <input type="radio" checked={shape === "split"} onChange={() => setShape("split")} className="size-4 shrink-0 accent-accent-strong" /> Separate money out / in columns
         </label>
       </div>
@@ -118,7 +121,7 @@ export function ColumnMapper({
           onApply({
             headerRow: hasHeader ? 0 : -1,
             date: date === "" ? null : date,
-            description: description === "" ? [] : [description],
+            description: description === "" ? [] : description2 === "" || description2 === description ? [description] : [description, description2],
             amount: shape === "amount" && amount !== "" ? amount : null,
             debit: shape === "split" && debit !== "" ? debit : null,
             credit: shape === "split" && credit !== "" ? credit : null,

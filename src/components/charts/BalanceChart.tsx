@@ -20,7 +20,7 @@ export function BalanceChart({ data, name }: { data: Point[]; name: string }) {
   return (
     <div className="h-[84px] w-full" role="img" aria-label={`${name} balance through the period${end !== null ? `, now ${formatRM(end)}` : ""}`}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 4, left: 10 }}>
+        <ComposedChart accessibilityLayer={false} data={data} margin={{ top: 10, right: 10, bottom: 4, left: 10 }}>
           <AreaGradient id={gid} />
           <CartesianGrid vertical={false} horizontalCoordinatesGenerator={({ height, offset }) => [(offset?.top ?? 0) + height / 2]} />
           <XAxis dataKey="date" hide />

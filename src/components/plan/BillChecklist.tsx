@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import Link from "next/link";
 import { payBill } from "@/app/actions/plan";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -21,9 +22,17 @@ function when(i: Item): string {
 const range = (min: number, max: number) => (min === max ? formatRM(min) : `${formatRM(min)} - ${formatRM(max)}`);
 
 /** This cycle's bills as a checklist, most urgent first. Unpaid ones can be ticked off with the real amount. */
-export function BillChecklist({ items, summary, today }: { items: Item[]; summary: BillsSummary; today: string }) {
+export function BillChecklist({ items, summary, today, account }: { items: Item[]; summary: BillsSummary; today: string; account?: number }) {
   if (items.length === 0) {
-    return <p className="sub">No bills yet. Add your rent, insurance and subscriptions and this becomes your payday checklist.</p>;
+    return (
+      <p className="sub">
+        No bills yet. Add your rent, insurance and subscriptions in{" "}
+        <Link href="/plan/bills" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+          Bills
+        </Link>{" "}
+        and this becomes your payday checklist.
+      </p>
+    );
   }
   // Drawn inside the "Bills this cycle" card on the Plan page, which supplies the frame.
   return (
@@ -65,9 +74,15 @@ export function BillChecklist({ items, summary, today }: { items: Item[]; summar
               )}
               {!paid && (
                 <details className="pl-8 pt-1">
-                  <summary className="pill cursor-pointer list-none bg-accent-soft text-accent-strong [&::-webkit-details-marker]:hidden">Mark paid →</summary>
+                  <summary
+                    className="pill inline-flex min-h-11 cursor-pointer list-none items-center bg-accent-soft px-4 text-accent-strong [&::-webkit-details-marker]:hidden"
+                    aria-label={`Mark paid, ${i.bill.name}`}
+                  >
+                    Mark paid →
+                  </summary>
                   <ActionForm action={payBill} className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-[1fr_1fr_auto]">
                     <input type="hidden" name="billId" value={i.bill.id} />
+                    {account && <input type="hidden" name="account" value={account} />}
                     <div>
                       <label className="label" htmlFor={`bill-${i.bill.id}-amount`}>
                         Amount paid (RM)

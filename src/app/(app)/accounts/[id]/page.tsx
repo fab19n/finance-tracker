@@ -1,4 +1,5 @@
-import { ArrowRight, Settings2 } from "lucide-react";
+import { ArrowRight, Settings2, SlidersHorizontal } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AccountCard } from "@/components/account/AccountCard";
@@ -11,6 +12,8 @@ import { listTransactions, type TxRow } from "@/lib/queries/transactions";
 import { CAP, FIRST, movementsShown, STEP } from "@/lib/movements";
 import { transferView } from "@/lib/transfer-view";
 
+
+export const metadata: Metadata = { title: "Account" };
 
 function Movement({ tx, viewing, back }: { tx: TxRow; viewing: number; back: string }) {
   const t = tx.type === "transfer" ? transferView(tx, viewing) : null;
@@ -51,9 +54,15 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
     <div className="max-w-2xl space-y-4">
       <PageHeader title={account.name} subtitle={account.archived ? "Archived account" : undefined} back={{ href: "/accounts", label: "Back to Accounts" }} />
       <AccountCard account={account} />
-      <Link href={`/accounts/${id}/card`} className="btn w-full">
-        <Settings2 size={16} strokeWidth={2.4} aria-hidden /> Card settings
-      </Link>
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={`/accounts/${id}/card`} className="btn">
+          <Settings2 size={16} strokeWidth={2.4} aria-hidden /> Card settings
+        </Link>
+        {/* Name, opening balance, archiving and the account's role are edited in Settings. */}
+        <Link href="/settings?tab=accounts" className="btn">
+          <SlidersHorizontal size={16} strokeWidth={2.4} aria-hidden /> Edit account
+        </Link>
+      </div>
 
       <section className="card" aria-labelledby="movements-h">
         <h2 id="movements-h" className="h2 mb-3">

@@ -47,23 +47,41 @@ describe("the offline page (public/offline.html)", () => {
   const html = readFileSync(path.join(process.cwd(), "public/offline.html"), "utf8");
 
   it("needs nothing else to display: it is shown precisely when nothing can be fetched", () => {
-    expect(html).not.toMatch(/\b(?:src|href)\s*=/i);
-    expect(html).not.toMatch(/@import|url\(/i);
+    // No external file of any kind: no stylesheet, image or script by address, no @import, no CSS url().
+    expect(html).not.toMatch(/<(?:link|img|iframe)\b/i);
+    expect(html).not.toMatch(/<script[^>]*\bsrc\s*=/i);
+    expect(html).not.toMatch(/@import/i);
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    expect(css).not.toMatch(/url\(/i);
   });
 
-  it("tells you what to check, and lets you retry or go to the one page that always works", () => {
+  it("tells you what to check, and lets you retry or go back", () => {
     expect(html).toMatch(/PC on and awake/);
     expect(html).toMatch(/Tailscale/);
     expect(html).toMatch(/location\.reload\(\)/);
-    expect(html).toMatch(/location\.assign\('\/'\)/);
-    for (const p of ["/transactions", "/plan", "/dashboard", "/accounts", "/more"]) expect(html).toContain(`location.assign('${p}')`);
+    expect(html).toMatch(/history\.back\(\)/);
+    expect(html).toMatch(/isn't saved on this phone/);
     expect(html).not.toMatch(/>Dashboard</);
   });
 
-  it("offers only pages that are kept for offline reading (plus Add, which always works)", async () => {
+  it("links only to pages that are actually saved: it reads the worker's own cache, with no fixed buttons", () => {
+    expect(html).not.toMatch(/location\.assign\(/);
+    expect(html).toContain("money-tracker-pages-");
+    const worker = readFileSync(path.join(process.cwd(), "public/sw.js"), "utf8");
+    expect(worker).toContain("`money-tracker-pages-${VERSION}`");
+    expect(html).toContain("x-saved-at");
+    expect(worker).toContain("x-saved-at");
+  });
+
+  it("names only pages the app keeps for offline reading, the same way Settings does", async () => {
     const { SAVED_PAGES } = await import("@/lib/offline/browser");
-    for (const m of html.matchAll(/location\.assign\('([^']+)'\)/g)) expect(SAVED_PAGES, m[1]).toContain(m[1]);
-    expect(html).toMatch(/You're offline/);
+    const { savedPageName } = await import("@/lib/offline/phone");
+    const listed = [...html.matchAll(/\["(\/[^"]*)", "([^"]+)"\]/g)];
+    expect(listed.length).toBeGreaterThanOrEqual(10);
+    for (const m of listed) {
+      expect(SAVED_PAGES, m[1]).toContain(m[1]);
+      expect(savedPageName(m[1]), m[1]).toBe(m[2]);
+    }
   });
 });
 

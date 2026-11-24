@@ -29,8 +29,9 @@ export const MAX_KEY_LENGTH = 300;
  */
 export function rowShapeProblem(rows: readonly { kind: string; date?: unknown; description?: unknown; item?: unknown; key?: unknown }[]): string | null {
   const todo = rows.filter((r) => r && r.kind !== "skip");
-  for (const [i, r] of todo.entries()) {
-    const where = `Row ${i + 1} (${String(r.date ?? "")} ${String(r.description ?? "").slice(0, 30)})`;
+  for (const r of todo) {
+    // Named the way the review screen shows a line (its date and payee), not by a number that appears nowhere on it.
+    const where = `The line on ${String(r.date ?? "")} (${String(r.description ?? "").slice(0, 30)})`;
     if (typeof r.item === "string" && r.item.length > MAX_ITEM_LENGTH) {
       return `${where}: the Item is ${r.item.length} characters long; shorten it to ${MAX_ITEM_LENGTH} or fewer.`;
     }
@@ -56,8 +57,8 @@ export function commitRows(db: DB, input: CommitInput): CommitResult {
   const billIds = new Set(db.select({ id: recurringBills.id }).from(recurringBills).all().map((b) => b.id));
   const shareIds = new Set(db.select({ id: billShares.id }).from(billShares).all().map((s) => s.id));
 
-  for (const [i, r] of todo.entries()) {
-    const where = `Row ${i + 1} (${r.date} ${r.description.slice(0, 30)})`;
+  for (const r of todo) {
+    const where = `The line on ${r.date} (${r.description.slice(0, 30)})`;
     if (!isRealDate(r.date)) return { ok: false, error: `${where}: the date isn't valid.` };
     if (!Number.isInteger(r.amount) || r.amount === 0) return { ok: false, error: `${where}: the amount isn't valid.` };
     if (!withinLimit(r.amount)) return { ok: false, error: `${where}: ${MAX_AMOUNT_MESSAGE}.` };

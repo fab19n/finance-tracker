@@ -14,15 +14,21 @@ export function BillForm({
   categories,
   accounts,
   defaultAccountId,
+  returnAccount,
   usage = NO_USAGE,
+  prefill,
 }: {
   bill?: BillRow;
   categories: Option[];
   accounts: Option[];
   /** For a NEW bill: which account "Paid from" starts on (the account the Bills page is filtered to). */
   defaultAccountId?: number;
+  /** The Plan's one-account filter to come back to after Save or Delete. */
+  returnAccount?: number;
   /** For an existing bill: what deleting it would take with it (counted by the page), so the confirmation can say so. */
   usage?: BillUsage;
+  /** For a NEW bill: a name and amount to start from ("Add as bill" on Insights). */
+  prefill?: { name: string; amount: string };
 }) {
   const fixed = bill ? bill.amountMin === bill.amountMax : true;
   const f = `bill-${bill?.id ?? "new"}`;
@@ -30,11 +36,12 @@ export function BillForm({
     <div className="space-y-2">
       <ActionForm action={saveBill} className="grid grid-cols-2 gap-2.5 md:grid-cols-6">
         {bill && <input type="hidden" name="id" value={bill.id} />}
+        {returnAccount && <input type="hidden" name="account" value={returnAccount} />}
         <div className="col-span-2 min-w-0 md:col-span-2">
           <label className="label" htmlFor={`${f}-name`}>
             Bill name
           </label>
-          <input id={`${f}-name`} name="name" defaultValue={bill?.name} placeholder="e.g. Netflix" required className="input" />
+          <input id={`${f}-name`} name="name" defaultValue={bill?.name ?? prefill?.name} placeholder="e.g. Netflix" required className="input" />
         </div>
         <div className="col-span-2 min-w-0 md:col-span-2">
           <label className="label" htmlFor={`${f}-category`}>
@@ -67,7 +74,7 @@ export function BillForm({
           <label className="label" htmlFor={`${f}-amount`}>
             Amount (RM)
           </label>
-          <input id={`${f}-amount`} name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : ""} placeholder="88.90" inputMode="decimal" required className="input" />
+          <input id={`${f}-amount`} name="amountMin" defaultValue={bill ? senToInput(bill.amountMin) : (prefill?.amount ?? "")} placeholder="88.90" inputMode="decimal" required className="input" />
         </div>
         <div className="min-w-0">
           <label className="label" htmlFor={`${f}-max`}>
@@ -97,9 +104,10 @@ export function BillForm({
       {bill && (
         <ActionForm action={deleteBill}>
           <input type="hidden" name="id" value={bill.id} />
+          {returnAccount && <input type="hidden" name="account" value={returnAccount} />}
           <ConfirmSubmit
             trigger="Delete this bill"
-            triggerClassName="btn-danger"
+            triggerClassName="btn-danger min-h-11"
             title={`Delete ${bill.name}?`}
             body={deleteBillBody(usage)}
             confirmLabel="Delete bill"

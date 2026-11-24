@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatPct, formatRM } from "@/lib/money";
 import { cycleLabel } from "@/lib/plan/cycle";
 import type { CycleFlow } from "@/lib/plan/savings-flow";
@@ -8,10 +9,18 @@ import type { CycleFlow } from "@/lib/plan/savings-flow";
  */
 export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: CycleFlow[]; rolesConfigured: boolean; hasSalary: boolean }) {
   if (!rolesConfigured) {
-    return <p className="card sub leading-relaxed">Choose your spending and savings accounts in Settings, and this shows how much of what you &quot;save&quot; really stays saved.</p>;
+    return (
+      <p className="card sub leading-relaxed">
+        Choose your spending and savings accounts in{" "}
+        <Link href="/settings?tab=accounts" className="font-extrabold text-accent-strong underline-offset-2 hover:underline">
+          Settings
+        </Link>
+        , and this shows how much of what you &quot;save&quot; really stays saved.
+      </p>
+    );
   }
   if (!hasSalary || flows.length === 0) {
-    return <p className="card sub leading-relaxed">Record your salary (above) and a few entries, and this compares what you move to savings with what you take back out each cycle.</p>;
+    return <p className="card sub leading-relaxed">Record your salary (in the box at the top of this page) and a few entries, and this compares what you move to savings with what you take back out each cycle.</p>;
   }
 
   // Lead with the latest finished cycle; fall back to the one in progress.
@@ -85,33 +94,41 @@ export function SavingsCheck({ flows, rolesConfigured, hasSalary }: { flows: Cyc
         )}
       </div>
 
-      <div className="card overflow-x-auto !p-0">
+      {/* Seven columns do not fit a phone: the card scrolls sideways, can be focused and scrolled from the keyboard, and says so. */}
+      <div
+        className="card overflow-x-auto !p-0"
+        role="region"
+        tabIndex={0}
+        aria-label="Savings by pay cycle. Scrolls sideways on a small screen; use the arrow keys."
+      >
         <table className="w-full min-w-[40rem] text-left text-[13px]">
           <caption className="sr-only">Savings by pay cycle</caption>
           <thead className="text-xs text-muted">
             <tr>
-              <th className="px-3.5 py-3 font-extrabold">Cycle</th>
-              <th className="px-3 py-3 text-right font-extrabold">Income</th>
-              <th className="px-3 py-3 text-right font-extrabold">To savings</th>
-              <th className="px-3 py-3 text-right font-extrabold">Taken back</th>
-              <th className="px-3 py-3 text-right font-extrabold">Paid from savings</th>
-              <th className="px-3 py-3 text-right font-extrabold">Everyday</th>
-              <th className="px-3.5 py-3 text-right font-extrabold">Really saved</th>
+              <th scope="col" className="px-3.5 py-3 font-extrabold">Cycle</th>
+              <th scope="col" className="px-3 py-3 text-right font-extrabold">Really saved</th>
+              <th scope="col" className="px-3 py-3 text-right font-extrabold">Income</th>
+              <th scope="col" className="px-3 py-3 text-right font-extrabold">To savings</th>
+              <th scope="col" className="px-3 py-3 text-right font-extrabold">Taken back</th>
+              <th scope="col" className="px-3 py-3 text-right font-extrabold">Paid from savings</th>
+              <th scope="col" className="px-3.5 py-3 text-right font-extrabold">Everyday</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {flows.map((f) => (
               <tr key={f.start} className="font-bold">
-                <td className="px-3.5 py-2.5">
+                <th scope="row" className="px-3.5 py-2.5 text-left font-bold">
                   {cycleLabel(f)}
                   {!f.complete && <span className="pill ml-1.5 bg-card-subtle text-muted">in progress</span>}
+                </th>
+                <td className={`num px-3 py-2.5 text-right font-black ${f.trueSaved < 0 ? "text-danger" : "text-good"}`}>
+                  {formatRM(f.trueSaved)}
                 </td>
                 <td className="num px-3 py-2.5 text-right">{formatRM(f.income)}</td>
                 <td className="num px-3 py-2.5 text-right">{formatRM(f.deposited)}</td>
                 <td className="num px-3 py-2.5 text-right">{formatRM(f.drawn)}</td>
                 <td className="num px-3 py-2.5 text-right">{formatRM(f.spentFromSavings)}</td>
-                <td className="num px-3 py-2.5 text-right">{formatRM(f.variable)}</td>
-                <td className={`num px-3.5 py-2.5 text-right font-black ${f.trueSaved < 0 ? "text-danger" : "text-good"}`}>{formatRM(f.trueSaved)}</td>
+                <td className="num px-3.5 py-2.5 text-right">{formatRM(f.variable)}</td>
               </tr>
             ))}
           </tbody>

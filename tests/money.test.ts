@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRM, formatRMWhole, parseSen, scaleSen, senToInput } from "@/lib/money";
+import { amountError, formatRM, formatRMWhole, parseSen, scaleSen, senToInput } from "@/lib/money";
 
 describe("parseSen", () => {
   it.each([
@@ -30,6 +30,39 @@ describe("parseSen", () => {
   it("handles null and undefined", () => {
     expect(parseSen(null)).toBeNull();
     expect(parseSen(undefined)).toBeNull();
+  });
+
+  it.each([
+    ["12,50", 1250],
+    ["3,5", 350],
+    ["RM 12,50", 1250],
+    [",5", 50],
+    ["1.234,56", 123456],
+    ["1,234,56", 123456],
+    ["1,234", 123400],
+    ["1,234,567", 123456700],
+    ["12,500", 1250000],
+  ])("reads a comma before one or two digits as decimal: %s -> %d", (input, sen) => {
+    expect(parseSen(input)).toBe(sen);
+  });
+});
+
+describe("amountError", () => {
+  it("is null for a readable positive amount", () => {
+    expect(amountError("12.50")).toBeNull();
+    expect(amountError("12,50")).toBeNull();
+    expect(amountError("1,200")).toBeNull();
+  });
+  it("says what is wrong with more than two decimals", () => {
+    expect(amountError("12.345")).toBe("Use at most 2 decimals");
+    expect(amountError("RM 0.005")).toBe("Use at most 2 decimals");
+    expect(amountError("12,345.678")).toBe("Use at most 2 decimals");
+  });
+  it("otherwise asks for an amount above zero", () => {
+    expect(amountError("")).toBe("Enter an amount greater than 0");
+    expect(amountError("abc")).toBe("Enter an amount greater than 0");
+    expect(amountError("0")).toBe("Enter an amount greater than 0");
+    expect(amountError("1.2.3")).toBe("Enter an amount greater than 0");
   });
 });
 

@@ -109,10 +109,10 @@ export function buildAdvice(input: AdviceInput): Advice {
   };
 
   const notes = [
+    "This is an educational model with editable assumptions, not licensed financial advice.",
     "The S&P 500 is not guaranteed: it has fallen 30-50% in bad years. The expected rate is a long-run illustration before inflation, fees and tax.",
     `Fixed-deposit rates change. This page uses your assumption of ${settings.fdRatePct}% p.a. - check your bank's current offer in Settings.`,
     "US-listed S&P 500 ETFs (e.g. VOO, SPY) are commonly cited as carrying US dividend withholding tax for Malaysian residents and US estate-tax exposure above USD 60,000; Ireland-domiciled UCITS versions (e.g. CSPX, VUAA) are a common alternative. Confirm with your broker or a tax adviser.",
-    "This is an educational model with editable assumptions, not licensed financial advice.",
   ];
 
   const base: Advice = {

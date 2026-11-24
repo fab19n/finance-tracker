@@ -16,10 +16,13 @@ export function CumulativeSpendChart({
   data,
   currentLabel,
   previousLabel,
+  partial = true,
 }: {
   data: CumulativePoint[];
   currentLabel: string;
   previousLabel: string;
+  /** The period is still running: say "so far". A finished one is just its total. */
+  partial?: boolean;
 }) {
   const gid = useGradientId();
   const lastIdx = data.reduce((acc, p, i) => (p.current !== null ? i : acc), -1);
@@ -28,10 +31,10 @@ export function CumulativeSpendChart({
     <div
       className="h-[140px] w-full"
       role="img"
-      aria-label={`Cumulative spending, ${currentLabel} versus ${previousLabel}${total !== null ? `. ${currentLabel} so far: ${formatRMWhole(total)}` : ""}`}
+      aria-label={`Cumulative spending, ${currentLabel} versus ${previousLabel}${total !== null ? `. ${currentLabel}${partial ? " so far" : ""}: ${formatRMWhole(total)}` : ""}`}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 4, left: 10 }}>
+        <ComposedChart accessibilityLayer={false} data={data} margin={{ top: 28, right: 10, bottom: 4, left: 10 }}>
           <AreaGradient id={gid} />
           <CartesianGrid vertical={false} />
           <XAxis dataKey="day" hide />

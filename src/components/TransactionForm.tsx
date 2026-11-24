@@ -2,15 +2,15 @@
 
 import { ArrowRight, Check, ChevronDown, Info, Loader2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition, type KeyboardEvent } from "react";
 import { adoptLookalike, saveTransaction, type FormState } from "@/app/actions/transactions";
 import { AccountPicker, type PickableAccount } from "@/components/entry/AccountPicker";
 import { CategoryPicker } from "@/components/entry/CategoryPicker";
-import { dayChoice, submitLabel } from "@/components/entry/entry-logic";
+import { dayChoice, largeAmountWarning, nextRadioIndex, quickHints, submitLabel } from "@/components/entry/entry-logic";
 import { withBack } from "@/lib/back";
 import { isISODate, shiftDays, shortDate, todayISO } from "@/lib/dates";
 import { entryShapeError, savedMessage, type WireEntry } from "@/lib/entry-shape";
-import { parseSen } from "@/lib/money";
+import { amountError, formatRM, parseSen } from "@/lib/money";
 import { offlineStore } from "@/lib/offline/browser";
 import { newClientId } from "@/lib/offline/ids";
 import type { EntryLabels } from "@/lib/offline/types";
@@ -59,6 +59,8 @@ type Props = {
   draft?: EntryDraft;
   /** With `initial`: the list the entry was opened from, where Save returns to. */
   backHref?: string;
+  /** A NEW entry that starts as a copy of another ("Duplicate"): its fields, today's date, nothing shared with the original. */
+  prefill?: Omit<TxInitial, "id" | "date">;
 };
 export type TransactionFormProps = Props;
 
@@ -74,7 +76,7 @@ const subscribeNever = () => () => {};
 function queuedMessage(why: "offline" | "unreachable" | "login" | "error"): string {
   if (why === "login") return "Saved on this phone. Sign in again and it will go to your PC.";
   if (why === "error") return "Saved on this phone. Your PC had a problem, so it will keep trying.";
-  return "Saved on this phone. It will go to your PC as soon as it can be reached.";
+  return "Saved on this phone. It is sent to your PC the next time you open the app with your PC reachable.";
 }
 
 export function TransactionForm({
@@ -86,8 +88,9 @@ export function TransactionForm({
   initial,
   backHref,
   draft,
+  prefill,
 }: Props) {
-  const seed = initial ?? draft;
+  const seed: (Omit<TxInitial, "id" | "date"> & { date?: string }) | undefined = initial ?? draft ?? prefill;
   const [type, setType] = useState<TxType>(seed?.type ?? "expense");
   const [amount, setAmount] = useState(seed ? (seed.amount / 100).toFixed(2) : "");
   const [categoryId, setCategoryId] = useState<number | null>(seed?.categoryId ?? null);
@@ -104,6 +107,9 @@ export function TransactionForm({
   const [seenResult, setSeenResult] = useState<FormState | null>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const typeRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // The amount a very large entry was last warned about: pressing the button again with the SAME amount means "yes, it is".
+  const largeAsked = useRef<string | null>(null);
 
   // "Already in your books?" Once there is an amount, an account and a date, ask whether the bank import already holds this
   // entry (typing something the statement has is how it gets counted twice). Only for NEW entries, best-effort, and silent
@@ -144,10 +150,14 @@ export function TransactionForm({
    */
   async function addEntry(fd: FormData, prev: FormState): Promise<FormState> {
     const kind = String(fd.get("type")) as TxType;
+    // "Use at most 2 decimals" and the like: say what is wrong with the typed amount, not a vague "greater than 0".
+    const typed = String(fd.get("amount") ?? "");
+    const badAmount = amountError(typed);
+    if (badAmount) return { ok: false, error: badAmount };
     const entry: WireEntry = {
       clientId: draft?.clientId ?? newClientId(),
       type: kind,
-      amount: parseSen(String(fd.get("amount") ?? "")) ?? 0,
+      amount: parseSen(typed) ?? 0,
       date: String(fd.get("date") ?? ""),
       accountId: Number(fd.get("accountId")) || 0,
       toAccountId: kind === "transfer" ? Number(fd.get("toAccountId")) || null : null,
@@ -190,6 +200,15 @@ export function TransactionForm({
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     async (prev, fd) => {
       const adopting = fd.has("adopt");
+      // A very large amount is usually a slipped decimal point: the first press says so, the second (same amount) goes ahead.
+      if (!adopting) {
+        const typed = String(fd.get("amount") ?? "").trim();
+        const warning = largeAmountWarning(parseSen(typed));
+        if (warning && largeAsked.current !== typed) {
+          largeAsked.current = typed;
+          return { ok: false, error: warning };
+        }
+      }
       let result: FormState;
       try {
         if (adopting) result = await adoptLookalike(prev, fd);
@@ -215,7 +234,10 @@ export function TransactionForm({
         setItem("");
         setNote("");
         setCategoryId(null);
-        amountRef.current?.focus();
+        largeAsked.current = null;
+        // Back to the amount for the next entry, but only where there is a real keyboard: on a phone, focusing it would pop the
+        // on-screen keyboard up over the button and the notice after every single entry.
+        if (window.matchMedia("(pointer: fine)").matches) amountRef.current?.focus();
       }
       return result;
     },
@@ -241,6 +263,8 @@ export function TransactionForm({
   const fromAccounts = type === "transfer" ? accounts : accounts.filter((a) => a.type !== "investment" || a.id === accountId);
   const chips = categories.filter((c) => c.type === type);
   const typeHints = hints.filter((h) => h.type === type);
+  // Regular entries as one-tap starters (new entries only: a saved one already has its own values).
+  const quick = initial || draft ? [] : quickHints(hints, type, chips.map((c) => c.id));
 
   function dismissSaved() {
     setSeenResult(state);
@@ -267,6 +291,23 @@ export function TransactionForm({
         if (fallback) setAccountId(fallback.id);
       }
     }
+  }
+
+  /** A regular entry's chip: fills what it was, its category and the amount you last paid. */
+  function applyQuick(h: (typeof quick)[number]) {
+    dismissSaved();
+    setItem(h.item);
+    if (h.categoryId) setCategoryId(h.categoryId);
+    setAmount((h.amount / 100).toFixed(2));
+  }
+
+  function typeKeyDown(e: KeyboardEvent, index: number) {
+    const types = Object.keys(TYPE_LABEL) as TxType[];
+    const next = nextRadioIndex(e.key, index, types.length);
+    if (next === null) return;
+    e.preventDefault();
+    changeType(types[next]);
+    typeRefs.current[next]?.focus();
   }
 
   function changeItem(value: string) {
@@ -309,13 +350,37 @@ export function TransactionForm({
         </p>
       )}
 
-      <div className="seg" role="tablist" aria-label="Entry type">
-        {(Object.keys(TYPE_LABEL) as TxType[]).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={type === t} onClick={() => changeType(t)} className="seg-item min-h-11">
+      {/* One choice out of three, so a radio group: Tab lands on the chosen one and the arrow keys move the choice. */}
+      <div className="seg" role="radiogroup" aria-label="Entry type">
+        {(Object.keys(TYPE_LABEL) as TxType[]).map((t, i) => (
+          <button
+            key={t}
+            ref={(el) => {
+              typeRefs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={type === t}
+            tabIndex={type === t ? 0 : -1}
+            onClick={() => changeType(t)}
+            onKeyDown={(e) => typeKeyDown(e, i)}
+            className="seg-item"
+          >
             {TYPE_LABEL[t]}
           </button>
         ))}
       </div>
+
+      {quick.length > 0 && (
+        <div role="group" aria-label="Your regular entries: tap one to fill in what it was, the category and the amount" className="no-scrollbar -mx-5 flex gap-1.5 overflow-x-auto px-5 md:mx-0 md:px-0">
+          {quick.map((h) => (
+            <button key={h.item} type="button" onClick={() => applyQuick(h)} aria-pressed={item.trim().toLowerCase() === h.item.toLowerCase() && sen === h.amount} className="chip">
+              {h.item}
+              <span className="num font-semibold opacity-80">{formatRM(h.amount)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div>
         <label htmlFor="amount" className="sr-only">
@@ -465,7 +530,7 @@ export function TransactionForm({
                       type="button"
                       onClick={() => adopt(l.id)}
                       disabled={pending || !canAdopt}
-                      className="pill min-h-8 bg-warn px-3.5 text-card disabled:opacity-50"
+                      className="pill min-h-11 bg-warn px-4 text-card disabled:opacity-50"
                     >
                       Use this one
                     </button>

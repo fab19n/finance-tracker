@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useActionPending } from "./ActionForm";
 
 /**
@@ -17,6 +17,7 @@ export function ConfirmSubmit({
   triggerLabel,
   title,
   body,
+  warnings,
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
   tone = "danger",
@@ -29,6 +30,8 @@ export function ConfirmSubmit({
   triggerLabel?: string;
   title: string;
   body?: ReactNode;
+  /** Sentences that matter before saying yes (what else the action undoes), listed under the body. */
+  warnings?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   /** "danger" for things that can't be undone; "neutral" for ones that can (archive, lock). */
@@ -36,6 +39,12 @@ export function ConfirmSubmit({
   disabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // The dialog is only put on the page when it is first asked for: a list of 100 entries has 100 of these buttons, and
+  // 100 hidden copies of the same sheet would be dead weight.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (mounted && ref.current && !ref.current.open) ref.current.showModal();
+  }, [mounted]);
   const titleId = useId();
   // Inside an ActionForm both buttons dim while the action runs, so a confirmed delete can't be sent twice.
   const pending = useActionPending();
@@ -47,10 +56,11 @@ export function ConfirmSubmit({
         aria-label={triggerLabel}
         title={triggerLabel}
         disabled={disabled || pending}
-        onClick={() => ref.current?.showModal()}
+        onClick={() => (ref.current ? ref.current.showModal() : setMounted(true))}
       >
         {trigger}
       </button>
+      {mounted && (
       <dialog
         ref={ref}
         aria-labelledby={titleId}
@@ -66,6 +76,13 @@ export function ConfirmSubmit({
             {title}
           </h2>
           {body && <p className="sub mt-1.5 leading-relaxed">{body}</p>}
+          {warnings && warnings.length > 0 && (
+            <ul className="mt-3 list-disc space-y-1 rounded-2xl bg-warn-soft py-2.5 pl-8 pr-3.5 text-[13px] font-bold text-warn">
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          )}
           <div className="mt-5 flex flex-col-reverse gap-2 md:flex-row md:justify-end">
             <button type="button" className="btn" onClick={() => ref.current?.close()}>
               {cancelLabel}
@@ -84,6 +101,7 @@ export function ConfirmSubmit({
           </div>
         </div>
       </dialog>
+      )}
     </>
   );
 }

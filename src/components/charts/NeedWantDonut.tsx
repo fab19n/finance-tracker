@@ -5,7 +5,7 @@ const GAP = 3; // a clear gap between arcs, measured between the round caps
 
 /**
  * Needs / wants / saving as the design's 96px ring: an 11px stroke with ROUND caps on a raised track, the text colour, the
- * accent and good (the three series slots), and the share saved in the middle ("20%" in Sora, "saved" under it). It is
+ * accent and good (the three series slots), and the share not spent in the middle ("20%" in Sora, "not spent" under it). It is
  * decoration over the legend beside it, which carries every name and figure, so it is hidden from screen readers.
  */
 export function NeedWantDonut({ need, want, saved, savedPct }: { need: number; want: number; saved: number; savedPct?: number }) {
@@ -49,7 +49,7 @@ export function NeedWantDonut({ need, want, saved, savedPct }: { need: number; w
       {savedPct !== undefined && (
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
           <span className="font-display text-[19px] font-semibold tracking-[-0.02em]">{Math.round(savedPct * 100)}%</span>
-          <span className="mt-1 text-[10px] font-bold text-muted">saved</span>
+          <span className="mt-1 text-[10px] font-bold text-muted">not spent</span>
         </div>
       )}
     </div>

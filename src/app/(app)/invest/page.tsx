@@ -1,6 +1,7 @@
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AlertCircle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { refreshPrices } from "@/app/actions/investments";
 import { ChartTable } from "@/components/ChartTable";
@@ -12,6 +13,7 @@ import { IdleSavingsCard } from "@/components/invest/IdleSavingsCard";
 import { DuoIcon } from "@/components/DuoIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { Kpi } from "@/components/Kpi";
+import { SavedNotice } from "@/components/settings/SavedNotice";
 import { MoreHeader } from "@/components/MoreHeader";
 import { shortDate, todayISO } from "@/lib/dates";
 import { buildAdvice } from "@/lib/investing/advisor";
@@ -23,6 +25,8 @@ import { getAdviceInput, listInvestments, portfolioSeries } from "@/lib/queries/
 import { getRoleAccounts, listBills } from "@/lib/queries/plan";
 import { monthlyCommitments } from "@/lib/plan/bills";
 import { getSettings } from "@/lib/settings";
+
+export const metadata: Metadata = { title: "Invest" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -87,12 +91,13 @@ export default async function InvestPage({ searchParams }: { searchParams: Promi
         }
       />
 
-      {priced && !error && (
+      {priced && Number(priced) > 0 && (
         <p role="status" className="banner banner-good">
           <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden />
-          Updated {priced} price{priced === "1" ? "" : "s"} from the market.
+          Updated {priced} price{priced === "1" ? "" : "s"} from the market{error ? ", but not all of them (see below)" : ""}.
         </p>
       )}
+      <SavedNotice saved={sp.saved} />
       {error && (
         <p role="alert" className="banner banner-danger">
           <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />

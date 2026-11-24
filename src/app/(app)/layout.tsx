@@ -20,6 +20,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <OfflineProvider>
       <div className="min-h-dvh pb-32 md:pb-0 md:pl-57">
+        {/* First stop for the keyboard: past the sidebar (logo, places, sync, Settings) straight to the page. */}
+        <a
+          href="#main"
+          className="sr-only z-50 rounded-full bg-accent px-5 py-3 text-sm font-extrabold text-accent-fg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        >
+          Skip to content
+        </a>
         <aside className="fixed inset-y-4 left-4 z-20 hidden w-49 flex-col rounded-3xl bg-card px-3 py-5 md:flex">
           <Link href="/dashboard" className="mb-4 block px-2.5 pt-1">
             <KoopangLogo height={28} />
@@ -35,7 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <main className="mx-auto w-full max-w-5xl px-5 py-5 md:px-8 md:py-8">
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl px-5 py-5 outline-none md:px-8 md:py-8">
           <SyncBanner />
           {children}
         </main>

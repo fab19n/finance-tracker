@@ -94,7 +94,7 @@ describe("investment actions check their accounts (SEC-08)", () => {
     expect(readable(await redirected(recordInvestmentFlow(flow({ fromAccountId: "9999" }))))).toMatch(/no longer exists/);
     expect(readable(await redirected(recordInvestmentFlow(flow({ fromAccountId: String(inv) }))))).toMatch(/Move money between/);
     expect(txs()).toHaveLength(0);
-    expect(await redirected(recordInvestmentFlow(flow({})))).toBe("/invest");
+    expect(await redirected(recordInvestmentFlow(flow({})))).toBe("/invest?saved=flow");
     expect(txs()).toHaveLength(1);
   });
 

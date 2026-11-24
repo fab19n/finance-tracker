@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { ageLabel } from "@/lib/offline/phone";
 import { offlineStore } from "@/lib/offline/browser";
 import type { OfflineState } from "@/lib/offline/offline-store";
 
@@ -16,4 +17,9 @@ export function useOfflineState(): OfflineState {
 /** "Sat, 11 Oct, 2:32 pm": when something happened, for a phone in Malaysia. */
 export function when(at: number): string {
   return new Date(at).toLocaleString("en-MY", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+/** "3 hours ago": how long since `at`, by this phone's clock. */
+export function since(at: number): string {
+  return ageLabel(at, Date.now());
 }

@@ -46,12 +46,14 @@ export function categoryIconName(name: string): DuoName | null {
   const n = name.toLowerCase();
   const rules: [RegExp, DuoName][] = [
     [/e-?wallet|top-?\s?up|reload/, "ewallet"],
-    [/salary|wage|bonus|allowance|pay\s?check|income|cash/, "cash"],
+    // Specific words first: "Investment Income" is an investment, not cash.
     [/invest|dividend|stock|\bunit trust|\bfd\b|fixed deposit/, "invest"],
-    [/rent|mortgage|housing|home|house|furnitur/, "home"],
+    [/salary|wage|bonus|allowance|pay\s?check|income|cash/, "cash"],
+    // \brent: "rent" and "rental", but not the middle of "parents".
+    [/\brent|mortgage|housing|\bhome|\bhouse|furnitur/, "home"],
     [/reimburs|shared|split|family|parents/, "shared"],
     [/utilit|electric|water|internet|phone/, "bolt"],
-    [/bill|insurance|\btax|subscri|loan|install?ment/, "plan"],
+    [/bill|insurance|\btax(es)?\b|subscri|loan|install?ment/, "plan"],
     [/grocer|supermarket|market/, "cart"],
     [/eating|food|dining|restaurant|cafe|coffee|meal/, "utensils"],
     [/transport|fuel|petrol|parking|toll|grab|taxi|car\b|vehicle/, "car"],
@@ -64,6 +66,53 @@ export function categoryIconName(name: string): DuoName | null {
     [/bank|fee|charge|transfer/, "bank"],
   ];
   return rules.find(([re]) => re.test(n))?.[1] ?? null;
+}
+
+/** Typing a figure this big (RM 10,000 or more) asks for a second tap: a slipped decimal point is the usual cause. */
+export const LARGE_AMOUNT_SEN = 1_000_000;
+
+/** What to say before saving a very large amount, or null when it is an ordinary one. */
+export function largeAmountWarning(sen: number | null): string | null {
+  if (sen === null || sen < LARGE_AMOUNT_SEN) return null;
+  return `That is ${formatRM(sen)}. If it is right, press the button again to add it.`;
+}
+
+/** A past entry the form can offer as a one-tap start: what it was, its category and the last amount. */
+export type QuickHint = { item: string; type: "income" | "expense"; categoryId: number | null; amount: number; count: number };
+
+/**
+ * Up to `max` regular entries of this type to show as chips above the amount: the most repeated first (the hints arrive
+ * sorted that way), one per item, and only ones whose category can still be picked (an archived category would leave the
+ * chip filling nothing in).
+ */
+export function quickHints(hints: QuickHint[], type: EntryType, categoryIds: number[], max = 6): QuickHint[] {
+  if (type === "transfer") return [];
+  const pickable = new Set(categoryIds);
+  const seen = new Set<string>();
+  const out: QuickHint[] = [];
+  for (const h of hints) {
+    if (h.type !== type) continue;
+    if (h.categoryId !== null && !pickable.has(h.categoryId)) continue;
+    const key = h.item.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(h);
+    if (out.length === max) break;
+  }
+  return out;
+}
+
+/**
+ * Arrow-key movement inside a radio group (a row of buttons that act as one control): where focus and the choice go next,
+ * wrapping at the ends; Home and End jump. Null for any other key.
+ */
+export function nextRadioIndex(key: string, index: number, count: number): number | null {
+  if (count <= 0) return null;
+  if (key === "ArrowRight" || key === "ArrowDown") return (index + 1) % count;
+  if (key === "ArrowLeft" || key === "ArrowUp") return (index - 1 + count) % count;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
 }
 
 /** Which quick day chip matches the date in the form: "today", "yesterday", or neither. */

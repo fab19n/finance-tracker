@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
@@ -12,6 +14,7 @@ import { Meter } from "@/components/Meter";
 import { MonthNav } from "@/components/MonthNav";
 import { PageHeader } from "@/components/PageHeader";
 import { PeriodToggle } from "@/components/PeriodToggle";
+import { budgetLabel, heroSizeClass, periodName, periodSubtitle, praiseWants, ringPill, shareLabel } from "@/lib/analytics/dashboard-text";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { payCyclePeriods, periodDay, rekeyRows } from "@/lib/analytics/periods";
 import {
@@ -36,7 +39,6 @@ import {
   monthLabel,
   monthStart,
   shiftMonth,
-  shortMonthLabel,
   todayISO,
 } from "@/lib/dates";
 import { formatPct, formatRM, formatRMWhole, formatRMWholeBare } from "@/lib/money";
@@ -50,6 +52,8 @@ import { getAccountLedger } from "@/lib/queries/ledger";
 import { listBills, listSalaries } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
+
+export const metadata: Metadata = { title: "Home" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 const VISIBLE_CATEGORIES = 8;
@@ -83,8 +87,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const unit = period ? "cycle" : "month";
   const rangeLabel = period ? cycleLabel(period) : monthLabel(month);
   const daysTotal = period ? daysBetween(period.start, period.end) + 1 : daysInMonthOf(month);
-  // "Oct 26" reads as the 26th of October; a cycle is called by its month: "Oct cycle".
-  const nameOf = (m: string) => (period ? `${shortMonthLabel(m).split(" ")[0]} cycle` : shortMonthLabel(m));
+  // "Oct 26" reads as the 26th of October: a period is called by its month ("Oct"), a cycle by its month too ("Oct cycle").
+  const nameOf = (m: string) => periodName(m, month, !!period);
 
   const months6 = lastMonths(month, 6);
   const [raw, categories, worth, accounts, billDefs] = await Promise.all([
@@ -106,12 +110,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const totals = monthTotals(rows, month);
   // Mid-month, compare against the same days of last month - 9 days vs a full month would flatter you.
   const prevTotals = monthTotals(rows, prev, isCurrent ? dayNow : 31);
-  const vsLabel = `vs ${shortMonthLabel(prev).split(" ")[0]}${isCurrent ? " to date" : ""}`;
+  const prevPeriodName = nameOf(prev);
+  const vsLabel = `vs ${prevPeriodName}${isCurrent ? " to date" : ""}`;
   // Interest of a few sen, or a friend's payback, is not a paycheck: don't call the period "overspent" before pay lands.
   const hasPay = paycheckIn(totals.income, settings.expectedIncome);
   const byCategory = categoryBreakdown(rows, month);
   const byAccount = accountBreakdown(rows, month);
   const accountName = new Map(accounts.map((a) => [a.id, a.name]));
+  const colorOf = new Map(categories.map((c) => [c.id, c.color]));
   // Every figure here opens the entries behind it, for THIS period: a pay cycle (26 Sep - 25 Oct) is not a calendar month,
   // so it goes as a date range; a calendar month goes as the month.
   // With one account on screen they open that account's entries.
@@ -147,25 +153,29 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
+  // The six-period trend is worth showing whenever ANY of the periods has something, even when this one is still empty.
+  const hasHistory = series.some((p) => p.income > 0 || p.expense > 0);
 
   const wantsOver = split.vsIncome ? split.want - Math.round(split.base * 0.3) : 0;
   // The lower row is three cards when there are budgets, else two that share the width.
   const third = budgets.length > 0 ? "lg:col-span-4" : "lg:col-span-6";
+  const latestPair = series.length > 0 ? series[series.length - 1] : null;
 
   // The hero: what is left of this period's income (or, with no pay logged yet, the plain running net). For one account it is
   // plainly the money in minus the money out: never "overspent" (a cash wallet only ever has money going out), and with no
   // "income used" bar, since the pay is not what lands in every account.
   const overspent = !accountChoice && hasPay && totals.net < 0;
   const used = !accountChoice && hasPay && totals.income > 0 ? totals.expense / totals.income : null;
-  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? (isCurrent ? "Net so far" : "Net") : totals.net >= 0 ? "Left over" : "Overspent";
+  const heroLabel = accountChoice ? `Net in ${accountChoice.name}` : !hasPay ? (isCurrent ? "Net so far" : "Net") : totals.net >= 0 ? `Left over this ${unit}` : "Overspent";
   // Days until this period ends (the day before the next payday for a pay cycle), counting today. Only for the one in progress.
   const daysLeft = isCurrent ? Math.max(1, daysBetween(today, period ? period.end : monthEnd(month)) + 1) : null;
+  const heroFigure = formatRMWhole(Math.abs(totals.net));
   const heroSign = (accountChoice || !hasPay) && totals.net < 0 ? "−" : "";
 
   // "Slower than Sep": this period's running total against last period's at the same day.
   const latest = [...cumulative].reverse().find((p) => p.current !== null);
   const paceRatio = isCurrent && latest && latest.previous ? (latest.current! - latest.previous) / latest.previous : null;
-  const prevName = shortMonthLabel(prev).split(" ")[0];
+  const prevName = prevPeriodName;
   const pacePill =
     paceRatio === null
       ? null
@@ -184,11 +194,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {monthLabel(month).split(" ")[0]}
           </>
         }
-        subtitle={`${accountChoice ? `${accountChoice.name} · ` : ""}${view === "cycle" ? "Pay cycle" : "Calendar month"} · ${isCurrent ? `day ${dayNow} of ${daysTotal}` : rangeLabel}`}
+        subtitle={periodSubtitle({ account: accountChoice?.name, cycle: view === "cycle", isCurrent, dayNow, daysTotal })}
       />
 
       <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
-        <PeriodToggle view={view} account={accountChoice?.id} />
+        <PeriodToggle view={view} account={accountChoice?.id} month={month} />
         <MonthNav
           month={month}
           maxMonth={nowMonth}
@@ -206,7 +216,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <p className="sub px-1">
           Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out, and budgets and net worth
           cover every account, so they step aside.{" "}
-          <Link href={entries({})} className="font-extrabold text-accent-strong hover:underline">
+          <Link href={entries({})} className="font-extrabold text-accent-strong underline underline-offset-2">
             See its entries
           </Link>
         </p>
@@ -215,9 +225,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <section className="grid grid-cols-3 gap-2.5 md:grid-cols-[1.5fr_1fr_1fr_1fr] md:gap-3" aria-label="Key figures">
         <div className={`col-span-3 md:col-span-1 ${overspent ? "hero-danger" : "hero"}`}>
           <p className="mb-1.5 text-xs font-extrabold">{heroLabel}</p>
-          <p className="num text-[54px] font-black leading-[0.95] tracking-[-0.03em] md:text-[44px]">
+          <p className={`num break-words font-black leading-[0.95] tracking-[-0.03em] ${heroSizeClass(heroFigure)}`}>
             {heroSign}
-            {formatRMWhole(Math.abs(totals.net))}
+            {heroFigure}
           </p>
           {accountChoice ? (
             <p className="mt-3 text-xs font-extrabold">money in minus money out, {isCurrent ? `${unit} so far` : `this ${unit}`}</p>
@@ -240,15 +250,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Kpi
           label="Income"
           value={formatRMWhole(totals.income)}
-          delta={{ ratio: changeRatio(totals.income, prevTotals.income), upIsGood: true, vs: vsLabel }}
+          delta={{ ratio: changeRatio(totals.income, prevTotals.income), upIsGood: true, vs: vsLabel, prevName: prevPeriodName }}
         />
         <Kpi
           label="Spent"
           value={formatRMWhole(totals.expense)}
-          delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel }}
+          delta={{ ratio: changeRatio(totals.expense, prevTotals.expense), upIsGood: false, vs: vsLabel, prevName: prevPeriodName }}
         />
         {accountChoice ? (
-          <Kpi label={`${accountChoice.name} balance`} value={formatRMWhole(accountChoice.balance)} hint="right now" tone={accountChoice.balance < 0 ? "bad" : "default"} />
+          <Kpi label="Balance now" value={formatRMWhole(accountChoice.balance)} hint={accountChoice.name} tone={accountChoice.balance < 0 ? "bad" : "default"} />
         ) : (
           <Kpi
             label="Net worth"
@@ -279,8 +289,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
       )}
 
-      {hasData && (
+      {(hasData || hasHistory) && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-12">
+          {hasData && (
+            <>
           <section className="card lg:order-1 lg:col-span-7" aria-labelledby="pace">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="pace" className="h2">
@@ -295,14 +307,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </span>
               {pacePill && <span className={`pill ${pacePill.cls}`}>{pacePill.text}</span>}
             </p>
-            <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} />
+            <CumulativeSpendChart data={cumulative} currentLabel={nameOf(month)} previousLabel={nameOf(prev)} partial={isCurrent} />
             <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
               <li className="flex items-center gap-1.5">
                 <span className="h-[3px] w-3.5 rounded bg-series-2" aria-hidden /> This {unit}
               </li>
-              <li className="flex items-center gap-1.5 text-muted">
-                <span className="w-3.5 border-t-2 border-dotted border-ink-muted" aria-hidden /> Last {unit}
-              </li>
+              {cumulative.some((p) => p.previous !== null && p.previous > 0) && (
+                <li className="flex items-center gap-1.5 text-muted">
+                  <span className="w-3.5 border-t-2 border-dotted border-ink-muted" aria-hidden /> Last {unit}
+                </li>
+              )}
             </ul>
             <ChartTable
               caption={`Cumulative spending by day of the ${unit}`}
@@ -327,21 +341,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <ul className="grid grid-cols-3 gap-2 md:hidden">
                 {budgets.map((b) => (
                   <li key={b.categoryId}>
-                    <Link href={entries({ category: b.categoryId })} className="flex flex-col items-center gap-1.5 text-center" aria-label={`${b.name}: see its entries`}>
-                      <BudgetRing used={b.used} status={b.status} />
+                    <Link href={entries({ category: b.categoryId })} className="flex min-h-11 flex-col items-center gap-1.5 text-center" aria-label={budgetLabel(b)}>
+                      <BudgetRing used={b.used} status={b.status} pace={b.settled ? undefined : b.pace} />
                       <p className="text-xs font-extrabold leading-tight">{b.name}</p>
                       <p className="num text-[11px] font-bold text-muted">
                         {formatRMWholeBare(b.spent)} / {formatRMWholeBare(b.budget)}
                       </p>
-                      <span className={`pill !px-2 !py-0.5 ${BUDGET_PILL[b.status]}`}>
-                        {b.status === "over"
-                          ? `Over by ${formatRMWhole(b.spent - b.budget)}`
-                          : b.settled
-                            ? "Bills paid"
-                            : b.status === "watch"
-                              ? `Watch · ${formatRMWholeBare(b.projected)}`
-                              : "On track"}
-                      </span>
+                      <span className={`pill !px-2 !py-0.5 text-center ${BUDGET_PILL[b.status]}`}>{ringPill(b)}</span>
                     </Link>
                   </li>
                 ))}
@@ -349,7 +355,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <ul className="hidden space-y-3.5 md:block">
                 {budgets.map((b) => (
                   <li key={b.categoryId}>
-                    <Link href={entries({ category: b.categoryId })} className="block rounded-xl hover:bg-card-subtle" aria-label={`${b.name}: see its entries`}>
+                    <Link href={entries({ category: b.categoryId })} className="block rounded-xl hover:bg-nav-active" aria-label={budgetLabel(b)}>
                       <div className="mb-1.5 flex items-baseline justify-between gap-2">
                         <span className="truncate text-[13px] font-extrabold">{b.name}</span>
                         <span className={`num text-xs font-extrabold ${BUDGET_TEXT[b.status]}`}>
@@ -357,7 +363,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                         </span>
                       </div>
                       {/* A category that is all bills has no "even pace": the tick would only suggest it is ahead. */}
-                      <Meter used={b.used} pace={b.settled ? undefined : b.pace} status={b.status} />
+                      <Meter used={b.used} pace={b.settled ? undefined : b.pace} status={b.status} label={`${b.name} budget`} />
                       <span className={`pill mt-1.5 !py-0.5 ${BUDGET_PILL[b.status]}`}>
                         {b.status === "over"
                           ? `Over budget by ${formatRM(b.spent - b.budget)}`
@@ -376,6 +382,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </section>
           )}
 
+          {!accountChoice && budgets.length === 0 && (
+            <p className="sub card lg:order-3 lg:col-span-12">
+              No budgets yet. Give a category a monthly limit and this page shows how each one is going.{" "}
+              <Link href="/settings?tab=categories" className="font-extrabold text-accent-strong underline underline-offset-2">
+                Set a budget
+              </Link>
+            </p>
+          )}
+
           <section className={`card lg:order-4 ${third}`} aria-labelledby="where">
             <h2 id="where" className="h2">
               Where it went
@@ -386,29 +401,28 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             ) : (
               <>
                 <ul className="space-y-2.5">
-                  {byCategory.slice(0, VISIBLE_CATEGORIES).map((c, i) => {
+                  {byCategory.slice(0, VISIBLE_CATEGORIES).map((c) => {
+                    const dot = c.categoryId ? colorOf.get(c.categoryId) : undefined;
                     const row = (
                       <>
                         <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
-                          <span className="truncate">
-                            {c.name}
-                            <span className="ml-1.5 font-bold text-muted">{formatPct(c.share)}</span>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {dot && <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />}
+                            <span className="truncate">{c.name}</span>
+                            <span className="font-bold text-muted">{formatPct(c.share)}</span>
                           </span>
                           <span className="num shrink-0">{formatRM(c.total)}</span>
                         </div>
-                        <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
-                          {/* The longest bar is the biggest spend; each lighter step is the next one down. */}
-                          <div
-                            className="h-full rounded-full bg-accent-strong"
-                            style={{ width: `${Math.max(2, c.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }}
-                          />
+                        <div className="h-2 w-full rounded-full bg-line md:h-1.5">
+                          {/* The bar is the share of all spending; the dot is the category's own colour. */}
+                          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, c.share * 100)}%` }} />
                         </div>
                       </>
                     );
                     return (
                       <li key={c.name}>
                         {c.categoryId ? (
-                          <Link href={entries({ category: c.categoryId })} className="block rounded-lg hover:bg-card-subtle" aria-label={`${c.name}: see its entries`}>
+                          <Link href={entries({ category: c.categoryId })} className="block rounded-lg hover:bg-nav-active" aria-label={shareLabel(c.name, c.total, c.share)}>
                             {row}
                           </Link>
                         ) : (
@@ -419,8 +433,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   })}
                 </ul>
                 {byCategory.length > VISIBLE_CATEGORIES && (
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-xs font-extrabold text-accent-strong">
+                  <details className="group mt-3">
+                    <summary className="flex min-h-11 cursor-pointer items-center gap-1 text-xs font-extrabold text-accent-strong">
+                      <ChevronRight size={14} aria-hidden className="shrink-0 transition-transform group-open:rotate-90" />
                       {byCategory.length - VISIBLE_CATEGORIES} more categories
                     </summary>
                     <ul className="mt-2 space-y-1">
@@ -449,12 +464,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <h3 className="h2">By account</h3>
                 <p className="sub mb-3">Where the spending was paid from · tap one to see its entries</p>
                 <ul className="space-y-2.5">
-                  {byAccount.map((a, i) => (
+                  {byAccount.map((a) => (
                     <li key={a.accountId}>
                       <Link
                         href={entries({ account: a.accountId })}
-                        className="block rounded-lg hover:bg-card-subtle"
-                        aria-label={`${accountName.get(a.accountId) ?? "Account"}: see its entries`}
+                        className="block rounded-lg hover:bg-nav-active"
+                        aria-label={shareLabel(accountName.get(a.accountId) ?? "Account", a.total, a.share)}
                       >
                         <div className="mb-1 flex items-baseline justify-between gap-2 text-xs font-extrabold">
                           <span className="truncate">
@@ -463,8 +478,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                           </span>
                           <span className="num shrink-0">{formatRM(a.total)}</span>
                         </div>
-                        <div className="h-2 w-full rounded-full bg-card-subtle md:h-1.5">
-                          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, a.share * 100)}%`, opacity: Math.max(0.45, 1 - i * 0.15) }} />
+                        <div className="h-2 w-full rounded-full bg-line md:h-1.5">
+                          <div className="h-full rounded-full bg-accent-strong" style={{ width: `${Math.max(2, a.share * 100)}%` }} />
                         </div>
                       </Link>
                     </li>
@@ -481,13 +496,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <p className="sub mb-3">
               {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
             </p>
+            <p className="sub -mt-2 mb-3">
+              The guide: about half your income for needs, 30% for wants and 20% kept. &quot;Not spent&quot; is what is left of your income, not money moved to savings.
+            </p>
             <div className="flex items-center gap-4">
               <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
               <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
                 {[
                   { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
                   { label: "Wants", v: split.want, p: split.wantPct, c: "bg-series-2", guide: "30%" },
-                  { label: split.vsIncome ? "Saved" : "Saved (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
+                  { label: split.vsIncome ? "Not spent" : "Not spent (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
                 ].map((r) => (
                   <li key={r.label}>
                     <div className="flex items-center gap-2">
@@ -505,7 +523,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {split.vsIncome && wantsOver > 0 && (
               <p className="banner banner-warn mt-3 !text-xs">Wants are {formatRM(wantsOver)} over the 30% guide this {unit}.</p>
             )}
-            {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && (
+            {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && praiseWants(isCurrent, dayNow, daysTotal) && (
               <p className="banner banner-good mt-3 !text-xs">Wants are within the 30% guide. Nice.</p>
             )}
           </section>
@@ -519,7 +537,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <ul className="space-y-2">
                 {items.map((i) => (
                   <li key={i.item}>
-                    <Link href={entries({ q: i.item })} className="flex items-center gap-2.5 rounded-2xl bg-card-subtle px-3 py-2 hover:bg-nav-active" aria-label={`${i.item}: see its entries`}>
+                    <Link href={entries({ q: i.item })} className="flex min-h-11 items-center gap-2.5 rounded-2xl bg-card-subtle px-3 py-2 hover:bg-nav-active" aria-label={`${i.item}: ${formatRM(i.total)} over ${i.count} ${i.count === 1 ? "purchase" : "purchases"}, average ${formatRM(i.average)}. See its entries`}>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-extrabold">{i.item}</p>
                         <p className="truncate text-[11px] font-bold text-muted">
@@ -534,6 +552,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </ul>
             </section>
           )}
+            </>
+          )}
 
           <section className="card lg:order-6 lg:col-span-12" aria-labelledby="monthly">
             <div className="flex items-baseline justify-between gap-2">
@@ -543,16 +563,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <span className="sub">Last 6 {unit}s</span>
             </div>
             <p className="sub mb-1">{period ? "Each one is named after the month most of it falls in" : "One column pair per month"}</p>
-            <IncomeExpenseChart data={series} />
+            <IncomeExpenseChart data={series} cycle={!!period} partial={isCurrent} />
             <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] font-semibold" aria-label="Legend">
               <li className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-[3px] bg-series-3" aria-hidden /> Income
               </li>
               <li className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-[3px] bg-series-2" aria-hidden /> Spent
+                <span
+                  className="size-2.5 rounded-[3px] bg-series-2"
+                  style={{ backgroundImage: "repeating-linear-gradient(45deg, var(--card) 0 1.5px, transparent 1.5px 3.5px)" }}
+                  aria-hidden
+                />{" "}
+                Spent (striped)
               </li>
               <li className="text-muted">{series.length > 0 ? nameOf(series[series.length - 1].month) : "This one"} {isCurrent ? "is so far" : "is complete"}</li>
             </ul>
+            {latestPair && (
+              <p className="num mt-1 text-xs font-bold">
+                {nameOf(latestPair.month)}: income {formatRM(latestPair.income)} · spent {formatRM(latestPair.expense)}
+              </p>
+            )}
             <ChartTable
               caption={`Income and spending by ${unit}`}
               columns={[period ? "Cycle" : "Month", "Income", "Spent", "Net"]}

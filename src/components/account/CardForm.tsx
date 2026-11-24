@@ -2,7 +2,8 @@
 
 import { Check, Plus } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
+import { nextRadioIndex } from "@/components/entry/entry-logic";
 import { cardLook, CARD_NETWORKS, HEX, OTHER_NAME_MAX, parseMark } from "@/lib/card";
 import type { AccountBalance } from "@/lib/queries/accounts";
 import { AccountCard } from "./AccountCard";
@@ -22,6 +23,16 @@ export function CardForm({ account, action }: { account: AccountBalance; action:
   const [color, setColor] = useState(account.cardColor && HEX.test(account.cardColor) ? account.cardColor.toLowerCase() : "");
   const [last4, setLast4] = useState(account.cardLast4 ?? "");
   const [main, setMain] = useState(account.purpose === "spending");
+  const markRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const marks = [{ key: "none", label: "None" }, ...CARD_NETWORKS, { key: "other", label: "Other…" }];
+  // A radio group: Tab lands on the chosen mark, the arrow keys move the choice.
+  function markKeyDown(e: KeyboardEvent, index: number) {
+    const next = nextRadioIndex(e.key, index, marks.length);
+    if (next === null) return;
+    e.preventDefault();
+    setNetwork(marks[next].key);
+    markRefs.current[next]?.focus();
+  }
 
   const stored = network === "none" ? null : network === "other" ? (otherName.trim() ? `other:${otherName.trim()}` : null) : network;
   const preview: AccountBalance = {
@@ -47,8 +58,20 @@ export function CardForm({ account, action }: { account: AccountBalance; action:
         </h2>
         <p className="sub">The small logo in the corner of the card. Pick the one on your actual card.</p>
         <div role="radiogroup" aria-label="Card mark" className="flex flex-wrap gap-2">
-          {[{ key: "none", label: "None" }, ...CARD_NETWORKS, { key: "other", label: "Other…" }].map((n) => (
-            <button key={n.key} type="button" role="radio" aria-checked={network === n.key} onClick={() => setNetwork(n.key)} className="chip">
+          {marks.map((n, i) => (
+            <button
+              key={n.key}
+              ref={(el) => {
+                markRefs.current[i] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={network === n.key}
+              tabIndex={network === n.key ? 0 : -1}
+              onClick={() => setNetwork(n.key)}
+              onKeyDown={(e) => markKeyDown(e, i)}
+              className="chip"
+            >
               {network === n.key && <Check size={14} strokeWidth={3} aria-hidden />}
               {n.label}
             </button>
@@ -80,13 +103,13 @@ export function CardForm({ account, action }: { account: AccountBalance; action:
               aria-pressed={color === c}
               onClick={() => setColor(c)}
               style={{ backgroundColor: c }}
-              className="grid size-9 place-items-center rounded-full text-white ring-offset-2 ring-offset-card aria-pressed:ring-2 aria-pressed:ring-foreground"
+              className="grid size-11 place-items-center rounded-full text-white ring-offset-2 ring-offset-card aria-pressed:ring-2 aria-pressed:ring-foreground"
             >
               {color === c && <Check size={16} strokeWidth={3} aria-hidden />}
             </button>
           ))}
           <label
-            className={`relative grid size-9 cursor-pointer place-items-center rounded-full border border-dashed border-line text-muted ring-offset-2 ring-offset-card focus-within:outline-2 ${color && !SWATCHES.includes(color) ? "ring-2 ring-foreground" : ""}`}
+            className={`relative grid size-11 cursor-pointer place-items-center rounded-full border border-dashed border-line text-muted ring-offset-2 ring-offset-card focus-within:outline-2 ${color && !SWATCHES.includes(color) ? "ring-2 ring-foreground" : ""}`}
             style={color && !SWATCHES.includes(color) ? { backgroundColor: color, borderStyle: "solid" } : undefined}
           >
             {color && !SWATCHES.includes(color) ? <Check size={16} strokeWidth={3} className="text-white" aria-hidden /> : <Plus size={16} aria-hidden />}

@@ -1,5 +1,6 @@
-import { asc, count, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
+import type { DB } from "@/db/open";
 import { accounts, categories, transactions } from "@/db/schema";
 import type { Account, Category } from "@/db/schema";
 
@@ -75,12 +76,22 @@ export async function listItemHints(): Promise<ItemHint[]> {
   return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 400);
 }
 
-/** Account used by the most recent transaction of this type (default selection). */
-export async function lastAccountId(): Promise<number | null> {
+/**
+ * The account the Add form starts on: the one used by the most recent entry of this type that was TYPED (a bank import has
+ * an `importKey` and says nothing about where you spend by habit: importing a statement must not change the default).
+ * Transfers are never counted. Null when nothing typed exists yet; the page then falls back to the spending account.
+ */
+export async function lastAccountId(type: "income" | "expense" = "expense"): Promise<number | null> {
   const db = await getDb();
+  return lastTypedAccountId(db, type);
+}
+
+/** The query behind `lastAccountId`, on a given database (so it can be tested). */
+export function lastTypedAccountId(db: DB, type: "income" | "expense"): number | null {
   const row = db
     .select({ id: transactions.accountId })
     .from(transactions)
+    .where(and(eq(transactions.type, type), isNull(transactions.importKey)))
     .orderBy(desc(transactions.id))
     .limit(1)
     .get();

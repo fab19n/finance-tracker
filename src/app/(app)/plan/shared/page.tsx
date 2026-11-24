@@ -1,11 +1,13 @@
 import { ChevronDown, Plus } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Kpi } from "@/components/Kpi";
+import { SavedNotice } from "@/components/settings/SavedNotice";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { ShareForm } from "@/components/plan/ShareForm";
 import { SharedBillCard } from "@/components/plan/SharedBillCard";
-import { UnassignedPayments } from "@/components/plan/UnassignedPayments";
+import { UNCLAIMED_SHOWN, UnassignedPayments } from "@/components/plan/UnassignedPayments";
 import { shortMonthLabel, todayISO } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
@@ -13,6 +15,8 @@ import { owedMonthsText } from "@/lib/plan/shares-text";
 import type { SearchParams } from "@/lib/queries/filters";
 import { listBills } from "@/lib/queries/plan";
 import { getSharedBills } from "@/lib/queries/shares";
+
+export const metadata: Metadata = { title: "Shared bills" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -24,9 +28,10 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
   const today = todayISO();
   const [page, bills] = await Promise.all([getSharedBills(today), listBills()]);
 
-  const billOptions = bills.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name }));
-  // Most people start a plan "at the start of this year"; they can change it.
-  const defaultStart = `${today.slice(0, 4)}-01`;
+  const splitOf = new Map(page.bills.map((v) => [v.bill.id, v.bill.sharing]));
+  const billOptions = bills.filter((b) => b.active).map((b) => ({ id: b.id, name: b.name, sharing: splitOf.get(b.id) ?? ("monthly" as const) }));
+  // A new person starts this month. (Starting in January made everyone owe for months before they joined; set an earlier month by hand when they did.)
+  const defaultStart = today.slice(0, 7);
 
   // Everyone who owes you something, biggest first: the people to chase. (Equal monthly parts, or a turn that has come round.)
   const owing = page.bills
@@ -67,6 +72,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
           {error}
         </p>
       )}
+      <SavedNotice saved={sp.saved} />
       {linked > 0 && (
         <p role="status" className="banner banner-good">
           Counted {linked} payment{linked === 1 ? "" : "s"} you had already received from them.
@@ -82,7 +88,11 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
             <p className="mt-3 text-xs font-extrabold">{owing.length ? `${owing.length} ${owing.length === 1 ? "person" : "people"} still owe you` : "everyone is paid up"}</p>
           </div>
           <Kpi label="Shared bills" value={String(page.bills.length)} hint={`${page.people.filter((p) => p.active).length} people sharing`} />
-          <Kpi label="Unclaimed money in" value={String(page.unassigned.length)} hint="entries not counted towards anyone" />
+          <Kpi
+            label="Unclaimed money in"
+            value={String(page.unassigned.length)}
+            hint={page.unassigned.length > UNCLAIMED_SHOWN ? `entries not counted; the ${UNCLAIMED_SHOWN} newest are listed below` : "entries not counted towards anyone"}
+          />
         </section>
       )}
 
@@ -127,7 +137,7 @@ export default async function SharedPage({ searchParams }: { searchParams: Promi
         <div className="mt-4 space-y-3">
           {page.bills.length === 0 && (
             <p className="sub leading-relaxed">
-              Start with the bill (it needs to be in your <Link href="/plan/bills" className="font-extrabold text-accent-strong">bills</Link> first), the person, and what they owe you each month today: RM 24.93 for a Netflix quarter, RM 5.15 for a Spotify sixth. (Earlier months are worked out from what the bill was charged then.)
+              Start with the bill (it needs to be in your <Link href="/plan/bills" className="font-extrabold text-accent-strong">bills</Link> first), the person, and what they owe you each month today, for example a quarter of a Netflix bill. (Earlier months are worked out from what the bill was charged then. A bill paid in turns needs no amount: choose how it is split on its card after adding the first person.)
               Putting the words that appear on your bank statement when they pay you (a surname will do) lets the app count their payments by itself, including ones you have already received.
             </p>
           )}

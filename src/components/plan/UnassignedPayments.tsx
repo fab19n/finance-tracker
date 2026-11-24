@@ -5,7 +5,8 @@ import { shortDate } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
 import type { ShareRow, UnassignedCredit } from "@/lib/queries/shares";
 
-const SHOWN = 15;
+export const UNCLAIMED_SHOWN = 15;
+const SHOWN = UNCLAIMED_SHOWN;
 
 /**
  * Money that came in but isn't counted towards anyone yet. When one person fits (their words are on the line) they are

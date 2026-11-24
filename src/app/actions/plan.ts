@@ -10,14 +10,19 @@ import { isRealDate } from "@/lib/dates";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
 import { ALREADY_RECORDED } from "@/lib/plan/messages";
+import { accountParam, savedParams, withParams, type SavedKey } from "@/lib/saved-notice";
 import { getRoleAccounts } from "@/lib/queries/plan";
 
 const DATE = z.string().refine((s) => isRealDate(s), "Pick a valid date");
 
-function done(to: string, error?: string): never {
+/** Back to `to` with either the error to show or the "Saved" notice (see src/lib/saved-notice.ts). */
+function done(to: string, error?: string, saved?: SavedKey): never {
   revalidatePath("/", "layout");
-  redirect(error ? `${to}?error=${encodeURIComponent(error)}` : to);
+  redirect(withParams(to, error ? { error } : saved ? savedParams(saved) : {}));
 }
+
+/** The page a form came from, keeping the Plan's one-account filter (?account=) that the form carried in a hidden field. */
+const returnTo = (base: string, formData: FormData) => withParams(base, { account: accountParam(formData.get("account")) });
 
 const BillInput = z.object({
   id: z.string().optional(),
@@ -33,7 +38,7 @@ const BillInput = z.object({
 
 /** Create or update a recurring bill. A blank "up to" amount means the bill is a fixed amount. */
 export async function saveBill(formData: FormData): Promise<void> {
-  const back = "/plan/bills";
+  const back = returnTo("/plan/bills", formData);
   const p = BillInput.safeParse(Object.fromEntries(formData));
   if (!p.success) done(back, p.error.issues[0]?.message);
   const v = p.data!;
@@ -73,13 +78,14 @@ export async function saveBill(formData: FormData): Promise<void> {
   };
   if (v.id) db.update(recurringBills).set(row).where(eq(recurringBills.id, Number(v.id))).run();
   else db.insert(recurringBills).values({ ...row, sortOrder: 999 }).run();
-  done(back);
+  done(back, undefined, "bill");
 }
 
 /** Delete a bill. Payments already recorded stay (as ordinary spending); they just stop being linked. */
 export async function deleteBill(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
-  if (!id) done("/plan/bills");
+  const back = returnTo("/plan/bills", formData);
+  if (!id) done(back);
   const db = await getDb();
   // One transaction: a failure part-way (a constraint, a killed process) leaves the bill and its links as they were.
   db.transaction((tx) => {
@@ -94,7 +100,7 @@ export async function deleteBill(formData: FormData): Promise<void> {
     tx.delete(importRules).where(eq(importRules.billId, id)).run();
     tx.delete(recurringBills).where(eq(recurringBills.id, id)).run();
   });
-  done("/plan/bills");
+  done(back, undefined, "billDeleted");
 }
 
 /**
@@ -107,21 +113,22 @@ const PayInput = z.object({ billId: z.string().min(1), amount: z.string(), date:
 
 /** "Mark paid": records the payment as spending from the bill's account and links it to the bill. */
 export async function payBill(formData: FormData): Promise<void> {
+  const back = returnTo("/plan", formData);
   const p = PayInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done("/plan", p.error.issues[0]?.message);
+  if (!p.success) done(back, p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
-  if (amount === null || amount <= 0) done("/plan", "Enter the amount you paid");
-  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
+  if (amount === null || amount <= 0) done(back, "Enter the amount you paid");
+  if (!withinLimit(amount!)) done(back, MAX_AMOUNT_MESSAGE);
   const db = await getDb();
   const bill = db.select().from(recurringBills).where(eq(recurringBills.id, Number(p.data!.billId))).get();
-  if (!bill) done("/plan", "That bill no longer exists");
+  if (!bill) done(back, "That bill no longer exists");
   // A double tap (or a retry after a lost reply) sends the same bill, day and amount twice: record it once.
   const twin = db
     .select({ id: transactions.id })
     .from(transactions)
     .where(and(eq(transactions.billId, bill!.id), eq(transactions.date, p.data!.date), eq(transactions.amount, amount!), eq(transactions.type, "expense"), justNow()))
     .get();
-  if (twin) done("/plan", ALREADY_RECORDED);
+  if (twin) done(back, ALREADY_RECORDED);
   db.insert(transactions)
     .values({
       date: p.data!.date,
@@ -133,26 +140,27 @@ export async function payBill(formData: FormData): Promise<void> {
       billId: bill!.id,
     })
     .run();
-  done("/plan");
+  done(back, undefined, "billPaid");
 }
 
 const SalaryInput = z.object({ amount: z.string(), date: DATE });
 
 /** Record this month's salary into the spending account. This is what starts a new pay cycle. */
 export async function recordSalary(formData: FormData): Promise<void> {
+  const back = returnTo("/plan", formData);
   const p = SalaryInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done("/plan", p.error.issues[0]?.message);
+  if (!p.success) done(back, p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
-  if (amount === null || amount <= 0) done("/plan", "Enter your take-home pay, e.g. 5,400");
-  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
+  if (amount === null || amount <= 0) done(back, "Enter your take-home pay, e.g. 5,400");
+  if (!withinLimit(amount!)) done(back, MAX_AMOUNT_MESSAGE);
   const { spending } = await getRoleAccounts();
-  if (!spending) done("/plan", "Choose your spending account in Settings first");
+  if (!spending) done(back, "Choose your spending account in Settings first");
   const db = await getDb();
   // Pay cycles are cut from income in the category NAMED "Salary", so without it the payday would be recorded and
   // then never start a cycle. Refuse with the way out rather than saving an entry the Plan can't see.
   const salary = db.select().from(categories).where(eq(categories.name, "Salary")).get();
   if (!salary || salary.archived || salary.type !== "income") {
-    done("/plan", 'Salary needs an income category named "Salary". Add or restore it in Settings > Categories, then record the pay again');
+    done(back, 'Salary needs an income category named "Salary". Add or restore it in Settings > Categories, then record the pay again');
   }
   const twin = db
     .select({ id: transactions.id })
@@ -168,24 +176,25 @@ export async function recordSalary(formData: FormData): Promise<void> {
       ),
     )
     .get();
-  if (twin) done("/plan", ALREADY_RECORDED);
+  if (twin) done(back, ALREADY_RECORDED);
   db.insert(transactions)
     .values({ date: p.data!.date, type: "income", amount: amount!, accountId: spending!.id, categoryId: salary!.id, item: "Salary" })
     .run();
-  done("/plan");
+  done(back, undefined, "salary");
 }
 
 const PaydayTransferInput = z.object({ amount: z.string(), date: DATE });
 
 /** Record the one payday transfer from the spending account to savings. */
 export async function recordPaydayTransfer(formData: FormData): Promise<void> {
+  const back = returnTo("/plan", formData);
   const p = PaydayTransferInput.safeParse(Object.fromEntries(formData));
-  if (!p.success) done("/plan", p.error.issues[0]?.message);
+  if (!p.success) done(back, p.error.issues[0]?.message);
   const amount = parseSen(p.data!.amount);
-  if (amount === null || amount <= 0) done("/plan", "Enter the amount you moved to savings");
-  if (!withinLimit(amount!)) done("/plan", MAX_AMOUNT_MESSAGE);
+  if (amount === null || amount <= 0) done(back, "Enter the amount you moved to savings");
+  if (!withinLimit(amount!)) done(back, MAX_AMOUNT_MESSAGE);
   const { spending, savings } = await getRoleAccounts();
-  if (!spending || !savings) done("/plan", "Choose your spending and savings accounts in Settings first");
+  if (!spending || !savings) done(back, "Choose your spending and savings accounts in Settings first");
   const db = await getDb();
   const twin = db
     .select({ id: transactions.id })
@@ -201,7 +210,7 @@ export async function recordPaydayTransfer(formData: FormData): Promise<void> {
       ),
     )
     .get();
-  if (twin) done("/plan", ALREADY_RECORDED);
+  if (twin) done(back, ALREADY_RECORDED);
   db.insert(transactions)
     .values({
       date: p.data!.date,
@@ -212,5 +221,5 @@ export async function recordPaydayTransfer(formData: FormData): Promise<void> {
       note: "Payday transfer to savings",
     })
     .run();
-  done("/plan");
+  done(back, undefined, "paydayTransfer");
 }

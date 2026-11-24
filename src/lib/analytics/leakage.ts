@@ -1,3 +1,4 @@
+import { shortDate } from "@/lib/dates";
 import { futureValueMonthly } from "@/lib/investing/projection";
 import { formatPct, formatRM } from "@/lib/money";
 import { detectRecurring } from "./recurring";
@@ -276,7 +277,10 @@ export function detectLeaks(input: LeakInput): Insight[] {
       ],
       suggestion: "For each one ask: did I use it this month? Cancelling the ones you don't is the easiest saving there is.",
       ...money(monthly * SUBSCRIPTION_CUT),
-      href: "/transactions?month=all&q=" + encodeURIComponent(subs[0].category),
+      // The search matches a category's name; with more than one category among them it opens the biggest charge instead.
+      href:
+        "/transactions?month=all&q=" +
+        encodeURIComponent(new Set(subs.map((s) => s.category)).size === 1 ? subs[0].category : [...subs].sort((a, b) => b.monthlyCost - a.monthlyCost)[0].item),
     });
   }
 
@@ -298,7 +302,9 @@ export function detectLeaks(input: LeakInput): Insight[] {
       suggestion: over
         ? "Pause discretionary spending in this category for the rest of the month."
         : "Slow down now and you'll finish inside the budget.",
-      ...money(over ? b.spent - b.budget : b.projected - b.budget),
+      // Only a budget that is already broken claims a saving. "On pace to go over" is a projection for one month: turning it into
+      // a yearly figure (x12) would annualise a drift that may not repeat, the same reason a one-off purchase is never annualised.
+      ...money(over ? b.spent - b.budget : 0),
       href: `/transactions?month=${month}&category=${b.categoryId}`,
     });
   }
@@ -354,10 +360,12 @@ export function detectLeaks(input: LeakInput): Insight[] {
         title: `${spikes.length} unusually expensive ${spikes.length === 1 ? "day" : "days"} lately`,
         evidence: [
           `A normal day is about ${formatRM(Math.round(m))}`,
-          ...spikes.map(([date, v]) => `${date}: ${formatRM(v.total)} (biggest: ${v.top.item} ${formatRM(v.top.amount)})`),
+          ...spikes.map(([date, v]) => `${shortDate(date)}: ${formatRM(v.total)} (biggest: ${v.top.item} ${formatRM(v.top.amount)})`),
         ],
         suggestion: "One-offs are fine - but check these weren't impulse buys you'd skip next time.",
         ...money(0),
+        // The most expensive of them, as that one day in Activity.
+        href: `/transactions?month=all&from=${spikes[0][0]}&to=${spikes[0][0]}`,
       });
     }
 
@@ -380,6 +388,7 @@ export function detectLeaks(input: LeakInput): Insight[] {
           ],
           suggestion: "Plan one low-cost weekend activity a month - the pattern, not any single purchase, is the leak.",
           ...money(0),
+          href: `/transactions?month=all&from=${since60}&to=${today}`,
         });
       }
     }
@@ -485,11 +494,15 @@ export function detectLeaks(input: LeakInput): Insight[] {
 export const WHOLE_BOOK_FINDINGS: InsightKind[] = ["over_budget", "wants_heavy", "planning_gap", "savings_drawdown", "savings_spending", "cash_unaccounted"];
 
 /** Headline: the biggest few findings. They can overlap (a latte also sits inside Eating Out). */
-export function headlineSavings(insights: Insight[], n = 3): { monthly: number; annual: number; invested: number; count: number } {
+export function headlineSavings(
+  insights: Insight[],
+  n = 3,
+): { monthly: number; annual: number; invested: number; count: number; /** the findings that make up the total, so the page can mark them */ ids: string[] } {
   // Only findings that carry a saving count: an informational one adds nothing, so it must not be one of "the top 3".
   const top = insights.filter((i) => i.annualSaving > 0).sort((a, b) => b.annualSaving - a.annualSaving).slice(0, n);
   return {
     count: top.length,
+    ids: top.map((i) => i.id),
     monthly: sum(top.map((i) => i.monthlySaving)),
     annual: sum(top.map((i) => i.annualSaving)),
     invested: sum(top.map((i) => i.investedValue)),

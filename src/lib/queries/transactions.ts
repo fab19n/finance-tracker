@@ -41,6 +41,11 @@ export type TxRow = {
   categoryName: string | null;
   categoryColor: string | null;
   categoryIcon: string | null;
+  /** What the entry is tied to, so deleting it can say so. Optional so a plain row (a test, a summary) needs none. */
+  billId?: number | null;
+  shareId?: number | null;
+  /** 1 when a bank statement import wrote it. */
+  imported?: number;
 };
 
 function buildWhere(f: TxFilters): SQL | undefined {
@@ -112,6 +117,9 @@ function baseSelect(db: DB) {
       categoryName: categories.name,
       categoryColor: categories.color,
       categoryIcon: categories.icon,
+      billId: transactions.billId,
+      shareId: transactions.shareId,
+      imported: sql<number>`case when ${transactions.importKey} is null then 0 else 1 end`,
     })
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))

@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Pencil } from "lucide-react";
+import { ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { deleteTransaction } from "@/app/actions/transactions";
 import type { TxRow } from "@/lib/queries/transactions";
@@ -11,8 +11,9 @@ import { DeleteButton } from "./DeleteButton";
 
 /**
  * One entry, as a row on a card. The initials tile is tinted with the category's own colour (user data); the letters stay
- * the normal text colour, so they are readable on any colour. Tapping the row opens the entry; Edit and Delete are also
- * plain visible buttons (no hidden gestures).
+ * the normal text colour, so they are readable on any colour. Tapping the row opens the entry (that is the one way to edit:
+ * a second pencil link to the same place only doubled the tab stops); Delete is a plain visible 44 px button whose label
+ * names the entry, so a screen reader hears WHICH one.
  */
 export function TransactionRow({ tx, showDate = false, viewing = null, backHref }: { tx: TxRow; showDate?: boolean; viewing?: number | null; /** The list this row is on: the entry's page returns there after Save, Delete and Back. */ backHref?: string }) {
   const entryHref = backHref ? withBack(`/transactions/${tx.id}`, backHref) : `/transactions/${tx.id}`;
@@ -30,7 +31,7 @@ export function TransactionRow({ tx, showDate = false, viewing = null, backHref 
 
   return (
     <li className="flex items-center gap-0.5 rounded-2xl bg-card py-0.5 pl-1.5 pr-1">
-      <Link href={entryHref} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-2">
+      <Link href={entryHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1.5 py-2">
         <span
           className="grid size-[34px] shrink-0 place-items-center rounded-xl bg-card-subtle text-xs font-black"
           style={tx.categoryColor && !isTransfer ? { backgroundColor: `${tx.categoryColor}26` } : undefined}
@@ -47,20 +48,23 @@ export function TransactionRow({ tx, showDate = false, viewing = null, backHref 
           {formatRM(tx.amount)}
         </p>
       </Link>
-      <div className="flex shrink-0 items-center">
-        <Link
-          href={entryHref}
-          aria-label="Edit"
-          title="Edit"
-          className="grid size-9 place-items-center rounded-full text-muted transition hover:bg-card-subtle hover:text-foreground"
-        >
-          <Pencil size={15} />
-        </Link>
-        <form action={deleteTransaction}>
-          <input type="hidden" name="id" value={tx.id} />
-          <DeleteButton />
-        </form>
-      </div>
+      <form action={deleteTransaction} className="shrink-0">
+        <input type="hidden" name="id" value={tx.id} />
+        <DeleteButton
+          entry={{
+            type: tx.type,
+            amount: tx.amount,
+            date: tx.date,
+            item: tx.item,
+            categoryName: tx.categoryName,
+            accountName: tx.accountName,
+            toAccountName: tx.toAccountName,
+            billId: tx.billId,
+            shareId: tx.shareId,
+            imported: tx.imported,
+          }}
+        />
+      </form>
     </li>
   );
 }

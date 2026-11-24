@@ -34,6 +34,8 @@ function Row({ href, label, hint, icon }: Item) {
   );
 }
 
+export const metadata = { title: "More" };
+
 export default function MorePage() {
   return (
     <div className="max-w-2xl space-y-4">

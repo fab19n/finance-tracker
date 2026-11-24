@@ -15,13 +15,20 @@ export type Quote = {
 
 const TIMEOUT_MS = 10_000;
 
+/** What an HTTP status means to the person reading it ("HTTP 429" means nothing to most people). */
+export function describeHttpStatus(status: number): string {
+  if (status === 429) return "it is busy right now: try again in a few minutes";
+  if (status >= 500) return `its server had a problem (HTTP ${status}): try again later`;
+  return `HTTP ${status}`;
+}
+
 async function getJson(url: string): Promise<unknown> {
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (personal-finance-tracker)", Accept: "application/json" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new Error(describeHttpStatus(res.status));
   return res.json();
 }
 

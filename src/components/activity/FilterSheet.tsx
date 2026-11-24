@@ -63,7 +63,7 @@ export function FilterSheet({
             <h2 id={titleId} className="h2">
               Filter entries
             </h2>
-            <button type="button" aria-label="Close" onClick={close} className="grid size-9 place-items-center rounded-full text-muted hover:bg-card-subtle">
+            <button type="button" aria-label="Close" onClick={close} className="grid size-11 place-items-center rounded-full text-muted hover:bg-card-subtle">
               <X size={18} />
             </button>
           </div>

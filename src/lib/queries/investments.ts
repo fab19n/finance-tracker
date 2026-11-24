@@ -6,6 +6,7 @@ import { mean } from "@/lib/analytics/stats";
 import { monthTotals } from "@/lib/analytics/summary";
 import { lastMonths, monthEnd, monthStart, shiftMonth, todayISO } from "@/lib/dates";
 import { fdDaysToMaturity, fdMaturityValue, fdValueOn, type FdTerms } from "@/lib/investing/fd";
+import { valueWithFlowsSince } from "@/lib/investing/value";
 import { xirr, type CashFlow } from "@/lib/investing/xirr";
 import type { AdviceInput } from "@/lib/investing/advisor";
 import { getSettings } from "@/lib/settings";
@@ -89,7 +90,8 @@ export async function listInvestments(today: string): Promise<InvestmentRow[]> {
     if (terms && invested <= 0) invested = terms.principal;
 
     const lastVal = [...vals].reverse().find((v) => v.date <= today) ?? null;
-    const value = terms ? fdValueOn(terms, today) : (lastVal?.value ?? Math.max(0, invested));
+    // The last valuation plus what has been moved in or out since, so adding money is not a loss until the worth is updated.
+    const value = terms ? fdValueOn(terms, today) : valueWithFlowsSince(lastVal, flows, today, invested);
 
     // Value-over-time series: a point on every date something happened, plus today.
     const dates = new Set<string>([today, ...flows.map((f) => f.date), ...vals.map((v) => v.date)]);
@@ -107,7 +109,7 @@ export async function listInvestments(today: string): Promise<InvestmentRow[]> {
       while (valIdx + 1 < vals.length && vals[valIdx + 1].date <= date) valIdx++;
       const contributed = flows.filter((f) => f.date <= date).reduce((s, f) => s + f.amount, 0);
       const effContributed = terms && contributed <= 0 && date >= terms.startDate ? terms.principal : contributed;
-      const v = terms ? fdValueOn(terms, date) : valIdx >= 0 ? vals[valIdx].value : Math.max(0, contributed);
+      const v = terms ? fdValueOn(terms, date) : valueWithFlowsSince(valIdx >= 0 ? vals[valIdx] : null, flows, date, contributed);
       return { date, value: v, contributed: effContributed };
     });
 

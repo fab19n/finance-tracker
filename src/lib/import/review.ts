@@ -40,3 +40,14 @@ export function watchAfterEdit(before: ReviewRow, after: ReviewRow, mismatch: Re
 export function confirmEdited<T extends ReviewRow & { edited: boolean }>(rows: T[]): T[] {
   return rows.map((r) => (r.edited && !r.confirmed && !rowIncomplete(r) ? { ...r, confirmed: true } : r));
 }
+
+/**
+ * What your decisions do to the balance. The balance check covers how the statement was READ; if you skip a line that is not
+ * already in your books (and not half of a hold that cancels out), the account will not end where the bank says it does.
+ * `sen` is how far the account ends from the statement's closing balance (positive = above it); null when nothing is left out.
+ */
+export function skippedDrift(rows: readonly { kind: string; amount: number; proposal: { source: string } }[]): { count: number; sen: number } | null {
+  const left = rows.filter((r) => r.kind === "skip" && r.proposal.source !== "duplicate");
+  const net = left.reduce((sum, r) => sum + r.amount, 0);
+  return net === 0 ? null : { count: left.length, sen: -net };
+}

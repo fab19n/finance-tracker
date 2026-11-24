@@ -1,10 +1,12 @@
 import { ChevronDown, Plus } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { AccountChips } from "@/components/AccountChips";
 import { BillForm } from "@/components/plan/BillForm";
 import { PlanHeader } from "@/components/plan/PlanHeader";
 import { Kpi } from "@/components/Kpi";
+import { SavedNotice } from "@/components/settings/SavedNotice";
 import { initials } from "@/lib/initials";
 import { formatPct, formatRM, formatRMWhole } from "@/lib/money";
 import { monthlyCommitments } from "@/lib/plan/bills";
@@ -14,6 +16,8 @@ import { getBillUsage } from "@/lib/queries/bill-usage";
 import { listBills, listSalaries } from "@/lib/queries/plan";
 import { listCategories } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
+
+export const metadata: Metadata = { title: "Bills" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 const range = (min: number, max: number) => (min === max ? formatRM(min) : `${formatRM(min)} - ${formatRM(max)}`);
@@ -27,6 +31,10 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
   // One account on its own (?account=): only the bills paid from it. (An investment account pays none, so it isn't offered.)
   const payingAccounts = accounts.filter((a) => a.type !== "investment");
   const accountId = Number(first(sp.account)) || null;
+  // "Add as bill" on Insights opens this page with the payment's name and amount: start the new bill from them.
+  const prefillName = (first(sp.name) ?? "").trim().slice(0, 80);
+  const prefillAmount = /^\d+(\.\d{1,2})?$/.test(first(sp.amount) ?? "") ? (first(sp.amount) as string) : "";
+  const prefill = prefillName ? { name: prefillName, amount: prefillAmount } : undefined;
   const accountChoice = payingAccounts.find((a) => a.id === accountId) ?? null;
   const bills = accountChoice ? allBills.filter((b) => b.accountId === accountChoice.id) : allBills;
   const c = monthlyCommitments(bills);
@@ -53,6 +61,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
           {error}
         </p>
       )}
+      <SavedNotice saved={sp.saved} />
 
       <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3" aria-label="Totals">
         <Kpi label="Per month" value={formatRMWhole(c.monthly)} hint={`${c.count} bills`} />
@@ -61,7 +70,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
         <Kpi label="Share of your pay" value={income > 0 ? formatPct(c.monthly / income) : "-"} hint={income > 0 ? `of ${formatRMWhole(income)}` : "set your pay in Settings"} />
       </section>
 
-      <details className="card group" open={allBills.length === 0}>
+      <details className="card group" open={allBills.length === 0 || !!prefill}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
           <span className="h2">Add a bill</span>
           <span className="grid size-7 shrink-0 place-items-center rounded-full bg-card-subtle text-muted" aria-hidden>
@@ -69,7 +78,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
           </span>
         </summary>
         <div className="mt-4">
-          <BillForm categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} defaultAccountId={accountChoice?.id} />
+          <BillForm categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} defaultAccountId={accountChoice?.id} returnAccount={accountChoice?.id} prefill={prefill} />
         </div>
       </details>
 
@@ -110,7 +119,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                   <ChevronDown size={16} strokeWidth={2.5} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="mt-3">
-                  <BillForm bill={b} usage={usage.get(b.id)} categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} />
+                  <BillForm bill={b} usage={usage.get(b.id)} returnAccount={accountChoice?.id} categories={expenseCategories} accounts={payingAccounts.map((a) => ({ id: a.id, name: a.name }))} />
                 </div>
               </details>
             </li>

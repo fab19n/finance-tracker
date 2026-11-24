@@ -76,7 +76,7 @@ describe("account roles", () => {
 describe("saveBill / deleteBill", () => {
   it("a fixed bill has min = max; keywords are normalised; a blank due day means 'not set'", async () => {
     const { saveBill } = await import("@/app/actions/plan");
-    expect(await redirected(saveBill(bill({ dueDay: "", matchKeywords: " Netflix ,  SPOTIFY,, " })))).toBe("/plan/bills");
+    expect(await redirected(saveBill(bill({ dueDay: "", matchKeywords: " Netflix ,  SPOTIFY,, " })))).toBe("/plan/bills?saved=bill");
     expect(bills()[0]).toMatchObject({ name: "Netflix", amountMin: RM(88.9), amountMax: RM(88.9), dueDay: null, matchKeywords: "netflix, spotify", active: true });
   });
 
@@ -133,7 +133,7 @@ describe("payBill / recordSalary / recordPaydayTransfer", () => {
     const { saveBill, payBill } = await import("@/app/actions/plan");
     await redirected(saveBill(bill()));
     const b = bills()[0];
-    expect(await redirected(payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08" })))).toBe("/plan");
+    expect(await redirected(payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08" })))).toBe("/plan?saved=billPaid");
     expect(txs()).toMatchObject([{ type: "expense", amount: RM(88.9), accountId: main, categoryId: subsCat, item: "Netflix", billId: b.id, date: "2026-10-08" }]);
   });
   it("rejects a missing bill or bad amount", async () => {
@@ -168,7 +168,7 @@ describe("a double tap records once", () => {
     await redirected(saveBill(bill()));
     const b = bills()[0];
     const pay = (over: Record<string, string> = {}) => payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08", ...over }));
-    expect(await redirected(pay())).toBe("/plan");
+    expect(await redirected(pay())).toBe("/plan?saved=billPaid");
     expect(readable(await redirected(pay()))).toMatch(/Already recorded/);
     expect(txs()).toHaveLength(1);
     // a different amount or day is a different payment
@@ -202,7 +202,7 @@ describe("the double-tap guard only covers moments ago", () => {
     const pay = () => payBill(fd({ billId: String(b.id), amount: "88.90", date: "2026-10-08" }));
     await redirected(pay());
     h.db.run(sql`UPDATE transactions SET created_at = datetime('now', '-10 minutes')`);
-    expect(await redirected(pay())).toBe("/plan");
+    expect(await redirected(pay())).toBe("/plan?saved=billPaid");
     expect(txs()).toHaveLength(2);
   });
 });
