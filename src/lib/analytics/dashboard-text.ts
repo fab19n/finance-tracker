@@ -1,5 +1,6 @@
 import { formatPct, formatRM, formatRMWhole, formatRMWholeBare } from "@/lib/money";
-import { shortMonthLabel } from "@/lib/dates";
+import { dayLabel, shortMonthLabel } from "@/lib/dates";
+import type { SpendDay } from "./daily-spend";
 import type { BudgetRow } from "./summary";
 
 /**
@@ -58,6 +59,32 @@ export function budgetNote(b: Pick<BudgetRow, "status" | "settled" | "spent" | "
 export function daysLeftText(days: number, mode: "payday" | "month", overdue = false): string {
   if (overdue) return "Payday due";
   return `${days} ${days === 1 ? "day" : "days"} ${mode === "payday" ? "to payday" : "left this month"}`;
+}
+
+/**
+ * What a day's square says, as its tooltip and the start of its accessible name: the date, the amount judged, where that
+ * stands against the limit in words (the colour is never the only signal), and any bills that were left out.
+ */
+export function daySquareText(d: Pick<SpendDay, "date" | "spent" | "bills" | "level" | "future">, limit: number): string {
+  if (d.future) return `${dayLabel(d.date)}: not here yet`;
+  const state =
+    d.level === "over"
+      ? `${formatRM(d.spent)} spent, over the limit by ${formatRM(d.spent - limit)}`
+      : d.level === 0
+        ? "nothing counted"
+        : d.spent === limit
+          ? `${formatRM(d.spent)} spent, exactly the limit`
+          : `${formatRM(d.spent)} spent, within the limit`;
+  const bills = d.bills > 0 ? `, plus ${formatRM(d.bills)} in bills (not counted)` : "";
+  return `${dayLabel(d.date)}: ${state}${bills}`;
+}
+
+/** The daily card's headline: how many of the days so far went over. */
+export function dailySummary(overDays: number, daysSoFar: number, limit: number): string {
+  if (daysSoFar === 0) return `Daily limit ${formatRM(limit)}`;
+  const of = `${daysSoFar} ${daysSoFar === 1 ? "day" : "days"}`;
+  if (overDays === 0) return `No day over ${formatRM(limit)} in ${of}`;
+  return `Over ${formatRM(limit)} on ${overDays} of ${of}`;
 }
 
 /** The caption under the Left to spend figure: a daily allowance, or the plain fact that nothing is left. */

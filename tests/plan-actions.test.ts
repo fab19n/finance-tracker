@@ -233,6 +233,27 @@ describe("cycle settings", () => {
     await redirected(saveCycleSettings(fd({ paydayDay: "30", expectedIncome: "5,400", variableAllowance: "", cycleBuffer: "150", savingsRatePct: "2.5" })));
     expect(await getSettings()).toMatchObject({ paydayDay: 30, expectedIncome: RM(5400), variableAllowance: 0, cycleBuffer: RM(150), savingsRatePct: 2.5 });
   });
+  it("stores Home's daily limit in sen; blank turns it off, and a form without the field leaves it alone", async () => {
+    const { saveCycleSettings } = await import("@/app/actions/settings");
+    const { getSettings } = await import("@/lib/settings");
+    const save = (over: Record<string, string>) => redirected(saveCycleSettings(fd({ paydayDay: "28", savingsRatePct: "1", ...over })));
+    expect((await getSettings()).dailyLimit).toBe(0);
+    await save({ dailyLimit: "52.50" });
+    expect((await getSettings()).dailyLimit).toBe(RM(52.5));
+    await save({});
+    expect((await getSettings()).dailyLimit).toBe(RM(52.5));
+    await save({ dailyLimit: "" });
+    expect((await getSettings()).dailyLimit).toBe(0);
+  });
+  it("refuses a daily limit it can't read, and saves nothing from that form", async () => {
+    const { saveCycleSettings } = await import("@/app/actions/settings");
+    const { getSettings } = await import("@/lib/settings");
+    await redirected(saveCycleSettings(fd({ paydayDay: "28", savingsRatePct: "1", dailyLimit: "50" })));
+    for (const dailyLimit of ["fifty", "-5", "1.234", "999999999999"]) {
+      expect(await redirected(saveCycleSettings(fd({ paydayDay: "20", savingsRatePct: "1", dailyLimit }))), dailyLimit).toMatch(/error=/);
+    }
+    expect(await getSettings()).toMatchObject({ dailyLimit: RM(50), paydayDay: 28 });
+  });
   it("rejects an impossible payday day and bad amounts, saving nothing", async () => {
     const { saveCycleSettings } = await import("@/app/actions/settings");
     const { getSettings, DEFAULT_SETTINGS } = await import("@/lib/settings");

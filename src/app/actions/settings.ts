@@ -171,6 +171,7 @@ const CycleSettingsInput = z.object({
   variableAllowance: z.string().optional(),
   cycleBuffer: z.string().optional(),
   savingsRatePct: z.coerce.number().min(0).max(15),
+  dailyLimit: z.string().optional(),
 });
 
 /** Money fields arrive as RM text; blank means "not set" (0). */
@@ -186,12 +187,15 @@ export async function saveCycleSettings(formData: FormData): Promise<void> {
   const income = rmOrZero(v.expectedIncome);
   const allowance = rmOrZero(v.variableAllowance);
   const buffer = rmOrZero(v.cycleBuffer);
-  if (income === null || allowance === null || buffer === null) done("One of the RM amounts isn't valid", "payday");
-  if (![income, allowance, buffer].every((n) => withinLimit(n!))) done(MAX_AMOUNT_MESSAGE, "payday");
+  const daily = rmOrZero(v.dailyLimit);
+  if (income === null || allowance === null || buffer === null || daily === null) done("One of the RM amounts isn't valid", "payday");
+  if (![income, allowance, buffer, daily].every((n) => withinLimit(n!))) done(MAX_AMOUNT_MESSAGE, "payday");
   await setSetting("paydayDay", v.paydayDay);
   await setSetting("expectedIncome", income!);
   await setSetting("variableAllowance", allowance!);
   await setSetting("cycleBuffer", buffer!);
   await setSetting("savingsRatePct", v.savingsRatePct);
+  // Blank turns the daily limit off; a form without the field at all leaves it as it was.
+  if (v.dailyLimit !== undefined) await setSetting("dailyLimit", daily!);
   done(undefined, "payday", { key: "payday" });
 }

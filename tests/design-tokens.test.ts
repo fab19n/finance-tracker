@@ -62,6 +62,10 @@ const TEXT_PAIRS: [text: string, on: string[]][] = [
   ["--nav-strong", ["--nav-bg"]], // the chosen tab's label
   ["--hero-fg", ["--hero-bg"]], // text on the hero card
   ["--hero-danger-fg", ["--hero-danger-bg"]],
+  ["--day-1-fg", ["--day-1"]], // the day number on each step of the daily spending squares
+  ["--day-2-fg", ["--day-2"]],
+  ["--day-3-fg", ["--day-3"]],
+  ["--day-4-fg", ["--day-4"]],
 ];
 
 describe("design tokens", () => {
@@ -114,6 +118,21 @@ describe("design tokens", () => {
   ] as const) {
     it(`${themeName}: the tab bar's focus ring holds 3:1 on the deep-green bar`, () => {
       expect(contrast(colour(theme, "--nav-focus"), colour(theme, "--nav-bg"))).toBeGreaterThanOrEqual(3);
+    });
+  }
+
+  // The daily spending squares must read as a scale: each step further from the card than the one before, and told apart.
+  for (const [themeName, theme] of [
+    ["Light", light],
+    ["Dark", dark],
+  ] as const) {
+    it(`${themeName}: the daily spending shades deepen in four distinct steps`, () => {
+      const card = colour(theme, "--card");
+      const steps = [1, 2, 3, 4].map((n) => colour(theme, `--day-${n}`));
+      for (let i = 1; i < steps.length; i++) {
+        expect(contrast(steps[i], card), `--day-${i + 1} against the card`).toBeGreaterThan(contrast(steps[i - 1], card));
+        expect(contrast(steps[i], steps[i - 1]), `--day-${i} to --day-${i + 1}`).toBeGreaterThanOrEqual(1.3);
+      }
     });
   }
 

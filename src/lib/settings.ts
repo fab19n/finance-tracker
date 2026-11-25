@@ -24,6 +24,8 @@ export type AppSettings = {
   cycleBuffer: number;
   /** What your savings account pays today, % p.a. */
   savingsRatePct: number;
+  /** The most you mean to spend in a day, bills aside, sen: Home colours each day against it. 0 = not set. */
+  dailyLimit: number;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   variableAllowance: 0,
   cycleBuffer: 10_000, // RM 100
   savingsRatePct: 0.25,
+  dailyLimit: 0,
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -53,7 +56,8 @@ export async function getSettings(): Promise<AppSettings> {
       case "expectedIncome":
       case "variableAllowance":
       case "cycleBuffer":
-      case "savingsRatePct": {
+      case "savingsRatePct":
+      case "dailyLimit": {
         const n = Number(value);
         if (Number.isFinite(n)) out[key] = n;
         break;

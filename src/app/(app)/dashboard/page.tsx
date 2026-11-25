@@ -11,6 +11,7 @@ import { IncomeExpenseChart } from "@/components/charts/IncomeExpenseChart";
 import { NeedWantDonut } from "@/components/charts/NeedWantDonut";
 import { DuoIcon } from "@/components/DuoIcon";
 import { EmptyState } from "@/components/EmptyState";
+import { DailySpendCard } from "@/components/home/DailySpendCard";
 import { Kpi } from "@/components/Kpi";
 import { Meter } from "@/components/Meter";
 import { Money } from "@/components/Money";
@@ -30,6 +31,7 @@ import {
   praiseWants,
   shareLabel,
 } from "@/lib/analytics/dashboard-text";
+import { dailySpend } from "@/lib/analytics/daily-spend";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
 import {
@@ -162,6 +164,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     evaluateBills(billDefs, period ? { start: period.start, end: period.end } : { start: monthStart(month), end: monthEnd(month) }, asBillTxs(raw), today),
   );
   const budgets = accountChoice ? [] : budgetProgress(rows, categories, month, dayNow, { elapsed: budgetElapsed, total: daysTotal, bills: budgetBills });
+  // The daily calendar needs the entries' real dates (`raw`, not `rows`): re-filed cycle days would land on the wrong
+  // weekdays. Like a budget, the limit is for the whole book, so the card sits out an account view too.
+  const daily =
+    !accountChoice && settings.dailyLimit > 0
+      ? dailySpend(raw, { start: choice.start, end: choice.end, today, limit: settings.dailyLimit, bills: budgetBills })
+      : null;
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
@@ -397,8 +405,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {accountChoice && (
         <p className="banner banner-info">
           <span>
-            Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out. Budgets and &quot;By account&quot; measure the whole book, so one account would
-            be misleading: they step aside.{" "}
+            Showing only {accountChoice.name}: money that came into it and went out of it. Transfers are left out. Budgets, daily spending and &quot;By account&quot; measure the whole book, so one
+            account would be misleading: they step aside.{" "}
             <Link href={entries({})} className="font-extrabold underline underline-offset-2">
               See its entries
             </Link>
@@ -457,6 +465,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               />
             </section>
           )}
+
+          {/* Same order as the six-period chart below it, and first in the markup, so it comes just above it. */}
+          {hasData && !accountChoice && <DailySpendCard daily={daily} className="lg:order-4 lg:col-span-3" />}
 
           <section className="card lg:order-4 lg:col-span-3" aria-labelledby="monthly">
             <div className="flex items-baseline justify-between gap-2">

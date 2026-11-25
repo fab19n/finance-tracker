@@ -343,7 +343,8 @@ async function PaydayTab({ settings, accounts }: { settings: AppSettings; accoun
       <Intro>
         <p>
           Your month runs payday to payday. These settings drive the <strong className="text-foreground">Plan</strong> page: how much to keep for
-          everyday things, and what to move to savings.
+          everyday things, and what to move to savings. The daily limit drives the daily spending card on{" "}
+          <strong className="text-foreground">Home</strong>.
         </p>
       </Intro>
       <ActionForm action={saveCycleSettings} className="card space-y-3">
@@ -356,6 +357,23 @@ async function PaydayTab({ settings, accounts }: { settings: AppSettings; accoun
             <span className="label">Expected salary (RM)</span>
             <input name="expectedIncome" inputMode="decimal" defaultValue={settings.expectedIncome ? senToInput(settings.expectedIncome) : ""} placeholder="e.g. 5400" className="input" />
           </label>
+        </div>
+        {/* Home's "Set a daily limit" and "Change limit" links land here. */}
+        <div id="daily-limit" className="scroll-mt-4">
+          <label>
+            <span className="label">Daily spending limit (RM)</span>
+            <input
+              name="dailyLimit"
+              inputMode="decimal"
+              defaultValue={settings.dailyLimit ? senToInput(settings.dailyLimit) : ""}
+              placeholder="e.g. 50"
+              className="input"
+              aria-describedby="daily-limit-help"
+            />
+          </label>
+          <p id="daily-limit-help" className="sub mt-1.5">
+            Home colours each day against it, past periods too. Bill payments are not counted. Leave it blank to turn the colours off.
+          </p>
         </div>
         {/* The two roles are set on the account itself (its Card settings), so here they are read-only rows that go there. */}
         <div className="rows">
