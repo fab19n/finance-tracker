@@ -24,8 +24,10 @@ export type AppSettings = {
   cycleBuffer: number;
   /** What your savings account pays today, % p.a. */
   savingsRatePct: number;
-  /** The most you mean to spend in a day, bills aside, sen: Home colours each day against it. 0 = not set. */
+  /** The most you mean to spend in a day, sen: Home colours each day against it. 0 = not set. */
   dailyLimit: number;
+  /** Expense categories (ids) the daily limit doesn't count, on top of bill payments. Stored as "4,6,12". */
+  dailyLeftOutCategories: readonly number[];
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cycleBuffer: 10_000, // RM 100
   savingsRatePct: 0.25,
   dailyLimit: 0,
+  dailyLeftOutCategories: [],
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -62,6 +65,12 @@ export async function getSettings(): Promise<AppSettings> {
         if (Number.isFinite(n)) out[key] = n;
         break;
       }
+      case "dailyLeftOutCategories":
+        out.dailyLeftOutCategories = value
+          .split(",")
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0);
+        break;
       case "riskProfile":
         if (value === "conservative" || value === "balanced" || value === "growth") {
           out.riskProfile = value;

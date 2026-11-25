@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { dailySpend, dayLevel } from "@/lib/analytics/daily-spend";
+import { billPaymentsByPeriod, CALENDAR_WEEKS, calendarStart, dailySpend, dayLevel } from "@/lib/analytics/daily-spend";
 import { daySquareText } from "@/lib/analytics/dashboard-text";
 import { toBudgetBills, evaluateBills, asBillTxs, type BillDef } from "@/lib/plan/bills";
 import type { FlowRow } from "@/lib/analytics/summary";
@@ -67,13 +69,25 @@ describe("dailySpend", () => {
 
   it("ignores income and anything outside the period", () => {
     const r = dailySpend([row("2026-10-25", 99), row("2026-11-26", 99), row("2026-11-02", 5000, { type: "income" })], CYCLE);
-    expect(r.days.every((d) => d.spent === 0 && d.bills === 0)).toBe(true);
+    expect(r.days.every((d) => d.spent === 0 && d.leftOut === 0)).toBe(true);
   });
 
   it("leaves a linked bill payment out of the total, and keeps count of it", () => {
     const r = dailySpend([row("2026-11-01", 1200, { billId: 7 }), row("2026-11-01", 20)], CYCLE);
-    expect(on(r, "2026-11-01")).toMatchObject({ spent: RM(20), bills: RM(1200), level: 2 });
+    expect(on(r, "2026-11-01")).toMatchObject({ spent: RM(20), leftOut: RM(1200), level: 2 });
     expect(over(r)).toEqual([]);
+  });
+
+  it("leaves out every entry in a left-out category, bill or not, and keeps count of it", () => {
+    const rows = [row("2026-11-02", 400, { categoryId: 6 }), row("2026-11-02", 90, { categoryId: 12 }), row("2026-11-02", 30, { categoryId: 1 })];
+    expect(on(dailySpend(rows, { ...CYCLE, leftOutCategoryIds: [6, 12] }), "2026-11-02")).toMatchObject({ spent: RM(30), leftOut: RM(490), level: 3 });
+    // With nothing chosen they all count.
+    expect(on(dailySpend(rows, CYCLE), "2026-11-02")).toMatchObject({ spent: RM(520), leftOut: 0, level: "over" });
+  });
+
+  it("counts a bill payment in a left-out category once, and an entry with no category as spending", () => {
+    const r = dailySpend([row("2026-11-02", 55, { categoryId: 12, billId: 3 }), row("2026-11-02", 10, { categoryId: null })], { ...CYCLE, leftOutCategoryIds: [12] });
+    expect(on(r, "2026-11-02")).toMatchObject({ spent: RM(10), leftOut: RM(55) });
   });
 
   it("leaves out EVERY linked payment, even a second one of the same bill", () => {
@@ -89,14 +103,14 @@ describe("dailySpend", () => {
     const rows = [row("2026-11-08", 55.9, { item: "Netflix" }), row("2026-11-08", 4)];
     const bills = toBudgetBills(evaluateBills([netflix], CYCLE, asBillTxs(rows as Parameters<typeof asBillTxs>[0]), CYCLE.today));
     const r = dailySpend(rows, { ...CYCLE, bills });
-    expect(on(r, "2026-11-08")).toMatchObject({ spent: RM(4), bills: RM(55.9) });
+    expect(on(r, "2026-11-08")).toMatchObject({ spent: RM(4), leftOut: RM(55.9) });
     // Without the checklist, an unlinked entry is just spending.
     expect(on(dailySpend(rows, CYCLE), "2026-11-08")).toMatchObject({ spent: RM(59.9), level: "over" });
   });
 
   it("ignores a bill that is still unpaid", () => {
     const r = dailySpend([row("2026-11-02", 20)], { ...CYCLE, bills: [{ categoryId: 1, expected: RM(20), paidTxId: null }] });
-    expect(on(r, "2026-11-02")).toMatchObject({ spent: RM(20), bills: 0 });
+    expect(on(r, "2026-11-02")).toMatchObject({ spent: RM(20), leftOut: 0 });
   });
 
   it("marks today, and leaves the days after it blank unless something is already recorded on them", () => {
@@ -151,8 +165,76 @@ describe("the calendar's shape", () => {
   });
 });
 
+describe("the weeks leading up to the end of the period", () => {
+  it("starts on the Sunday that gives CALENDAR_WEEKS columns, the last one holding the end", () => {
+    // Wednesday 25 Nov 2026, a Saturday and a Sunday: whatever day the period ends on.
+    for (const end of ["2026-11-25", "2026-10-31", "2026-11-01", "2026-12-31", "2027-01-02"]) {
+      const start = calendarStart(end);
+      const { weeks } = dailySpend([], { start, end, today: end, limit: LIMIT });
+      expect(weeks, end).toHaveLength(CALENDAR_WEEKS);
+      expect(new Date(`${start}T00:00:00Z`).getUTCDay(), end).toBe(0);
+      expect(weeks[0][0]?.date, end).toBe(start); // the oldest column is whole
+      expect(weeks.at(-1)!.some((d) => d?.date === end), end).toBe(true);
+    }
+    expect(calendarStart("2026-11-25")).toBe("2026-05-03");
+  });
+
+  it("applies the limit and the left-out categories to weeks before the period on screen", () => {
+    const end = "2026-11-25";
+    const rows = [row("2026-08-04", 80), row("2026-08-05", 80, { categoryId: 6 }), row("2026-04-30", 80)];
+    const r = dailySpend(rows, { start: calendarStart(end), end, today: end, limit: LIMIT, leftOutCategoryIds: [6] });
+    expect(over(r)).toEqual(["2026-08-04"]);
+    expect(on(r, "2026-08-05")).toMatchObject({ spent: 0, leftOut: RM(80) });
+    expect(r.days.some((d) => d.date === "2026-04-30")).toBe(false); // older than the oldest week
+  });
+
+  const netflix: BillDef = {
+    id: 3, name: "Netflix", accountId: 1, categoryId: 1, nature: "want",
+    amountMin: RM(55.9), amountMax: RM(55.9), dueDay: 8, matchKeywords: null, active: true,
+  };
+  const months = [{ start: "2026-10-01", end: "2026-10-31" }, { start: "2026-11-01", end: "2026-11-30" }];
+
+  it("finds a never-linked bill payment in every period, not only the one on screen", () => {
+    const rows = [row("2026-10-08", 55.9, { item: "Netflix" }), row("2026-11-08", 55.9, { item: "Netflix" })];
+    const window = { start: calendarStart("2026-11-30"), end: "2026-11-30", today: "2026-11-30", limit: LIMIT };
+    const everyPeriod = dailySpend(rows, { ...window, bills: billPaymentsByPeriod([netflix], months, rows, window.today) });
+    expect(over(everyPeriod)).toEqual([]);
+    expect([on(everyPeriod, "2026-10-08").leftOut, on(everyPeriod, "2026-11-08").leftOut]).toEqual([RM(55.9), RM(55.9)]);
+    // Matching only the period on screen would count October's payment as everyday spending.
+    const onScreenOnly = dailySpend(rows, { ...window, bills: billPaymentsByPeriod([netflix], months.slice(1), rows, window.today) });
+    expect(over(onScreenOnly)).toEqual(["2026-10-08"]);
+  });
+
+  it("takes one unlinked look-alike per bill per period as its payment, as the Plan does", () => {
+    const rows = [row("2026-10-08", 55.9, { item: "Netflix" }), row("2026-10-20", 55.9, { item: "Netflix" }), row("2026-11-08", 55.9, { item: "Netflix" })];
+    const paid = billPaymentsByPeriod([netflix], months, rows, "2026-11-30").map((b) => b.paidTxId);
+    expect(paid).toEqual([rows[0].id, rows[2].id]);
+  });
+});
+
+describe("how many weeks show", () => {
+  const css = readFileSync(join(__dirname, "..", "src", "app", "globals.css"), "utf8");
+
+  it("reveals one more week for every further 24 px, from 7 up to all the weeks the calendar is given", () => {
+    expect(css).toContain(".day-week:nth-last-child(-n + 7) {");
+    const rules = [...css.matchAll(/@container day-calendar \(min-width: (\d+)px\) \{\s*\.day-week:nth-last-child\(-n \+ (\d+)\) \{ display: flex; \}/g)];
+    // 26 px of day names, then at least 24 px for each week shown: so a square is never under a 24 px tap area.
+    expect(rules.map((m) => [Number(m[1]), Number(m[2])])).toEqual(Array.from({ length: CALENDAR_WEEKS - 7 }, (_, i) => [26 + 24 * (8 + i), 8 + i]));
+    expect(css).toContain(`min-width: ${26 + 24 * 7}px;`); // and never narrower than the 7 that always show
+  });
+
+  it("hands the leftmost week's month name on to each week it reveals", () => {
+    for (let n = 8; n <= CALENDAR_WEEKS; n++) {
+      const at = css.indexOf(`.day-week:nth-last-child(-n + ${n}) { display: flex; }`);
+      const step = css.slice(at, css.indexOf("@container", at) < 0 ? undefined : css.indexOf("@container", at));
+      expect(step, `${n} weeks`).toContain(`.day-week:nth-last-child(${n - 1}) .day-edge { visibility: hidden; }`);
+      expect(step, `${n} weeks`).toContain(`.day-week:nth-last-child(${n}) .day-edge { visibility: visible; }`);
+    }
+  });
+});
+
 describe("the words", () => {
-  const day = { date: "2026-11-04", spent: RM(35), bills: 0, level: 3 as const, future: false };
+  const day = { date: "2026-11-04", spent: RM(35), leftOut: 0, level: 3 as const, future: false };
 
   it("says the date, the amount and where it stands against the limit, which the square's colour alone can't", () => {
     expect(daySquareText(day, LIMIT)).toBe(`Wed, 4 Nov: ${rm(35)} spent, within the limit`);
@@ -162,8 +244,8 @@ describe("the words", () => {
     expect(daySquareText({ ...day, spent: 0, level: 0, future: true }, LIMIT)).toBe("Wed, 4 Nov: not here yet");
   });
 
-  it("mentions the bills that were left out, so the figure can be matched with the day's entries", () => {
-    expect(daySquareText({ ...day, bills: RM(1200) }, LIMIT)).toBe(`Wed, 4 Nov: ${rm(35)} spent, within the limit, plus ${rm(1200)} in bills (not counted)`);
+  it("mentions what was left out, so the figure can be matched with the day's entries", () => {
+    expect(daySquareText({ ...day, leftOut: RM(1200) }, LIMIT)).toBe(`Wed, 4 Nov: ${rm(35)} spent, within the limit, plus ${rm(1200)} in bills or categories left out`);
   });
 });
 

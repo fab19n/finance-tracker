@@ -84,6 +84,24 @@ export function periodDay(p: Period, today: string): number {
 /** What "a month" means on Home and Insights: payday to payday, or a calendar month. */
 export type PeriodView = "cycle" | "month";
 
+/**
+ * Every pay cycle, or calendar month, with a day between `from` and `to`, whole: for something that reaches back past the
+ * period on screen. The cycles are the same ones Home steps through, counted further back than its arrows go.
+ */
+export function periodsWithin(opts: { view: PeriodView; today: string; salaryDates: string[]; paydayDay: number; from: string; to: string }): { start: string; end: string }[] {
+  const { from, to } = opts;
+  if (opts.view === "cycle") {
+    return payCyclePeriods({ today: opts.today, salaryDates: opts.salaryDates, paydayDay: opts.paydayDay, count: 48 })
+      .filter((p) => p.end >= from && p.start <= to)
+      .map((p) => ({ start: p.start, end: p.end }));
+  }
+  const months: { start: string; end: string }[] = [];
+  for (let month = from.slice(0, 7); month <= to.slice(0, 7); month = shiftMonth(month, 1)) {
+    months.push({ start: `${month}-01`, end: `${month}-${String(daysInMonthOf(month)).padStart(2, "0")}` });
+  }
+  return months;
+}
+
 export type PeriodChoice = {
   view: PeriodView;
   /** The pay cycles (newest first) in cycle view; null in calendar view. */

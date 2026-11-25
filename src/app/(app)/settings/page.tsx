@@ -333,7 +333,38 @@ function InfoRow({ title, caption, href, children }: { title: string; caption: s
   );
 }
 
-async function PaydayTab({ settings, accounts }: { settings: AppSettings; accounts: Account[] }) {
+/** The categories the daily limit skips. Closed, it still names what is ticked, so the list can be checked at a glance. */
+function DailyLeftOut({ choices, ticked }: { choices: CategoryWithUsage[]; ticked: readonly number[] }) {
+  const names = choices.filter((c) => ticked.includes(c.id)).map((c) => c.name);
+  return (
+    <details className="group mt-1">
+      <summary className="flex min-h-11 cursor-pointer list-none flex-col justify-center py-1 [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-1 text-xs font-extrabold text-accent-strong">
+          Categories that don&apos;t count ({names.length})
+          <ChevronRight size={14} strokeWidth={2.5} className="transition group-open:rotate-90" aria-hidden />
+        </span>
+        <span className="sub">{names.length > 0 ? names.join(", ") : "None ticked: only bill payments are left out."}</span>
+      </summary>
+      <fieldset>
+        <legend className="sr-only">Categories the daily limit doesn&apos;t count</legend>
+        {/* Says the list was on the form: with nothing ticked, the checkboxes themselves send nothing. */}
+        <input type="hidden" name="dailyLeftOutList" value="1" />
+        <ul className="grid grid-cols-2 gap-x-3 md:grid-cols-3">
+          {choices.map((c) => (
+            <li key={c.id}>
+              <label className="flex min-h-11 cursor-pointer items-center gap-2.5 py-1 text-[13px] font-bold">
+                <input type="checkbox" name="dailyLeftOut" value={c.id} defaultChecked={ticked.includes(c.id)} className="size-5 shrink-0 accent-accent-strong" />
+                <span className="min-w-0">{c.name}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
+    </details>
+  );
+}
+
+async function PaydayTab({ settings, accounts, categories }: { settings: AppSettings; accounts: Account[]; categories: CategoryWithUsage[] }) {
   const plan = await getPlan(todayISO());
   const main = accounts.find((a) => a.purpose === "spending" && !a.archived);
   const savings = accounts.find((a) => a.purpose === "savings" && !a.archived);
@@ -347,7 +378,10 @@ async function PaydayTab({ settings, accounts }: { settings: AppSettings; accoun
           <strong className="text-foreground">Home</strong>.
         </p>
       </Intro>
-      <ActionForm action={saveCycleSettings} className="card space-y-3">
+      {/* A new key whenever a stored setting changes, so every box starts again from what was stored. After a save the new
+          values only arrive as defaults, which boxes already on screen ignore: they went on showing the old ones, and the
+          next Save wrote those back. */}
+      <ActionForm key={JSON.stringify(settings)} action={saveCycleSettings} className="card space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label>
             <span className="label">Payday, day of the month</span>
@@ -372,8 +406,13 @@ async function PaydayTab({ settings, accounts }: { settings: AppSettings; accoun
             />
           </label>
           <p id="daily-limit-help" className="sub mt-1.5">
-            Home colours each day against it, past periods too. Bill payments are not counted. Leave it blank to turn the colours off.
+            Home colours each day against it, past periods too. Bill payments never count, nor do the categories you tick below. Leave
+            the limit blank to turn the colours off.
           </p>
+          <DailyLeftOut
+            choices={categories.filter((c) => c.type === "expense" && (!c.archived || settings.dailyLeftOutCategories.includes(c.id)))}
+            ticked={settings.dailyLeftOutCategories}
+          />
         </div>
         {/* The two roles are set on the account itself (its Card settings), so here they are read-only rows that go there. */}
         <div className="rows">
@@ -570,7 +609,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       {tab === "accounts" && <AccountsTab accounts={accounts} />}
       {tab === "categories" && <CategoriesTab categories={categories} kind={kind} />}
-      {tab === "payday" && <PaydayTab settings={settings} accounts={accounts} />}
+      {tab === "payday" && <PaydayTab settings={settings} accounts={accounts} categories={categories} />}
       {tab === "investing" && <InvestingTab settings={settings} />}
       {tab === "data" && <DataTab ruleNotice={Array.isArray(sp.rule) ? sp.rule[0] : sp.rule} />}
     </div>

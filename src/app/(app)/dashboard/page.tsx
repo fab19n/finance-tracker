@@ -12,6 +12,7 @@ import { NeedWantDonut } from "@/components/charts/NeedWantDonut";
 import { DuoIcon } from "@/components/DuoIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { DailySpendCard } from "@/components/home/DailySpendCard";
+import { PhoneSpendChart } from "@/components/home/PhoneSpendChart";
 import { Kpi } from "@/components/Kpi";
 import { Meter } from "@/components/Meter";
 import { Money } from "@/components/Money";
@@ -31,9 +32,10 @@ import {
   praiseWants,
   shareLabel,
 } from "@/lib/analytics/dashboard-text";
-import { dailySpend } from "@/lib/analytics/daily-spend";
+import { billPaymentsByPeriod, calendarStart, dailySpend, type DailySpend } from "@/lib/analytics/daily-spend";
+import { spendByDay } from "@/lib/analytics/spend-by-day";
 import { balanceHistory } from "@/lib/analytics/ledger";
-import { rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
+import { periodsWithin, rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
 import {
   accountBreakdown,
   budgetProgress,
@@ -164,15 +166,32 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     evaluateBills(billDefs, period ? { start: period.start, end: period.end } : { start: monthStart(month), end: monthEnd(month) }, asBillTxs(raw), today),
   );
   const budgets = accountChoice ? [] : budgetProgress(rows, categories, month, dayNow, { elapsed: budgetElapsed, total: daysTotal, bills: budgetBills });
-  // The daily calendar needs the entries' real dates (`raw`, not `rows`): re-filed cycle days would land on the wrong
-  // weekdays. Like a budget, the limit is for the whole book, so the card sits out an account view too.
-  const daily =
-    !accountChoice && settings.dailyLimit > 0
-      ? dailySpend(raw, { start: choice.start, end: choice.end, today, limit: settings.dailyLimit, bills: budgetBills })
-      : null;
+  // The daily calendar shows the weeks LEADING UP TO the end of this period, so it reaches back past it. It needs the
+  // entries' real dates (re-filed cycle days would land on the wrong weekdays), and it finds bill payments period by period
+  // across all those weeks, reading each period whole. Like a budget, the limit is for the whole book, so the card sits out
+  // an account view too.
+  let daily: DailySpend | null = null;
+  if (!accountChoice && settings.dailyLimit > 0) {
+    const from = calendarStart(choice.end);
+    const spans = periodsWithin({ view, today, salaryDates, paydayDay: settings.paydayDay, from, to: choice.end });
+    const entriesBack = await listFlowRows(spans.reduce((first, p) => (p.start < first ? p.start : first), from), choice.end);
+    daily = dailySpend(entriesBack, {
+      start: from,
+      end: choice.end,
+      today,
+      limit: settings.dailyLimit,
+      bills: billPaymentsByPeriod(billDefs, spans, entriesBack, today),
+      leftOutCategoryIds: settings.dailyLeftOutCategories,
+    });
+  }
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
+  // The phone's chart: each day's spending, this period and the one before, from the entries' real dates.
+  const lastSpan = periods ? periods.find((p) => p.key === prev) : { start: monthStart(prev), end: monthEnd(prev) };
+  const dayPoints = hasData
+    ? spendByDay(accountChoice ? raw.filter((r) => r.accountId === accountChoice.id) : raw, { start: choice.start, end: choice.end }, lastSpan ?? null, today)
+    : [];
   // The cards only the whole book gets: daily spending, and Budgets (or the prompt to set one). "By account" too.
   const wholeBook = hasData && !accountChoice;
   const showByAccount = !accountChoice && byAccount.length > 0;
@@ -297,28 +316,56 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     </div>
   );
 
+  const monthNav = (className?: string) => (
+    <MonthNav
+      month={month}
+      maxMonth={nowMonth}
+      minMonth={oldestMonth}
+      path="/dashboard"
+      sublabel={period ? cycleLabel(period) : undefined}
+      query={`view=${view}${accountQuery}`}
+      className={className}
+    />
+  );
+  const insightsLink = (className = "") => (
+    <Link
+      href={`/insights${qs({ view, month, account: accountChoice?.id })}`}
+      className={`inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-extrabold text-accent-strong underline underline-offset-2 ${className}`}
+    >
+      What Insights found for {nameOf(month)} <ChevronRight size={14} aria-hidden />
+    </Link>
+  );
+  // A phone shows Home in another order: the period, the chart, the hero, then the way into Insights, the accounts and the
+  // tiles. So the phone and the md-up page each have their own copy of what moves, placed where it is seen. One copy or the
+  // other is on screen (and in the keyboard and reading order), never both.
   const periodControls = (
-    <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3">
+    <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:gap-3 max-md:hidden">
       <PeriodToggle view={view} account={accountChoice?.id} month={month} />
-      <MonthNav
-        month={month}
-        maxMonth={nowMonth}
-        minMonth={oldestMonth}
-        path="/dashboard"
-        sublabel={period ? cycleLabel(period) : undefined}
-        query={`view=${view}${accountQuery}`}
-        className="md:w-72"
-      />
-      <Link
-        href={`/insights${qs({ view, month, account: accountChoice?.id })}`}
-        className="inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-extrabold text-accent-strong underline underline-offset-2 md:ml-auto"
-      >
-        What Insights found for {nameOf(month)} <ChevronRight size={14} aria-hidden />
-      </Link>
+      {monthNav("md:w-72")}
+      {insightsLink("md:ml-auto")}
     </div>
   );
+  const phonePeriod = (
+    <div className="flex flex-col gap-2.5 md:hidden">
+      <PeriodToggle view={view} account={accountChoice?.id} month={month} />
+      {monthNav()}
+    </div>
+  );
+  const phoneInsights = <div className="flex md:hidden">{insightsLink()}</div>;
   // Which account: the whole book, or one account on its own (each chip's link names its real balance).
-  const accountRow = <AccountChips compact label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={accountHref(null)} />;
+  const accountRow = (className?: string) => (
+    <AccountChips compact label="Show one account" accounts={chips} selectedId={accountChoice?.id ?? null} allHref={accountHref(null)} className={className} />
+  );
+  const emptyState = (className: string) => (
+    <EmptyState
+      className={className}
+      icon={<Wallet size={28} />}
+      title={`Nothing recorded for ${rangeLabel}${accountChoice ? ` in ${accountChoice.name}` : ""} yet`}
+      text="Add entries, or import a statement, and the charts fill in."
+      primary={{ label: "Add your first entry", href: "/" }}
+      secondary={{ label: "Import a statement", href: "/import" }}
+    />
+  );
 
   const kpiGrid = (
     <section className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-3" aria-label="Key figures">
@@ -372,12 +419,32 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <div className="space-y-3 md:space-y-4">
       <PageHeader title="Home" subtitle={periodSubtitle({ account: accountChoice?.name, cycle: view === "cycle", isCurrent, dayNow, daysTotal })} />
 
-      {/* The whole book opens on the hero (and, from md up, the accounts beside it); one account keeps its controls first. */}
+      {/* A phone: the period, then the chart drawn straight on the page. With nothing recorded there is no chart, and its
+          place says why. */}
+      {phonePeriod}
+      {hasData ? (
+        <PhoneSpendChart
+          className="md:hidden"
+          data={dayPoints}
+          label={isCurrent ? "Spent so far" : "Spent"}
+          total={totals.expense}
+          pace={pacePill}
+          unit={unit}
+          thisName={nameOf(month)}
+          lastName={nameOf(prev)}
+        />
+      ) : (
+        emptyState("md:hidden")
+      )}
+
+      {/* From md up the whole book opens on the hero and the accounts beside it; one account keeps its controls first. */}
       {accountChoice ? (
         <>
           {periodControls}
-          {accountRow}
+          {accountRow("max-md:hidden")}
           <section aria-label="Net in this account">{hero}</section>
+          {phoneInsights}
+          {accountRow("md:hidden")}
         </>
       ) : (
         <>
@@ -397,7 +464,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </section>
           {overBudget && <p className="banner banner-warn">{overBudgetBanner(overBudget, payOverdue ? null : daysLeft, payOverdue)}</p>}
           {periodControls}
-          {accountRow}
+          {phoneInsights}
+          {accountRow()}
         </>
       )}
       {kpiGrid}
@@ -417,20 +485,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </p>
       )}
 
-      {!hasData && (
-        <EmptyState
-          icon={<Wallet size={28} />}
-          title={`Nothing recorded for ${rangeLabel}${accountChoice ? ` in ${accountChoice.name}` : ""} yet`}
-          text="Add entries, or import a statement, and the charts fill in."
-          primary={{ label: "Add your first entry", href: "/" }}
-          secondary={{ label: "Import a statement", href: "/import" }}
-        />
-      )}
+      {!hasData && emptyState("max-md:hidden")}
 
       {(hasData || hasHistory) && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
+          {/* From md up. On a phone the chart above, drawn on the page, takes its place. */}
           {hasData && (
-            <section className={`card ${budgets.length === 0 && accountChoice ? "lg:col-span-2" : ""}`} aria-labelledby="pace">
+            <section className={`card max-md:hidden ${budgets.length === 0 && accountChoice ? "lg:col-span-2" : ""}`} aria-labelledby="pace">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="pace" className={EYEBROW}>
                   {isCurrent ? "Spent so far" : "Spent"}
@@ -469,8 +530,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </section>
           )}
 
-          {/* Second: the daily calendar. On a phone it is only as wide as it needs to be; from lg up it is the middle column. */}
-          {wholeBook && <DailySpendCard daily={daily} className="mx-auto w-fit max-w-full lg:mx-0 lg:w-auto" />}
+          {/* Second: the daily calendar. As wide as the cards around it, and stretched across like their graphs; from lg up
+              it is the middle column. */}
+          {wholeBook && <DailySpendCard daily={daily} />}
 
           {hasData && (
             <section className="card" aria-labelledby="split">

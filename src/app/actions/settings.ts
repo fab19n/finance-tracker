@@ -197,5 +197,13 @@ export async function saveCycleSettings(formData: FormData): Promise<void> {
   await setSetting("savingsRatePct", v.savingsRatePct);
   // Blank turns the daily limit off; a form without the field at all leaves it as it was.
   if (v.dailyLimit !== undefined) await setSetting("dailyLimit", daily!);
+  // The categories the daily limit skips are checkboxes, and none ticked sends nothing: this hidden field says the list
+  // was on the form, so "none" can be told from "not asked".
+  if (formData.has("dailyLeftOutList")) {
+    const db = await getDb();
+    const expense = new Set(db.select({ id: categories.id }).from(categories).where(eq(categories.type, "expense")).all().map((c) => c.id));
+    const ticked = [...new Set(formData.getAll("dailyLeftOut").map(Number))].filter((id) => expense.has(id)).sort((a, b) => a - b);
+    await setSetting("dailyLeftOutCategories", ticked.join(","));
+  }
   done(undefined, "payday", { key: "payday" });
 }

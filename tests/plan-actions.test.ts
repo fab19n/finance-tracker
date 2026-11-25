@@ -245,6 +245,34 @@ describe("cycle settings", () => {
     await save({ dailyLimit: "" });
     expect((await getSettings()).dailyLimit).toBe(0);
   });
+  it("stores the categories the daily limit skips: only real expense ones, and 'none ticked' differs from 'not asked'", async () => {
+    const { saveCycleSettings } = await import("@/app/actions/settings");
+    const { getSettings } = await import("@/lib/settings");
+    const save = (ticked: string[] | null) => {
+      const f = fd({ paydayDay: "28", savingsRatePct: "1" });
+      if (ticked) {
+        f.set("dailyLeftOutList", "1");
+        for (const id of ticked) f.append("dailyLeftOut", id);
+      }
+      return redirected(saveCycleSettings(f));
+    };
+    const stored = async () => (await getSettings()).dailyLeftOutCategories;
+    expect(await stored()).toEqual([]); // nothing is skipped until you say so
+    // An income category, a made-up id, junk and a repeat are all dropped.
+    await save([String(subsCat), String(rentCat), String(subsCat), String(incomeCat), "99999", "x"]);
+    expect(await stored()).toEqual([rentCat, subsCat].sort((a, b) => a - b));
+    await save(null); // a form without the list leaves it alone
+    expect(await stored()).toHaveLength(2);
+    await save([]);
+    expect(await stored()).toEqual([]);
+  });
+  it("reads a stored list of skipped categories forgivingly", async () => {
+    const { getSettings, setRawSetting } = await import("@/lib/settings");
+    await setRawSetting("dailyLeftOutCategories", "4, 6,,twelve,-1,2.5,31");
+    expect((await getSettings()).dailyLeftOutCategories).toEqual([4, 6, 31]);
+    await setRawSetting("dailyLeftOutCategories", "");
+    expect((await getSettings()).dailyLeftOutCategories).toEqual([]);
+  });
   it("refuses a daily limit it can't read, and saves nothing from that form", async () => {
     const { saveCycleSettings } = await import("@/app/actions/settings");
     const { getSettings } = await import("@/lib/settings");

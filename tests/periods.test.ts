@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { payCyclePeriods, periodDay, periodKey, rekeyRows } from "@/lib/analytics/periods";
+import { payCyclePeriods, periodDay, periodKey, periodsWithin, rekeyRows } from "@/lib/analytics/periods";
 import { categoryBreakdown, cumulativeSpend, monthTotals, paycheckIn, type FlowRow } from "@/lib/analytics/summary";
 
 const RM = (n: number) => Math.round(n * 100);
@@ -57,6 +57,33 @@ describe("payCyclePeriods", () => {
   it("when pay is late, the cycle in progress runs to today instead of ending before it", () => {
     const p = payCyclePeriods({ today: "2026-10-30", salaryDates, paydayDay: 28, count: 2 });
     expect(p[0]).toMatchObject({ start: "2026-09-26", end: "2026-10-30", key: "2026-10" });
+  });
+});
+
+describe("periodsWithin: every period a longer stretch touches", () => {
+  const base = { today: "2026-10-10", salaryDates: ["2026-08-26", "2026-09-26"], paydayDay: 28 };
+
+  it("gives whole pay cycles, including the ones only partly inside the stretch, and no others", () => {
+    const spans = periodsWithin({ ...base, view: "cycle", from: "2026-08-01", to: "2026-10-25" });
+    expect(spans).toEqual([
+      { start: "2026-09-26", end: "2026-10-25" },
+      { start: "2026-08-26", end: "2026-09-25" },
+      { start: "2026-07-26", end: "2026-08-25" }, // starts before `from`, and comes whole
+    ]);
+  });
+
+  it("reaches further back than the 24 cycles Home steps through", () => {
+    const spans = periodsWithin({ ...base, view: "cycle", from: "2024-03-01", to: "2024-09-25" });
+    expect(spans.length).toBeGreaterThanOrEqual(7);
+    expect(spans.at(-1)!.start <= "2024-03-01").toBe(true);
+  });
+
+  it("gives whole calendar months in month view, across a new year", () => {
+    expect(periodsWithin({ ...base, view: "month", from: "2025-12-14", to: "2026-02-28" })).toEqual([
+      { start: "2025-12-01", end: "2025-12-31" },
+      { start: "2026-01-01", end: "2026-01-31" },
+      { start: "2026-02-01", end: "2026-02-28" },
+    ]);
   });
 });
 

@@ -30,6 +30,7 @@ export function AccountChips({
   allHref,
   label = "Accounts",
   compact = false,
+  className = "",
 }: {
   accounts: Chip[];
   selectedId?: number | null;
@@ -37,12 +38,13 @@ export function AccountChips({
   allHref?: string;
   label?: string;
   compact?: boolean;
+  className?: string;
 }) {
   const base = "flex min-h-11 shrink-0 items-center gap-2 rounded-full border-[1.5px] px-3.5 transition";
   const idle = "border-line bg-card hover:border-foreground";
   const chosen = "border-accent-strong bg-accent text-accent-fg";
   return (
-    <nav aria-label={label} className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0">
+    <nav aria-label={label} className={`no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 pb-0.5 md:mx-0 md:px-0 ${className}`}>
       {/* The row scrolls sideways on a phone: bring the chosen account into view if it is off-screen. */}
       <ScrollChosenIntoView selected={selectedId} />
       {allHref !== undefined && (

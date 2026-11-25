@@ -507,16 +507,162 @@ html.swipe-tabs body {
     --t: var(--info);
   }
 
-  /* Home's daily spending calendar (DailySpendCard): an overview in colour alone, at the size of the contribution graph it
-     is modelled on. `.day` is the tap area, 24 px with no gap between (smaller than the app's usual 40 px, on purpose);
-     `.day-box` is the 20 px square painted inside it, and `.day-key` the legend's smaller one. The gold deepens a quarter of
-     the daily limit at a time; past the limit it is --day-over. Today wears a ring (a shadow, so the focus ring's outline
-     stays free); a day still to come is only an outline. */
+  /* Home's daily spending calendar (DailySpendCard), a contribution graph: small TRUE squares, one week to a column, and
+     as many of the newest weeks as the card has room for. `.day` is a day's square tap area, 24 to about 27 px (smaller
+     than the app's usual 40 px, on purpose) with no gap between; `.day-box` is the square painted inside it, 2 px in from
+     each side, and `.day-key` the legend's small square. The gold deepens a quarter of the daily limit at a time; past the
+     limit it is --day-over. Today wears a ring (a shadow, so the focus ring's outline stays free); a day still to come is
+     only an outline. */
   .day {
-    @apply grid size-6 place-items-center rounded-md;
+    @apply block aspect-square w-full rounded-md p-0.5;
   }
   .day-box {
-    @apply block size-5 rounded-[5px];
+    @apply block size-full rounded-[5px];
+  }
+  /* The calendar's own width decides how many weeks show. Never narrower than 7 weeks of 24 px beside the day names. */
+  .day-calendar {
+    container: day-calendar / inline-size;
+    min-width: 194px;
+  }
+  /* The weekday names: a 26 px column whose rows line up with the squares beside it. */
+  .day-side {
+    display: grid;
+    flex: 0 0 26px;
+    grid-template-rows: 1rem repeat(7, minmax(0, 1fr));
+  }
+  /* Every week is in the page (CALENDAR_WEEKS of them, oldest first). The newest 7 always show, and one more for every
+     further 24 px: 26 px + 24 px x weeks. So the columns share the width without a square ever growing past about 27 px.
+     A hidden week is gone for the keyboard and screen readers too. tests/daily-spend.test.ts keeps these in step. */
+  .day-week {
+    display: none;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .day-week:nth-last-child(-n + 7) {
+    display: flex;
+  }
+  /* The leftmost week on screen names its month too (.day-edge): each step hands that on to the week it reveals. */
+  .day-edge {
+    visibility: hidden;
+  }
+  .day-week:nth-last-child(7) .day-edge {
+    visibility: visible;
+  }
+  @container day-calendar (min-width: 218px) {
+    .day-week:nth-last-child(-n + 8) { display: flex; }
+    .day-week:nth-last-child(7) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(8) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 242px) {
+    .day-week:nth-last-child(-n + 9) { display: flex; }
+    .day-week:nth-last-child(8) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(9) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 266px) {
+    .day-week:nth-last-child(-n + 10) { display: flex; }
+    .day-week:nth-last-child(9) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(10) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 290px) {
+    .day-week:nth-last-child(-n + 11) { display: flex; }
+    .day-week:nth-last-child(10) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(11) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 314px) {
+    .day-week:nth-last-child(-n + 12) { display: flex; }
+    .day-week:nth-last-child(11) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(12) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 338px) {
+    .day-week:nth-last-child(-n + 13) { display: flex; }
+    .day-week:nth-last-child(12) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(13) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 362px) {
+    .day-week:nth-last-child(-n + 14) { display: flex; }
+    .day-week:nth-last-child(13) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(14) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 386px) {
+    .day-week:nth-last-child(-n + 15) { display: flex; }
+    .day-week:nth-last-child(14) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(15) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 410px) {
+    .day-week:nth-last-child(-n + 16) { display: flex; }
+    .day-week:nth-last-child(15) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(16) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 434px) {
+    .day-week:nth-last-child(-n + 17) { display: flex; }
+    .day-week:nth-last-child(16) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(17) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 458px) {
+    .day-week:nth-last-child(-n + 18) { display: flex; }
+    .day-week:nth-last-child(17) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(18) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 482px) {
+    .day-week:nth-last-child(-n + 19) { display: flex; }
+    .day-week:nth-last-child(18) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(19) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 506px) {
+    .day-week:nth-last-child(-n + 20) { display: flex; }
+    .day-week:nth-last-child(19) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(20) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 530px) {
+    .day-week:nth-last-child(-n + 21) { display: flex; }
+    .day-week:nth-last-child(20) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(21) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 554px) {
+    .day-week:nth-last-child(-n + 22) { display: flex; }
+    .day-week:nth-last-child(21) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(22) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 578px) {
+    .day-week:nth-last-child(-n + 23) { display: flex; }
+    .day-week:nth-last-child(22) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(23) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 602px) {
+    .day-week:nth-last-child(-n + 24) { display: flex; }
+    .day-week:nth-last-child(23) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(24) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 626px) {
+    .day-week:nth-last-child(-n + 25) { display: flex; }
+    .day-week:nth-last-child(24) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(25) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 650px) {
+    .day-week:nth-last-child(-n + 26) { display: flex; }
+    .day-week:nth-last-child(25) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(26) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 674px) {
+    .day-week:nth-last-child(-n + 27) { display: flex; }
+    .day-week:nth-last-child(26) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(27) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 698px) {
+    .day-week:nth-last-child(-n + 28) { display: flex; }
+    .day-week:nth-last-child(27) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(28) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 722px) {
+    .day-week:nth-last-child(-n + 29) { display: flex; }
+    .day-week:nth-last-child(28) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(29) .day-edge { visibility: visible; }
+  }
+  @container day-calendar (min-width: 746px) {
+    .day-week:nth-last-child(-n + 30) { display: flex; }
+    .day-week:nth-last-child(29) .day-edge { visibility: hidden; }
+    .day-week:nth-last-child(30) .day-edge { visibility: visible; }
   }
   .day-key {
     @apply inline-block size-[11px] shrink-0 rounded-[3px];
@@ -670,6 +816,12 @@ html.swipe-tabs body {
 }
 .viz-cursor-line {
   stroke: var(--ink-muted);
+}
+/* The phone chart's marker: a thin line from the marked day's dot down to the foot of the chart. */
+.viz-marker-line {
+  stroke: var(--series-2);
+  stroke-width: 1;
+  opacity: 0.55;
 }
 .viz-cursor-bar {
   fill: var(--grid);
