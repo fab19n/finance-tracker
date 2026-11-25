@@ -78,6 +78,13 @@
       "when": 1795523951096,
       "tag": "0010_bill_frequency_share_prev",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795584360859,
+      "tag": "0011_add_tng_card_top_up_category",
+      "breakpoints": true
     }
   ]
 }

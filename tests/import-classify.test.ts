@@ -10,7 +10,7 @@ const CASH = 3;
 
 const categories = [
   ["Transport & Fuel", "expense"], ["Eating Out", "expense"], ["Groceries", "expense"], ["Subscriptions", "expense"], ["E-wallet top-up", "expense"],
-  ["Rent / Housing", "expense"], ["Bills & Utilities", "expense"], ["Miscellaneous", "expense"], ["Shopping", "expense"],
+  ["Rent / Housing", "expense"], ["Bills & Utilities", "expense"], ["Miscellaneous", "expense"], ["Shopping", "expense"], ["TnG card top up", "expense"],
   ["Salary", "income"], ["Other Income", "income"], ["Investment Income", "income"], ["Reimbursements", "income"],
 ].map(([name, type], i) => ({ id: i + 1, name: name as string, type: type as "income" | "expense" }));
 const cat = (name: string) => categories.find((c) => c.name === name)!.id;
@@ -170,6 +170,10 @@ describe("4. known merchants", () => {
   it.each([
     ["PETRONAS DAGANGAN 5521", -60, "Transport & Fuel", "Petrol"],
     ["TNG EWALLET RELOAD", -50, "Transport & Fuel", "Touch 'n Go reload"],
+    // the wallet history's own wording (tng.ts) has its own category; the same words inside a BANK line do not
+    ["Touch 'n Go card reload", -10, "TnG card top up", "TnG card top up"],
+    ["Touch 'n Go card reload (payment reversed)", -10, "TnG card top up", "TnG card top up"],
+    ["PAYMENT VIA MYDEBIT TOUCH N GO CARD RELOAD", -10, "Transport & Fuel", "Touch 'n Go reload"],
     ["GRABFOOD 22", -31, "Eating Out", "Food delivery"],
     ["GRAB* RIDE", -14, "Transport & Fuel", "Ride-hailing"],
     ["I-PAYMENT FPXPAY GPAY NETWORK (M) SDN BHD 78725372 3385279105", -20, "E-wallet top-up", "E-wallet top-up"],

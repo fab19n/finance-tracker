@@ -35,6 +35,9 @@ export const BUILTIN_RULES: BuiltinRule[] = [
 
   // --- transport & fuel ---
   { pattern: /\b(petronas|shell|petron|bhp|caltex|setel|esso)\b/, category: "Transport & Fuel", item: "Petrol", direction: "out" },
+  // The Touch 'n Go WALLET putting money on the physical card. Its history is read by tng.ts, which words the line exactly
+  // like this, so only those get this category. Must come before the broad rule below, which keeps what a BANK says.
+  { pattern: /^touch n go card reload\b/, category: "TnG card top up", item: "TnG card top up", direction: "out" },
   // A Touch 'n Go CARD reload is spending: the physical card's balance isn't tracked here (tolls and parking vanish into
   // it). The e-wallet itself can be an account of its own, in which case its history is imported and its top-ups are transfers.
   { pattern: /\b(touch n go|tng|tngd)\b/, category: "Transport & Fuel", item: "Touch 'n Go reload", direction: "out" },

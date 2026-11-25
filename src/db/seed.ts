@@ -32,6 +32,8 @@ const EXPENSE: CatSeed[] = [
   { name: "Personal Care", type: "expense", nature: "want", color: "#ca8a04", icon: "💈" },
   // Reloading GrabPay / ShopeePay / Boost: spent inside a wallet this app doesn't see, so the top-up is the spending.
   { name: "E-wallet top-up", type: "expense", nature: "want", color: "#0ea5e9", icon: "👛" },
+  // Money put on the physical Touch 'n Go card from the Touch 'n Go wallet. A need: the card pays tolls and parking.
+  { name: "TnG card top up", type: "expense", nature: "need", color: "#b45309", icon: "💳" },
   { name: "Gifts & Donations", type: "expense", nature: "want", color: "#ea580c", icon: "🎁" },
   { name: "Travel", type: "expense", nature: "want", color: "#0284c7", icon: "✈️" },
   { name: "Miscellaneous", type: "expense", nature: "want", color: "#64748b", icon: "📦" },

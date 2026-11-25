@@ -175,11 +175,11 @@ describe("through the importer", () => {
     expect(p.oneSided).toEqual([expect.objectContaining({ date: "2026-03-04", amount: RM(20), where: "other" })]);
   });
 
-  it("files card reloads and parking as transport, the interest as investment income, and asks only about what it can't know", async () => {
+  it("files card reloads as TnG card top ups, parking as transport, the interest as investment income, and asks only about what it can't know", async () => {
     bankSide();
     const p = await preview();
     const by = (s: string) => p.rows.find((r) => r.description.includes(s))!.proposal;
-    expect(by("card reload")).toMatchObject({ kind: "expense", categoryId: cat("Transport & Fuel"), item: "Touch 'n Go reload", source: "builtin", confidence: "high" });
+    expect(by("card reload")).toMatchObject({ kind: "expense", categoryId: cat("TnG card top up"), item: "TnG card top up", source: "builtin", confidence: "high" });
     expect(by("Parking")).toMatchObject({ kind: "expense", categoryId: cat("Transport & Fuel"), item: "Parking", source: "builtin" });
     expect(by("GO+ interest")).toMatchObject({ kind: "income", categoryId: cat("Investment Income"), source: "builtin" });
     expect(by("Sent to JOHN TAN")).toMatchObject({ kind: "expense", source: "default", confidence: "low" }); // a person: could be anything

@@ -205,6 +205,32 @@ describe("migration 0005: adds the IT & Gadgets category to a database that alre
   });
 });
 
+describe("migration 0011: adds the TnG card top up category to a database that already exists", () => {
+  const file = path.join(process.cwd(), "drizzle", "0011_add_tng_card_top_up_category.sql");
+  const fresh = async () => (await import("@/db/open")).openDb(":memory:");
+  const run = (db: DB) => {
+    for (const statement of fs.readFileSync(file, "utf8").split("--> statement-breakpoint")) db.run(sql.raw(statement));
+  };
+  const named = (db: DB) => db.select().from(categories).all().filter((c) => c.name === "TnG card top up");
+
+  it("is a default for a new database", async () => {
+    expect(named(await fresh())).toMatchObject([{ type: "expense", nature: "need", icon: "💳", archived: false }]);
+  });
+  it("adds it to a database that has categories but lacks it, and never twice", async () => {
+    const db = await fresh();
+    db.delete(categories).where(inArray(categories.name, ["TnG card top up"])).run();
+    run(db);
+    run(db);
+    expect(named(db)).toMatchObject([{ type: "expense", nature: "need", color: "#b45309" }]);
+  });
+  it("leaves a brand-new, still-empty database alone, so the seeder can add ALL the defaults", async () => {
+    const db = await fresh();
+    db.delete(categories).run();
+    run(db);
+    expect(db.select().from(categories).all()).toHaveLength(0);
+  });
+});
+
 describe("migration 0003: adds the two categories to a database that already exists", () => {
   // Each test gets its own throwaway database: these tests delete categories, which the shared one above must keep.
   const file = path.join(process.cwd(), "drizzle", "0003_add_ewallet_topup_and_reimbursement_categories.sql");
