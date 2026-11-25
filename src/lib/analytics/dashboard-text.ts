@@ -80,6 +80,14 @@ export function daySquareText(d: Pick<SpendDay, "date" | "spent" | "leftOut" | "
   return `${dayLabel(d.date)}: ${state}${extra}`;
 }
 
+/** Where a day's counted spending stands against the daily limit, in words (Activity, when it shows that one day). */
+export function limitStanding(spent: number, limit: number): string {
+  if (spent > limit) return `Over your ${formatRM(limit)} limit by ${formatRM(spent - limit)}`;
+  if (spent === limit) return `Exactly your ${formatRM(limit)} limit`;
+  if (spent === 0) return `Nothing counts towards your ${formatRM(limit)} limit`;
+  return `${formatRM(limit - spent)} under your ${formatRM(limit)} limit`;
+}
+
 /** The caption under the Left to spend figure: a daily allowance, or the plain fact that nothing is left. */
 export function leftToSpendCaption(safe: number, perDay: number | null, days: number, overdue = false): string {
   if (safe < 0) return overdue ? "Nothing left until payday" : `Nothing left for the next ${days} ${days === 1 ? "day" : "days"}`;

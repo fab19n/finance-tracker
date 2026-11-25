@@ -9,7 +9,8 @@ import { BulkBar } from "@/components/activity/BulkBar";
 import { FilterSheet } from "@/components/activity/FilterSheet";
 import { ScrollToHash } from "@/components/activity/ScrollToHash";
 import { TransactionTable } from "@/components/activity/TransactionTable";
-import { appliedCount, bareRM, typeText } from "@/components/activity/filter-logic";
+import { DayLimit } from "@/components/activity/DayLimit";
+import { appliedCount, bareRM, typeText, wholeDayShown } from "@/components/activity/filter-logic";
 import { MonthNav } from "@/components/MonthNav";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,6 +20,7 @@ import { balanceHistory } from "@/lib/analytics/ledger";
 import { currentMonth, dayLabel, monthLabel, shortDate, todayISO } from "@/lib/dates";
 import { formatRM, formatRMWholeBare, parseSen } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
+import { dayAgainstLimit } from "@/lib/queries/daily";
 import { datePresets, parseTxSearch, qs, urlWith, type SearchParams } from "@/lib/queries/filters";
 import { FlowBar } from "@/components/FlowBar";
 import { getAccountLedger } from "@/lib/queries/ledger";
@@ -154,6 +156,9 @@ export default async function TransactionsPage({
         })
       : null;
   const narrowed = Boolean(q.trim() || category || amount || type);
+  // One whole day (what a tap on Home's daily calendar opens): say how much of it the daily limit counts.
+  const oneDay = settings.dailyLimit > 0 ? wholeDayShown(view.filters, view.raw) : null;
+  const dayLimit = oneDay ? await dayAgainstLimit(oneDay, today, settings) : null;
   // Every account, plus the chosen one even if it has since been archived.
   const chips = accounts
     .filter((a) => !a.archived || String(a.id) === account)
@@ -321,6 +326,7 @@ export default async function TransactionsPage({
               <Tile label="Net" value={signed(net)} gold />
             </div>
           )}
+          {dayLimit && <DayLimit day={dayLimit} limit={settings.dailyLimit} />}
           <p className="sub text-right">{caption}</p>
           {type !== "transfer" && (
             <FlowBar

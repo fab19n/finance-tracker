@@ -15,6 +15,20 @@ export function activeDateChoice(from: string, to: string, presets: DatePreset[]
 }
 
 /** How many of the sheet's own filters are on (the badge on the Filter button). The account and the search are not the sheet's. */
+/**
+ * The day on screen, when the list is that whole day: it starts and ends on one day, shows everything or spending only,
+ * and nothing else narrows it. Only then does the daily-limit figure, which is for the whole book, describe the list.
+ * Otherwise null.
+ */
+export function wholeDayShown(
+  filters: { from?: string | null; to?: string | null },
+  raw: { type: string; account: string; category: string; q: string; min: string; max: string },
+): string | null {
+  if (!filters.from || filters.from !== filters.to) return null;
+  if (raw.type !== "" && raw.type !== "expense") return null;
+  return raw.account || raw.category || raw.q.trim() || raw.min || raw.max ? null : filters.from;
+}
+
 export function appliedCount(o: { type: boolean; category: boolean; range: boolean; amount: boolean; sort: boolean }): number {
   return [o.type, o.category, o.range, o.amount, o.sort].filter(Boolean).length;
 }
