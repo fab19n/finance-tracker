@@ -56,6 +56,8 @@ export function categoryIconName(name: string): DuoName | null {
     [/bill|insurance|\btax(es)?\b|subscri|loan|install?ment/, "plan"],
     [/grocer|supermarket|market/, "cart"],
     [/eating|food|dining|restaurant|cafe|coffee|meal/, "utensils"],
+    // Ahead of the car, so "Car Maintenance" is not drawn like everyday transport. "Maintain" also takes a misspelling.
+    [/mainten|maintain|repair|mechanic/, "spanner"],
     [/transport|fuel|petrol|parking|toll|grab|taxi|car\b|vehicle/, "car"],
     [/shop|cloth|fashion|gadget/, "bag"],
     [/health|medic|pharmac|clinic|dental|doctor/, "heart"],

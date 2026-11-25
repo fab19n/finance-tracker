@@ -63,6 +63,12 @@ describe("categoryIconName", () => {
     };
     for (const [name, icon] of Object.entries(want)) expect(categoryIconName(name)).toBe(icon);
   });
+  it("gives maintenance and repairs a spanner, even when the name says car", () => {
+    for (const name of ["Car Maintenance", "Car Maintainance", "Vehicle repairs", "Mechanic"]) expect(categoryIconName(name)).toBe("spanner");
+    // A name an earlier rule already reads keeps that picture, and everyday car costs keep the car.
+    expect(categoryIconName("Home maintenance")).toBe("home");
+    expect(categoryIconName("Car")).toBe("car");
+  });
   it("leaves a name it cannot read to its initials rather than a wrong picture", () => {
     expect(categoryIconName("Miscellaneous")).toBeNull();
     expect(categoryIconName("Pocket money")).toBeNull();
