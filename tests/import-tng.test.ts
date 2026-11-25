@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db/open";
-import { accounts, categories, transactions } from "@/db/schema";
+import { accounts, categories, importRules, transactions } from "@/db/schema";
 import type { CommitRow, PreviewOk } from "@/lib/import/api-types";
 import { booksBalanceBefore } from "@/lib/import/books";
 import { commitRows } from "@/lib/import/commit";
@@ -15,6 +15,8 @@ import { makePdf, tablePage, tngPdf } from "./pdf-fixture";
 
 const RM = (n: number) => Math.round(n * 100);
 const read = async (bytes: Uint8Array) => parseTngWallet(await extractPdfPages(bytes));
+// As on a real statement: the type and the first piece of the reference arrive as one string.
+const FROM_A_FRIEND = { date: "10/3/2026", type: ["Receive from Wallet20260310111"], desc: ["ALI BIN", "ABU"], amount: "RM7.00", balance: "RM7.00" };
 
 describe("reading the sideways table", () => {
   it("is recognised by its heading, and an ordinary statement is not", async () => {
@@ -68,6 +70,26 @@ describe("reading the sideways table", () => {
     const t = (await read(tngPdf({ skipReversed: true })))!;
     expect(t.rows.find((r) => /refund/.test(r.description))).toMatchObject({ amount: RM(6), description: "Card Reload (refund)" });
   });
+
+  it("reads money received from another wallet, even though the PDF glues the reference onto its long type name", async () => {
+    const t = (await read(tngPdf({ extraWallet: [FROM_A_FRIEND] })))!;
+    expect(t.rows.find((r) => /Received/.test(r.description))).toMatchObject({ date: "2026-03-10", amount: RM(7), description: "Received from ALI BIN ABU" });
+    expect(t.closingBalance).toBe(RM(22.03)); // wallet 7.00 + GO+ 15.03
+    expect(t.check.total).toMatchObject({ opening: RM(5.02), closing: RM(22.03), ok: true });
+    expect(t.warnings).toEqual([]);
+  });
+
+  it("still finds where the wallet started when the very first line is money from another wallet", async () => {
+    // wallet 2.00 + 3.00 received = 5.00, which is where the ordinary fixture starts
+    const t = (await read(tngPdf({ leadingWallet: [{ ...FROM_A_FRIEND, date: "1/3/2026", amount: "RM3.00", balance: "RM5.00" }] })))!;
+    expect(t.openingBalance).toBe(RM(2.02));
+    expect(t.check.total).toMatchObject({ ok: true });
+  });
+
+  it("names an unknown kind of line without the reference number stuck to it", async () => {
+    const t = (await read(tngPdf({ extraWallet: [{ ...FROM_A_FRIEND, type: ["Mystery Money Moves20260310111"] }] })))!;
+    expect(t.warnings.join(" ")).toMatch(/don't recognise: Mystery Money Moves \(1\)/);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------ through the importer
@@ -113,6 +135,37 @@ describe("through the importer", () => {
     expect(p.rows[0].proposal).toMatchObject({ kind: "skip", source: "duplicate", reason: expect.stringMatching(/already recorded/) });
     expect(p.stats).toMatchObject({ duplicates: 1, fresh: 4 });
     expect(p.oneSided).toEqual([]); // every top-up the bank recorded shows up on this statement too
+  });
+
+  it("matches lines against what you keyed in by hand, a day or two off included, and only offers the rest", async () => {
+    const typed = { amount: 0, accountId: wallet, categoryId: cat("Miscellaneous") };
+    h.db.insert(transactions).values([
+      { date: "2026-03-01", type: "transfer", amount: RM(30), accountId: main, toAccountId: wallet }, // the top-up, a day early
+      { ...typed, date: "2026-03-05", type: "expense", amount: RM(4) }, // parking
+      { ...typed, date: "2026-03-11", type: "income", amount: RM(7), categoryId: cat("Reimbursements") }, // the friend, a day late
+    ]).run();
+    const p = await preview({ bytes: tngPdf({ extraWallet: [FROM_A_FRIEND] }) });
+    const skipped = p.rows.filter((r) => r.proposal.source === "duplicate").map((r) => r.amount);
+    expect(skipped).toEqual([RM(30), -RM(4), RM(7)]);
+    expect(p.rows.filter((r) => r.proposal.kind !== "skip").map((r) => r.amount)).toEqual([-RM(10), -RM(6), RM(0.01)]);
+  });
+
+  it("does not match money keyed in against a different account", async () => {
+    h.db.insert(transactions).values({ date: "2026-03-10", type: "income", amount: RM(7), accountId: main, categoryId: cat("Reimbursements") }).run();
+    const p = await preview({ bytes: tngPdf({ extraWallet: [FROM_A_FRIEND] }) });
+    expect(p.rows.find((r) => r.amount === RM(7))!.proposal.source).not.toBe("duplicate");
+  });
+
+  it("asks which account a top-up came from when only a rule says so: the wallet's statement does not", async () => {
+    h.db.insert(importRules).values({ pattern: "jane a l doe", kind: "transfer", transferAccountId: main }).run();
+    const p = await preview();
+    expect(p.rows[0].proposal).toMatchObject({ kind: "transfer", source: "rule", transferAccountId: main, confidence: "low", reason: expect.stringMatching(/doesn't say which one/) });
+  });
+
+  it("does not ask about a top-up that is already recorded, rule or no rule", async () => {
+    h.db.insert(importRules).values({ pattern: "jane a l doe", kind: "transfer", transferAccountId: main }).run();
+    bankSide();
+    expect((await preview()).rows[0].proposal).toMatchObject({ kind: "skip", source: "duplicate", confidence: "high" });
   });
 
   it("says when the bank recorded a top-up that the wallet's statement does not show", async () => {

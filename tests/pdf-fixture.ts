@@ -146,8 +146,9 @@ const EARN = ["GO+ Daily Earnings MMF2026030"];
  * Layout: page 1 = the wallet table (5 columns); page 2 = the rest of it on the left and the start of the GO+ table on the
  * right (under its "GO+ TRANSACTION" heading); page 3 = more of GO+, with no heading.
  */
-export function tngPdf(opts: { goClosing?: string; extraWallet?: TngColumn[]; skipReversed?: boolean } = {}): Uint8Array {
+export function tngPdf(opts: { goClosing?: string; leadingWallet?: TngColumn[]; extraWallet?: TngColumn[]; skipReversed?: boolean } = {}): Uint8Array {
   const wallet: TngColumn[] = [
+    ...(opts.leadingWallet ?? []),
     { date: "2/3/2026", type: ["DUITNOW_RECEI", "VEFROM"], desc: ["JANE A/L DOE"], amount: "RM30.00", balance: "RM35.00" },
     { date: "2/3/2026", type: ["eWallet Cash Out"], desc: GO_IN, amount: "RM35.00", balance: "RM0.00" },
     { date: "2/3/2026", type: ["Reload"], desc: [VIA, "Balance)"], amount: "RM10.00", balance: "RM10.00" },

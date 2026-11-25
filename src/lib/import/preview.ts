@@ -51,6 +51,7 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
   let warnings: string[] = [];
   let skipped: string[] = [];
   let csv: PreviewResultCsv | undefined;
+  let walletHistory = false;
 
   if (input.bytes && input.bytes.length > MAX_IMPORT_BYTES) return { ok: false, error: IMPORT_TOO_LARGE };
 
@@ -60,6 +61,7 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
       const pages = await extractPdfPages(input.bytes, input.password);
       // A Touch 'n Go wallet history is a table turned on its side: it has its own reader (tng.ts).
       const tng = looksLikeTngWallet(pages) ? parseTngWallet(pages) : null;
+      walletHistory = tng !== null;
       let parsed = tng ?? parseStatementText(pages.flatMap((p) => p.map((l) => l.text)));
       // A bank web page printed to PDF spreads each transaction over several lines with the date in the MIDDLE, so
       // reading line by line gives every row its neighbour's head. Read by table row instead, but only for pages that
@@ -193,6 +195,16 @@ export async function buildPreview(db: DB, input: PreviewInput): Promise<Preview
     expectedIncome: input.expectedIncome,
     isSpendingAccount: account.purpose === "spending",
   });
+
+  // A wallet history names YOU as the sender of a top-up, never the bank it left. A rule can only repeat one earlier
+  // answer, so ask: with the wrong bank, both bank balances are off, and the right bank's statement adds it again.
+  if (walletHistory) {
+    for (const { proposal: p } of classified) {
+      if (p.kind !== "transfer" || p.source !== "rule") continue;
+      p.confidence = "low";
+      p.reason = "Check the other account: a wallet statement doesn't say which one it was";
+    }
+  }
 
   // Transfers that exist on only one side. A transfer shows up once on EACH account's statement, so one that doesn't is
   // money that went to (or came from) an account this app doesn't know about.

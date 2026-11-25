@@ -14,7 +14,8 @@ import type { BalanceCheck, ParsedStatement, StatementRow } from "./types";
  *   DuitNow from your own accounts      -> money in   (already recorded from the bank's side: recognised as such)
  *   Payment (card reload, parking...)   -> money out
  *   Transfer to Wallet (to a friend)    -> money out
- *   GO+ daily interest                  -> one line for the whole statement
+ *   Receive from Wallet (from a friend) -> money in   (a shared-bill payer is recognised by name)
+ *   GO+ daily interest                 -> one line for the whole statement
  *   wallet <-> GO+ moves, reversed payments with their cancellation -> nothing (they cancel out)
  *
  * The statement has no running balance for the combined account, so it is checked as a whole: where it started + every
@@ -96,7 +97,9 @@ function readColumns(pages: PositionedLine[][]): Raw[] {
         table: a.x >= goFrom ? "go" : "wallet",
         date: iso(a.s),
         status: text(col.status, " "),
-        type: text(col.type, ""),
+        // A long type ("Receive from Wallet") reaches the Reference row above it, and the PDF hands both over as ONE piece
+        // of text. The reference starts with a long run of digits: cut it off.
+        type: text(col.type, "").replace(/\s*\d{8,}$/, ""),
         description: text(col.desc, " "),
         amount: sen(money[0].s) ?? 0,
         balance: money.length > 1 ? Math.round(sen(money[money.length - 1].s) ?? 0) : null,
@@ -106,7 +109,7 @@ function readColumns(pages: PositionedLine[][]): Raw[] {
   return out;
 }
 
-const CREDIT = /^(DUITNOW_RECEIVE|Payment Cancelled|Reload)/i;
+const CREDIT = /^(DUITNOW_RECEIVE|Receive from Wallet|Payment Cancelled|Reload)/i;
 const DEBIT = /^(Payment|eWallet Cash Out|Transfer to Wallet)/i;
 
 export function parseTngWallet(pages: PositionedLine[][]): (ParsedStatement & { check: BalanceCheck }) | null {
@@ -144,6 +147,7 @@ export function parseTngWallet(pages: PositionedLine[][]): (ParsedStatement & { 
     const amount = Math.round(r.amount);
     if (/^DUITNOW_RECEIVE/i.test(t)) flows.push({ date: r.date, description: `DUITNOW TRANSFER FROM ${r.description || "YOUR ACCOUNT"}`, amount });
     else if (/^Transfer to Wallet/i.test(t)) flows.push({ date: r.date, description: `Sent to ${r.description || "another wallet"}`, amount: -amount });
+    else if (/^Receive from Wallet/i.test(t)) flows.push({ date: r.date, description: `Received from ${r.description || "another wallet"}`, amount });
     else if (/^Payment Cancelled/i.test(t)) cancelled.push(r);
     else if (/^Payment/i.test(t)) {
       if (/^success/i.test(r.status)) flows.push({ date: r.date, description: payment(r), amount: -amount });
