@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AccountCard } from "@/components/account/AccountCard";
+import { UpdateBalance } from "@/components/account/UpdateBalance";
 import { DuoIcon } from "@/components/DuoIcon";
 import { categoryIconName } from "@/components/entry/entry-logic";
 import { PageHeader } from "@/components/PageHeader";
 import { withBack } from "@/lib/back";
-import { shortDate } from "@/lib/dates";
+import { shortDate, todayISO } from "@/lib/dates";
 import { initials } from "@/lib/initials";
 import { formatRM } from "@/lib/money";
 import { getAccountBalances } from "@/lib/queries/accounts";
@@ -85,6 +86,8 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
           <span className="sr-only">(CSV, whole history)</span>
         </Link>
       </div>
+      {/* Cash has "count your cash" (Insights) and an investment its valuations: this is for accounts that pay interest. */}
+      {!account.archived && (account.type === "bank" || account.type === "ewallet") && <UpdateBalance key={id} accountId={id} today={todayISO()} />}
       {/* Name, opening balance, archiving and the account's role are edited in Settings. */}
       <p className="sub -mt-2 text-center">
         <Link href="/settings?tab=accounts" className="inline-flex min-h-11 items-center font-extrabold text-accent-strong underline-offset-2 hover:underline">
