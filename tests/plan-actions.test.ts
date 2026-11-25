@@ -248,23 +248,56 @@ describe("cycle settings", () => {
   it("stores the categories the daily limit skips: only real expense ones, and 'none ticked' differs from 'not asked'", async () => {
     const { saveCycleSettings } = await import("@/app/actions/settings");
     const { getSettings } = await import("@/lib/settings");
-    const save = (ticked: string[] | null) => {
+    // Rent is a Need and Subscriptions a Want. `shown` is the boxes that were on the form.
+    const save = (ticked: string[] | null, shown = [rentCat, subsCat]) => {
       const f = fd({ paydayDay: "28", savingsRatePct: "1" });
       if (ticked) {
         f.set("dailyLeftOutList", "1");
         for (const id of ticked) f.append("dailyLeftOut", id);
+        for (const id of shown) f.append("dailyShown", String(id));
       }
       return redirected(saveCycleSettings(f));
     };
-    const stored = async () => (await getSettings()).dailyLeftOutCategories;
-    expect(await stored()).toEqual([]); // nothing is skipped until you say so
-    // An income category, a made-up id, junk and a repeat are all dropped.
+    const stored = async () => {
+      const s = await getSettings();
+      return { others: s.dailyLeftOutCategories, countedNeeds: s.dailyCountedNeeds };
+    };
+    expect(await stored()).toEqual({ others: [], countedNeeds: [] });
+    // An income category, a made-up id, junk and a repeat are all dropped. A ticked Need needs no listing.
     await save([String(subsCat), String(rentCat), String(subsCat), String(incomeCat), "99999", "x"]);
-    expect(await stored()).toEqual([rentCat, subsCat].sort((a, b) => a - b));
-    await save(null); // a form without the list leaves it alone
-    expect(await stored()).toHaveLength(2);
-    await save([]);
-    expect(await stored()).toEqual([]);
+    expect(await stored()).toEqual({ others: [subsCat], countedNeeds: [] });
+    await save([String(subsCat)]); // unticking a Need is what gets remembered
+    expect(await stored()).toEqual({ others: [subsCat], countedNeeds: [rentCat] });
+    await save(null); // a form without the list leaves both alone
+    expect(await stored()).toEqual({ others: [subsCat], countedNeeds: [rentCat] });
+    await save([], [subsCat]); // a Need that was not on the form keeps what it had
+    expect(await stored()).toEqual({ others: [], countedNeeds: [rentCat] });
+    await save([String(rentCat)]); // ticking it again leaves it out again
+    expect(await stored()).toEqual({ others: [], countedNeeds: [] });
+  });
+  it("leaves out a Need added later without any save, even beside one you chose to count", async () => {
+    const { saveCycleSettings } = await import("@/app/actions/settings");
+    const { getSettings } = await import("@/lib/settings");
+    const { listCategories } = await import("@/lib/queries/reference");
+    const { dailyLeftOutIds } = await import("@/lib/analytics/daily-spend");
+    const leftOut = async () => {
+      const s = await getSettings();
+      return dailyLeftOutIds(await listCategories(true), s.dailyLeftOutCategories, s.dailyCountedNeeds);
+    };
+    expect(await leftOut()).toContain(rentCat);
+    expect(await leftOut()).not.toContain(subsCat);
+
+    // Untick Rent, then add a new Need after that form was saved.
+    const f = fd({ paydayDay: "28", savingsRatePct: "1", dailyLeftOutList: "1" });
+    f.append("dailyShown", String(rentCat));
+    await redirected(saveCycleSettings(f));
+    const added = h.db.insert(categories).values({ name: "Pet care", type: "expense", nature: "need" }).returning().get().id;
+    expect(await leftOut()).toContain(added);
+    expect(await leftOut()).not.toContain(rentCat);
+
+    // Moving it to Want counts it again.
+    h.db.update(categories).set({ nature: "want" }).where(eq(categories.id, added)).run();
+    expect(await leftOut()).not.toContain(added);
   });
   it("reads a stored list of skipped categories forgivingly", async () => {
     const { getSettings, setRawSetting } = await import("@/lib/settings");

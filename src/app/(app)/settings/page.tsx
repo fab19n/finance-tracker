@@ -35,6 +35,7 @@ import { getPlan } from "@/lib/queries/plan";
 import { listCategories, type CategoryWithUsage } from "@/lib/queries/reference";
 import { getSettings } from "@/lib/settings";
 import { parseSettingsTab, settingsHref, SETTINGS_TABS } from "@/lib/settings-tabs";
+import { dailyLeftOutIds } from "@/lib/analytics/daily-spend";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -334,7 +335,10 @@ function InfoRow({ title, caption, href, children }: { title: string; caption: s
 }
 
 /** The categories the daily limit skips. Closed, it still names what is ticked, so the list can be checked at a glance. */
-function DailyLeftOut({ choices, ticked }: { choices: CategoryWithUsage[]; ticked: readonly number[] }) {
+function DailyLeftOut({ categories, leftOut, countedNeeds }: { categories: CategoryWithUsage[]; leftOut: readonly number[]; countedNeeds: readonly number[] }) {
+  const ticked = dailyLeftOutIds(categories, leftOut, countedNeeds);
+  // Archived ones appear only while they matter: left out, or a Need you chose to count.
+  const choices = categories.filter((c) => c.type === "expense" && (!c.archived || ticked.includes(c.id) || countedNeeds.includes(c.id)));
   const names = choices.filter((c) => ticked.includes(c.id)).map((c) => c.name);
   return (
     <details className="group mt-1">
@@ -354,8 +358,13 @@ function DailyLeftOut({ choices, ticked }: { choices: CategoryWithUsage[]; ticke
             <li key={c.id}>
               <label className="flex min-h-11 cursor-pointer items-center gap-2.5 py-1 text-[13px] font-bold">
                 <input type="checkbox" name="dailyLeftOut" value={c.id} defaultChecked={ticked.includes(c.id)} className="size-5 shrink-0 accent-accent-strong" />
-                <span className="min-w-0">{c.name}</span>
+                <span className="min-w-0">
+                  {c.name}
+                  {c.nature === "need" && <span className="block text-[11px] font-semibold text-muted">Need</span>}
+                </span>
               </label>
+              {/* Tells the save which boxes were on screen: an unticked Need is remembered, one never shown is not. */}
+              <input type="hidden" name="dailyShown" value={c.id} />
             </li>
           ))}
         </ul>
@@ -406,13 +415,10 @@ async function PaydayTab({ settings, accounts, categories }: { settings: AppSett
             />
           </label>
           <p id="daily-limit-help" className="sub mt-1.5">
-            Home colours each day against it, past periods too. Bill payments never count, nor do the categories you tick below. Leave
-            the limit blank to turn the colours off.
+            Home colours each day against it, past periods too. Bill payments never count, nor do the categories ticked below. Needs
+            are ticked for you, new ones too: untick one to count it. Leave the limit blank to turn the colours off.
           </p>
-          <DailyLeftOut
-            choices={categories.filter((c) => c.type === "expense" && (!c.archived || settings.dailyLeftOutCategories.includes(c.id)))}
-            ticked={settings.dailyLeftOutCategories}
-          />
+          <DailyLeftOut categories={categories} leftOut={settings.dailyLeftOutCategories} countedNeeds={settings.dailyCountedNeeds} />
         </div>
         {/* The two roles are set on the account itself (its Card settings), so here they are read-only rows that go there. */}
         <div className="rows">

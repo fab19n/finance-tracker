@@ -8,7 +8,7 @@ import { getDb } from "@/db/client";
 import { accounts, categories } from "@/db/schema";
 import { MAX_AMOUNT_MESSAGE, withinLimit } from "@/lib/limits";
 import { parseSen } from "@/lib/money";
-import { setSetting } from "@/lib/settings";
+import { getSettings, setSetting } from "@/lib/settings";
 import { savedParams, withParams, type SavedKey } from "@/lib/saved-notice";
 import { settingsHref, type SettingsTab } from "@/lib/settings-tabs";
 
@@ -201,9 +201,16 @@ export async function saveCycleSettings(formData: FormData): Promise<void> {
   // was on the form, so "none" can be told from "not asked".
   if (formData.has("dailyLeftOutList")) {
     const db = await getDb();
-    const expense = new Set(db.select({ id: categories.id }).from(categories).where(eq(categories.type, "expense")).all().map((c) => c.id));
-    const ticked = [...new Set(formData.getAll("dailyLeftOut").map(Number))].filter((id) => expense.has(id)).sort((a, b) => a - b);
-    await setSetting("dailyLeftOutCategories", ticked.join(","));
+    const expense = db.select({ id: categories.id, nature: categories.nature }).from(categories).where(eq(categories.type, "expense")).orderBy(categories.id).all();
+    const ticked = new Set(formData.getAll("dailyLeftOut").map(Number));
+    const shown = new Set(formData.getAll("dailyShown").map(Number));
+    const before = new Set((await getSettings()).dailyCountedNeeds);
+    // A Need is left out unless you untick it, so what is remembered about Needs is the unticked ones. One that was not on
+    // the form (added after the page was drawn) keeps what it had, so a new Need stays left out.
+    const countedNeeds = expense.filter((c) => c.nature === "need" && (shown.has(c.id) ? !ticked.has(c.id) : before.has(c.id)));
+    const others = expense.filter((c) => c.nature !== "need" && ticked.has(c.id));
+    await setSetting("dailyLeftOutCategories", others.map((c) => c.id).join(","));
+    await setSetting("dailyCountedNeeds", countedNeeds.map((c) => c.id).join(","));
   }
   done(undefined, "payday", { key: "payday" });
 }

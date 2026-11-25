@@ -26,8 +26,13 @@ export type AppSettings = {
   savingsRatePct: number;
   /** The most you mean to spend in a day, sen: Home colours each day against it. 0 = not set. */
   dailyLimit: number;
-  /** Expense categories (ids) the daily limit doesn't count, on top of bill payments. Stored as "4,6,12". */
+  /**
+   * Expense categories (ids) other than Needs that the daily limit doesn't count, on top of bill payments. Stored as
+   * "4,6,12". Needs are left out without being listed (see `dailyLeftOutIds`).
+   */
   dailyLeftOutCategories: readonly number[];
+  /** Needs (ids) you chose to count towards the daily limit anyway. */
+  dailyCountedNeeds: readonly number[];
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -43,6 +48,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   savingsRatePct: 0.25,
   dailyLimit: 0,
   dailyLeftOutCategories: [],
+  dailyCountedNeeds: [],
 };
 
 export async function getSettings(): Promise<AppSettings> {
@@ -66,7 +72,8 @@ export async function getSettings(): Promise<AppSettings> {
         break;
       }
       case "dailyLeftOutCategories":
-        out.dailyLeftOutCategories = value
+      case "dailyCountedNeeds":
+        out[key] = value
           .split(",")
           .map(Number)
           .filter((id) => Number.isInteger(id) && id > 0);

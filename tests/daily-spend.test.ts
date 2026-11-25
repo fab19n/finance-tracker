@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { billPaymentsByPeriod, CALENDAR_WEEKS, calendarStart, dailySpend, dayLevel } from "@/lib/analytics/daily-spend";
+import { billPaymentsByPeriod, CALENDAR_WEEKS, calendarStart, dailyLeftOutIds, dailySpend, dayLevel } from "@/lib/analytics/daily-spend";
 import { daySquareText } from "@/lib/analytics/dashboard-text";
 import { toBudgetBills, evaluateBills, asBillTxs, type BillDef } from "@/lib/plan/bills";
 import type { FlowRow } from "@/lib/analytics/summary";
@@ -48,6 +48,26 @@ describe("dayLevel", () => {
   it("holds for a limit that doesn't divide by four", () => {
     // RM 0.10: quarters fall at 2.5, 5 and 7.5 sen.
     expect([1, 2, 3, 5, 6, 7, 8, 10, 11].map((s) => dayLevel(s, 10))).toEqual([1, 1, 2, 2, 3, 3, 4, 4, "over"]);
+  });
+});
+
+describe("dailyLeftOutIds", () => {
+  const cats = [
+    { id: 1, type: "expense", nature: "need" },
+    { id: 2, type: "expense", nature: "need" },
+    { id: 3, type: "expense", nature: "want" },
+    { id: 4, type: "expense", nature: "want" },
+    { id: 5, type: "income", nature: "need" },
+  ];
+  it("leaves out every Need without being told, and other categories only when ticked", () => {
+    expect(dailyLeftOutIds(cats, [], [])).toEqual([1, 2]);
+    expect(dailyLeftOutIds(cats, [4], [])).toEqual([1, 2, 4]);
+  });
+  it("counts a Need you chose to count, even if an older list still names it", () => {
+    expect(dailyLeftOutIds(cats, [2, 4], [2])).toEqual([1, 4]);
+  });
+  it("never lists income or a category that doesn't exist", () => {
+    expect(dailyLeftOutIds(cats, [5, 99], [])).toEqual([1, 2]);
   });
 });
 

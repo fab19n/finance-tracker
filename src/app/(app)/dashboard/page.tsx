@@ -32,7 +32,7 @@ import {
   praiseWants,
   shareLabel,
 } from "@/lib/analytics/dashboard-text";
-import { billPaymentsByPeriod, calendarStart, dailySpend, type DailySpend } from "@/lib/analytics/daily-spend";
+import { billPaymentsByPeriod, calendarStart, dailyLeftOutIds, dailySpend, type DailySpend } from "@/lib/analytics/daily-spend";
 import { spendByDay } from "@/lib/analytics/spend-by-day";
 import { balanceHistory } from "@/lib/analytics/ledger";
 import { periodsWithin, rekeyRows, resolvePeriod } from "@/lib/analytics/periods";
@@ -175,13 +175,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const from = calendarStart(choice.end);
     const spans = periodsWithin({ view, today, salaryDates, paydayDay: settings.paydayDay, from, to: choice.end });
     const entriesBack = await listFlowRows(spans.reduce((first, p) => (p.start < first ? p.start : first), from), choice.end);
+    // Archived categories too: their past spending is on the calendar, and an archived Need still doesn't count.
+    const everyCategory = await listCategories(true);
     daily = dailySpend(entriesBack, {
       start: from,
       end: choice.end,
       today,
       limit: settings.dailyLimit,
       bills: billPaymentsByPeriod(billDefs, spans, entriesBack, today),
-      leftOutCategoryIds: settings.dailyLeftOutCategories,
+      leftOutCategoryIds: dailyLeftOutIds(everyCategory, settings.dailyLeftOutCategories, settings.dailyCountedNeeds),
     });
   }
   const items = topItems(rows, month, 10);

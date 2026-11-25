@@ -34,6 +34,21 @@ export function billPaymentsByPeriod(bills: BillDef[], periods: { start: string;
 /** 0 = nothing spent. 1 to 4 = how near the limit, a quarter of it each (4 includes spending exactly the limit). */
 export type DayLevel = 0 | 1 | 2 | 3 | 4 | "over";
 
+/**
+ * The categories the daily limit leaves out: every Need, including one added later, unless you chose to count it; and any
+ * other expense category you ticked. It follows a category's CURRENT Need or Want, so moving one changes what counts.
+ * Pass archived categories too: their past spending is still on the calendar.
+ */
+export function dailyLeftOutIds(
+  categories: readonly { id: number; type: string; nature: string }[],
+  ticked: readonly number[],
+  countedNeeds: readonly number[],
+): number[] {
+  const chosen = new Set(ticked);
+  const counted = new Set(countedNeeds);
+  return categories.filter((c) => c.type === "expense" && (c.nature === "need" ? !counted.has(c.id) : chosen.has(c.id))).map((c) => c.id);
+}
+
 export function dayLevel(spent: number, limit: number): DayLevel {
   if (spent <= 0) return 0;
   if (spent > limit) return "over";
