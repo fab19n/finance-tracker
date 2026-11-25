@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { ADD_SHORTCUT_URL } from "@/lib/launch";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -19,7 +20,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/pwa/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Add entry", short_name: "Add", url: "/" },
+      { name: "Add entry", short_name: "Add", url: ADD_SHORTCUT_URL },
       { name: "Insights", short_name: "Insights", url: "/insights" },
       { name: "Investments", short_name: "Invest", url: "/invest" },
     ],

@@ -177,7 +177,8 @@ describe("login action", () => {
     expect(jar.set).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(61_000);
-    expect(await redirected(login({}, form({ pin: "482915", next: "/" })))).toBe("/");
+    // A bare "/" is where an older installed app opens: signing in from there lands on Home.
+    expect(await redirected(login({}, form({ pin: "482915", next: "/" })))).toBe("/dashboard");
     expect(jar.set).toHaveBeenCalledTimes(1);
   });
 

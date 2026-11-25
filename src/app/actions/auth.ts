@@ -11,7 +11,9 @@ export type LoginState = { error?: string };
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const pin = process.env.APP_PIN;
-  const dest = safeBackPath(formData.get("next")) ?? "/dashboard";
+  const back = safeBackPath(formData.get("next"));
+  // A bare "/" is also where an app installed before Home became its start page still opens: after signing in, go Home.
+  const dest = !back || back === "/" ? "/dashboard" : back;
   if (!pin) redirect(dest);
 
   // Count the attempt NOW, before any await: parallel guesses then see each other's count.

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Sora } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { ThemeSync } from "@/components/ThemeSync";
+import { LAUNCH_SCRIPT } from "@/lib/launch";
 import { THEME_COLORS, THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -60,6 +61,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Applies a forced Light/Dark choice before first paint, so it never flashes the other theme. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* An installed app that still starts on the Add page goes to Home instead (see lib/launch.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: LAUNCH_SCRIPT }} />
       </head>
       <body className="min-h-full">
         {children}
