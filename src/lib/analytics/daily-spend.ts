@@ -37,10 +37,6 @@ export type DailySpend = {
   weeks: (SpendDay | null)[][];
   /** The months ("YYYY-MM") to name above the columns, each over the column where it begins. */
   months: { week: number; month: string }[];
-  /** Days over the limit. */
-  overDays: number;
-  /** Days that have happened (today counts), or that already have something recorded. */
-  daysSoFar: number;
 };
 
 export function dailySpend(
@@ -94,12 +90,5 @@ export function dailySpend(
     }
   });
 
-  return {
-    limit,
-    days,
-    weeks,
-    months,
-    overDays: days.filter((d) => d.level === "over").length,
-    daysSoFar: days.filter((d) => !d.future).length,
-  };
+  return { limit, days, weeks, months };
 }

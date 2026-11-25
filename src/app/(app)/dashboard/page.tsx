@@ -173,6 +173,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const items = topItems(rows, month, 10);
   const netWorth = worth.total;
   const hasData = totals.income > 0 || totals.expense > 0;
+  // The cards only the whole book gets: daily spending, and Budgets (or the prompt to set one). "By account" too.
+  const wholeBook = hasData && !accountChoice;
+  const showByAccount = !accountChoice && byAccount.length > 0;
   // The six-period trend is worth showing whenever ANY of the periods has something, even when this one is still empty.
   const hasHistory = series.some((p) => p.income > 0 || p.expense > 0);
 
@@ -427,7 +430,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {(hasData || hasHistory) && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
           {hasData && (
-            <section className={`card lg:order-1 ${budgets.length === 0 && accountChoice ? "lg:col-span-2" : ""}`} aria-labelledby="pace">
+            <section className={`card ${budgets.length === 0 && accountChoice ? "lg:col-span-2" : ""}`} aria-labelledby="pace">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="pace" className={EYEBROW}>
                   {isCurrent ? "Spent so far" : "Spent"}
@@ -466,10 +469,53 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </section>
           )}
 
-          {/* Same order as the six-period chart below it, and first in the markup, so it comes just above it. */}
-          {hasData && !accountChoice && <DailySpendCard daily={daily} className="lg:order-4 lg:col-span-3" />}
+          {/* Second: the daily calendar. On a phone it is only as wide as it needs to be; from lg up it is the middle column. */}
+          {wholeBook && <DailySpendCard daily={daily} className="mx-auto w-fit max-w-full lg:mx-0 lg:w-auto" />}
 
-          <section className="card lg:order-4 lg:col-span-3" aria-labelledby="monthly">
+          {hasData && (
+            <section className="card" aria-labelledby="split">
+              <h2 id="split" className={EYEBROW}>
+                50 / 30 / 20
+              </h2>
+              <p className="sub mb-3 mt-1">
+                {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
+              </p>
+              <p className="sub -mt-2 mb-3">
+                The guide: about half your income for needs, 30% for wants and 20% kept. &quot;Not spent&quot; is what is left of your income, not money moved to savings.
+              </p>
+              <div className="flex items-center gap-4">
+                <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
+                <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
+                  {[
+                    { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
+                    { label: "Wants", v: split.want, p: split.wantPct, c: "bg-series-2", guide: "30%" },
+                    { label: split.vsIncome ? "Not spent" : "Not spent (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
+                  ].map((r) => (
+                    <li key={r.label}>
+                      <div className="flex items-center gap-2">
+                        <span className={`size-2.5 shrink-0 rounded-full ${r.c}`} />
+                        <span className="font-extrabold">{r.label}</span>
+                        <span className="num ml-auto font-black">{formatPct(r.p)}</span>
+                      </div>
+                      <p className="num pl-[18px] text-[11px] text-muted">
+                        {formatRM(r.v)} · guide {r.guide}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {split.vsIncome && wantsOver > 0 && (
+                <p className="banner banner-warn mt-3 !text-xs">Wants are {formatRM(wantsOver)} over the 30% guide this {unit}.</p>
+              )}
+              {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && praiseWants(isCurrent, dayNow, daysTotal) && (
+                <p className="banner banner-good mt-3 !text-xs">Wants are within the 30% guide. Nice.</p>
+              )}
+            </section>
+          )}
+
+          {/* The markup is in the order a phone shows. The one difference from lg up: Budgets (order 0) comes before this chart
+              and starts the second row, and everything below follows the chart (order 2). */}
+          <section className={`card lg:order-1 ${wholeBook ? "lg:col-span-2" : "lg:col-span-3"}`} aria-labelledby="monthly">
             <div className="flex items-baseline justify-between gap-2">
               <h2 id="monthly" className={EYEBROW}>
                 Income and spending
@@ -507,7 +553,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           {hasData && (
             <>
           {budgets.length > 0 && (
-            <section className="card lg:order-2" aria-labelledby="budgets">
+            <section className="card" aria-labelledby="budgets">
               <div className="mb-3 flex items-baseline justify-between gap-2">
                 <h2 id="budgets" className={EYEBROW}>
                   Budgets
@@ -552,7 +598,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
 
           {!accountChoice && budgets.length === 0 && (
-            <p className="sub card lg:order-2">
+            <p className="sub card">
               No budgets yet. Give a category a monthly limit and this page shows how each one is going.{" "}
               <Link href="/settings?tab=categories" className="font-extrabold text-accent-strong underline underline-offset-2">
                 Set a budget
@@ -560,46 +606,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </p>
           )}
 
-          <section className="card lg:order-3" aria-labelledby="split">
-            <h2 id="split" className={EYEBROW}>
-              50 / 30 / 20
-            </h2>
-            <p className="sub mb-3 mt-1">
-              {split.vsIncome ? "Share of your income" : "Share of spending (no income recorded)"} · guide: 50 / 30 / 20
-            </p>
-            <p className="sub -mt-2 mb-3">
-              The guide: about half your income for needs, 30% for wants and 20% kept. &quot;Not spent&quot; is what is left of your income, not money moved to savings.
-            </p>
-            <div className="flex items-center gap-4">
-              <NeedWantDonut need={split.need} want={split.want} saved={split.saved} savedPct={split.vsIncome ? split.savedPct : undefined} />
-              <ul className="min-w-0 flex-1 space-y-2.5 text-xs font-bold">
-                {[
-                  { label: "Needs", v: split.need, p: split.needPct, c: "bg-series-1", guide: "50%" },
-                  { label: "Wants", v: split.want, p: split.wantPct, c: "bg-series-2", guide: "30%" },
-                  { label: split.vsIncome ? "Not spent" : "Not spent (needs income)", v: split.saved, p: split.savedPct, c: "bg-series-3", guide: "20%" },
-                ].map((r) => (
-                  <li key={r.label}>
-                    <div className="flex items-center gap-2">
-                      <span className={`size-2.5 shrink-0 rounded-full ${r.c}`} />
-                      <span className="font-extrabold">{r.label}</span>
-                      <span className="num ml-auto font-black">{formatPct(r.p)}</span>
-                    </div>
-                    <p className="num pl-[18px] text-[11px] text-muted">
-                      {formatRM(r.v)} · guide {r.guide}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {split.vsIncome && wantsOver > 0 && (
-              <p className="banner banner-warn mt-3 !text-xs">Wants are {formatRM(wantsOver)} over the 30% guide this {unit}.</p>
-            )}
-            {split.vsIncome && wantsOver <= 0 && split.need + split.want > 0 && praiseWants(isCurrent, dayNow, daysTotal) && (
-              <p className="banner banner-good mt-3 !text-xs">Wants are within the 30% guide. Nice.</p>
-            )}
-          </section>
-
-          <section className="card lg:order-5" aria-labelledby="where">
+          {/* In the last row, whichever card ends it takes the width that is left: no hole when "By account" or the items
+              list sits out (one account on screen, or a period with no spending yet). */}
+          <section className={`card lg:order-2 ${!showByAccount && items.length === 0 ? "lg:col-span-3" : ""}`} aria-labelledby="where">
             <h2 id="where" className={EYEBROW}>
               Where it went
             </h2>
@@ -668,8 +677,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             )}
           </section>
 
-          {!accountChoice && byAccount.length > 0 && (
-            <section className="card lg:order-6" aria-labelledby="by-account">
+          {showByAccount && (
+            <section className={`card lg:order-2 ${items.length === 0 ? "lg:col-span-2" : ""}`} aria-labelledby="by-account">
               <h2 id="by-account" className={EYEBROW}>
                 By account
               </h2>
@@ -705,7 +714,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
 
           {items.length > 0 && (
-            <section className="card lg:order-7" aria-labelledby="items">
+            <section className={`card lg:order-2 ${showByAccount ? "" : "lg:col-span-2"}`} aria-labelledby="items">
               <h2 id="items" className={EYEBROW}>
                 What you buy most
               </h2>

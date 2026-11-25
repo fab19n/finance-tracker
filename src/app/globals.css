@@ -56,16 +56,15 @@
   --ink-muted: #56625b; /* chart axis text */
   --grid: var(--line);
 
-  /* Home's daily spending squares: four steps of gold, deepening as a day nears the limit (darker on paper, brighter in
-     Dark), each with the colour of the day number on it. Over the limit is --danger. */
-  --day-1: #f2d98a;
-  --day-1-fg: var(--foreground);
-  --day-2: #e0b04a;
-  --day-2-fg: var(--foreground);
-  --day-3: #b98e2a;
-  --day-3-fg: var(--foreground);
-  --day-4: #7a5810;
-  --day-4-fg: var(--card);
+  /* Home's daily spending squares: nothing, then four steps of gold deepening as a day nears the limit (darker on paper,
+     brighter in Dark), then over it. The squares carry no number or mark, so "over" has its own red: --danger is as light
+     as the deepest gold in both themes, which would leave only the hue to tell them apart. */
+  --day-0: var(--card-subtle);
+  --day-1: #f5dc84;
+  --day-2: #e8bd48;
+  --day-3: #cb9d2a;
+  --day-4: #a87c14;
+  --day-over: #a51d18;
 
   /* The big card at the top of a page, the "coin rim": a card with a gold edge and a second hairline ring outside it,
      a pale gold circle off its corner. Bad news (negative left-to-spend) swaps the gold for danger. */
@@ -123,14 +122,12 @@
   --ink-muted: #97a39c;
   --grid: var(--line);
 
-  --day-1: #4d3f1c;
-  --day-1-fg: var(--foreground);
-  --day-2: #755c20;
-  --day-2-fg: var(--foreground);
-  --day-3: #a98330;
-  --day-3-fg: var(--background);
-  --day-4: #e0b04a;
-  --day-4-fg: var(--background);
+  --day-0: #243732;
+  --day-1: #564618;
+  --day-2: #7d621f;
+  --day-3: #ac8630;
+  --day-4: #f0c14f;
+  --day-over: #d93a3a;
 
   --hero-bg: var(--card);
   --hero-fg: var(--foreground);
@@ -185,14 +182,12 @@
     --ink-muted: #97a39c;
     --grid: var(--line);
 
-    --day-1: #4d3f1c;
-    --day-1-fg: var(--foreground);
-    --day-2: #755c20;
-    --day-2-fg: var(--foreground);
-    --day-3: #a98330;
-    --day-3-fg: var(--background);
-    --day-4: #e0b04a;
-    --day-4-fg: var(--background);
+    --day-0: #243732;
+    --day-1: #564618;
+    --day-2: #7d621f;
+    --day-3: #ac8630;
+    --day-4: #f0c14f;
+    --day-over: #d93a3a;
 
     --hero-bg: var(--card);
     --hero-fg: var(--foreground);
@@ -512,47 +507,43 @@ html.swipe-tabs body {
     --t: var(--info);
   }
 
-  /* One day in Home's daily spending calendar (DailySpendCard), plus the legend's swatches. The gold deepens a quarter of
-     the daily limit at a time; past the limit it is the danger colour AND carries a "!" (a deep gold and a red can look
-     alike to a colour-blind eye, so colour is never the only signal). Today wears a ring (a shadow, so the focus ring's
-     outline stays free); a day still to come is only a dashed outline. */
+  /* Home's daily spending calendar (DailySpendCard): an overview in colour alone, at the size of the contribution graph it
+     is modelled on. `.day` is the tap area, 24 px with no gap between (smaller than the app's usual 40 px, on purpose);
+     `.day-box` is the 20 px square painted inside it, and `.day-key` the legend's smaller one. The gold deepens a quarter of
+     the daily limit at a time; past the limit it is --day-over. Today wears a ring (a shadow, so the focus ring's outline
+     stays free); a day still to come is only an outline. */
   .day {
-    @apply relative flex aspect-square min-w-0 items-center justify-center rounded-[10px] text-[11px] font-extrabold;
+    @apply grid size-6 place-items-center rounded-md;
+  }
+  .day-box {
+    @apply block size-5 rounded-[5px];
   }
   .day-key {
-    @apply inline-flex size-3.5 shrink-0 items-center justify-center rounded-[4px] text-[11px] font-black leading-none;
+    @apply inline-block size-[11px] shrink-0 rounded-[3px];
   }
   .day-0 {
-    background: var(--card-subtle);
-    color: var(--muted);
+    background: var(--day-0);
   }
   .day-1 {
     background: var(--day-1);
-    color: var(--day-1-fg);
   }
   .day-2 {
     background: var(--day-2);
-    color: var(--day-2-fg);
   }
   .day-3 {
     background: var(--day-3);
-    color: var(--day-3-fg);
   }
   .day-4 {
     background: var(--day-4);
-    color: var(--day-4-fg);
   }
   .day-over {
-    background: var(--danger);
-    color: var(--danger-fg);
+    background: var(--day-over);
   }
   .day-future {
-    @apply border border-dashed border-line text-muted;
+    @apply border border-line;
   }
   .day-today {
-    box-shadow:
-      0 0 0 1.5px var(--card),
-      0 0 0 3.5px var(--foreground);
+    box-shadow: 0 0 0 2px var(--foreground);
   }
 
   /* The big card at the top of a page: the coin rim. The design draws a 1px gold outer ring, a 4 px gap and an inner card

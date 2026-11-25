@@ -62,8 +62,8 @@ export function daysLeftText(days: number, mode: "payday" | "month", overdue = f
 }
 
 /**
- * What a day's square says, as its tooltip and the start of its accessible name: the date, the amount judged, where that
- * stands against the limit in words (the colour is never the only signal), and any bills that were left out.
+ * What a day's square says, as its tooltip and the start of its accessible name. The square itself shows only a colour, so
+ * this is where the words are: the date, the amount judged, where that stands against the limit, and any bills left out.
  */
 export function daySquareText(d: Pick<SpendDay, "date" | "spent" | "bills" | "level" | "future">, limit: number): string {
   if (d.future) return `${dayLabel(d.date)}: not here yet`;
@@ -77,14 +77,6 @@ export function daySquareText(d: Pick<SpendDay, "date" | "spent" | "bills" | "le
           : `${formatRM(d.spent)} spent, within the limit`;
   const bills = d.bills > 0 ? `, plus ${formatRM(d.bills)} in bills (not counted)` : "";
   return `${dayLabel(d.date)}: ${state}${bills}`;
-}
-
-/** The daily card's headline: how many of the days so far went over. */
-export function dailySummary(overDays: number, daysSoFar: number, limit: number): string {
-  if (daysSoFar === 0) return `Daily limit ${formatRM(limit)}`;
-  const of = `${daysSoFar} ${daysSoFar === 1 ? "day" : "days"}`;
-  if (overDays === 0) return `No day over ${formatRM(limit)} in ${of}`;
-  return `Over ${formatRM(limit)} on ${overDays} of ${of}`;
 }
 
 /** The caption under the Left to spend figure: a daily allowance, or the plain fact that nothing is left. */

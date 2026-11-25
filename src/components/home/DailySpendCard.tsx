@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { ChartTable } from "@/components/ChartTable";
 import type { DailySpend, SpendDay } from "@/lib/analytics/daily-spend";
-import { dailySummary, daySquareText } from "@/lib/analytics/dashboard-text";
-import { dayLabel, shortMonthLabel } from "@/lib/dates";
+import { daySquareText } from "@/lib/analytics/dashboard-text";
+import { shortMonthLabel } from "@/lib/dates";
 import { formatRM } from "@/lib/money";
 import { qs } from "@/lib/queries/filters";
 
@@ -18,10 +17,14 @@ const WEEKDAYS = [
 ];
 
 /**
- * Home's daily spending calendar: one square per day of the period on screen, weeks as columns and weekdays as rows. A
- * square's gold deepens as the day nears your daily limit and turns red, with a "!", once past it. Every day that has
- * happened opens its spending in Activity (bills included there; the square says how much of it was bills). Without a
- * limit there is nothing to colour against, so the card only asks for one.
+ * Home's daily spending calendar: a small overview, one square per day of the period on screen, weeks as columns and
+ * weekdays as rows. A square's gold deepens as the day nears your daily limit and turns red once past it. Every day that
+ * has happened opens its spending in Activity (bills included there). Without a limit there is nothing to colour against,
+ * so the card only asks for one.
+ *
+ * Two of the app's rules give way here, on purpose, to keep it the size of a contribution graph. The squares show colour
+ * ALONE (no number, no mark), so the date, the amount and whether it is over are in each square's tooltip and spoken
+ * label; and a square's tap area is 24 px, not the usual 40.
  */
 export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | null; className?: string }) {
   if (!daily) {
@@ -30,7 +33,7 @@ export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | 
         <h2 id="daily" className={EYEBROW}>
           Daily spending
         </h2>
-        <p className="sub mt-1">Set a daily limit and every day gets a square: its gold deepens as you near the limit, and it turns red when you go over.</p>
+        <p className="sub mt-1">Set a daily limit to see each day as a square: gold up to the limit, red over it.</p>
         <Link href={SETTING} className={ACTION}>
           Set a daily limit
         </Link>
@@ -39,15 +42,11 @@ export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | 
   }
 
   const { limit, weeks } = daily;
-  const happened = daily.days.filter((d) => !d.future);
-  // 44 px squares when there is room. A 26 px label column and 4 px gaps leave 40 px each for six weeks on a 360 px phone.
-  const width = 26 + weeks.length * 48;
-  // More than six weeks (a payday long overdue): keep the squares tappable and let the calendar scroll sideways.
-  const narrowest = weeks.length > 6 ? "2.5rem" : "0px";
 
   return (
-    <section className={`card ${className}`} aria-labelledby="daily">
-      <div className="flex items-center justify-between gap-2">
+    // min-w-0: in the desktop grid the card must not push its column wider; a very long period scrolls inside it instead.
+    <section className={`card flex min-w-0 flex-col ${className}`} aria-labelledby="daily">
+      <div className="flex flex-wrap items-center justify-between gap-x-4">
         <h2 id="daily" className={EYEBROW}>
           Daily spending
         </h2>
@@ -55,22 +54,20 @@ export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | 
           Change limit
         </Link>
       </div>
-      <div className="mt-1 md:grid md:grid-cols-[var(--cal)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10" style={{ "--cal": `${width}px` } as CSSProperties}>
-        <div className="md:col-start-2 md:row-start-1">
-          <p className="text-[13px] font-extrabold">{dailySummary(daily.overDays, daily.daysSoFar, limit)}</p>
-          <p className="sub mt-0.5">Bill payments are not counted. Tap a day to see what you spent.</p>
-        </div>
 
-        {/* The padding keeps today's ring and the focus ring from being clipped by the sideways scroll. */}
-        <div className="-mx-1 mt-2 overflow-x-auto p-1 md:col-start-1 md:row-span-2 md:row-start-1 md:mt-0">
+      {/* In the desktop row the card is as tall as its neighbours: the calendar and legend sit in the middle of the room. */}
+      <div className="flex flex-1 flex-col justify-center">
+        {/* The calendar keeps its own size. It scrolls sideways only if a period runs far too long (a salary never
+            recorded); the padding keeps the focus ring from being clipped by that scroll. */}
+        <div className="-mx-1 mt-1 overflow-x-auto p-1">
           <div
             role="group"
-            aria-label="Spending day by day"
-            className="grid gap-1"
-            style={{ maxWidth: width, gridTemplateColumns: `1.625rem repeat(${weeks.length}, minmax(${narrowest}, 1fr))` }}
+            aria-label={`Spending day by day against your daily limit of ${formatRM(limit)}`}
+            className="mx-auto grid w-max"
+            style={{ gridTemplateColumns: `1.75rem repeat(${weeks.length}, 1.5rem)`, gridTemplateRows: "1rem repeat(7, 1.5rem)" }}
           >
             {daily.months.map((m) => (
-              <span key={m.month} aria-hidden className="whitespace-nowrap text-[11px] font-bold text-muted" style={{ gridColumn: m.week + 2, gridRow: 1 }}>
+              <span key={m.month} aria-hidden className="whitespace-nowrap pl-0.5 text-[11px] font-bold leading-4 text-muted" style={{ gridColumn: m.week + 2, gridRow: 1 }}>
                 {shortMonthLabel(m.month).split(" ")[0]}
               </span>
             ))}
@@ -84,36 +81,20 @@ export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | 
           </div>
         </div>
 
-        <div className="md:col-start-2 md:row-start-2">
-          <ul className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11.5px] font-semibold md:mt-3" aria-label="Legend">
-            <li className="flex items-center gap-1">
-              <span className="mr-0.5">RM 0</span>
-              {[0, 1, 2, 3, 4].map((level) => (
-                <span key={level} aria-hidden className={`day-key day-${level}`} />
-              ))}
-              <span className="num ml-0.5">
-                <span className="sr-only">deepening in four steps up to </span>
-                {formatRM(limit)}
-              </span>
-            </li>
-            <li className="flex items-center gap-1.5">
-              <span aria-hidden className="day-key day-over">
-                !
-              </span>
-              Over the limit
-            </li>
-          </ul>
-          <ChartTable
-            caption={`Daily spending against a limit of ${formatRM(limit)}`}
-            columns={["Day", "Spent", "Over by", "Bills, not counted"]}
-            rows={happened.map((d) => [
-              dayLabel(d.date),
-              formatRM(d.spent),
-              d.level === "over" ? formatRM(d.spent - limit) : "–",
-              d.bills > 0 ? formatRM(d.bills) : "–",
-            ])}
-          />
-        </div>
+        <ul className="mt-1 flex items-center justify-center gap-3 whitespace-nowrap text-[11px] font-bold text-muted" aria-label="Legend">
+          <li className="flex items-center gap-[3px]">
+            <span className="mr-0.5">Less</span>
+            {[0, 1, 2, 3, 4].map((level) => (
+              <span key={level} aria-hidden className={`day-key day-${level}`} />
+            ))}
+            <span className="ml-0.5">More</span>
+            <span className="sr-only">, from nothing up to your limit of {formatRM(limit)}</span>
+          </li>
+          <li className="flex items-center gap-1">
+            <span aria-hidden className="day-key day-over" />
+            Over
+          </li>
+        </ul>
       </div>
     </section>
   );
@@ -121,11 +102,10 @@ export function DailySpendCard({ daily, className = "" }: { daily: DailySpend | 
 
 function Square({ day, limit, style }: { day: SpendDay; limit: number; style: CSSProperties }) {
   const text = daySquareText(day, limit);
-  const number = Number(day.date.slice(8, 10));
   if (day.future) {
     return (
-      <span aria-hidden title={text} className="day day-future" style={style}>
-        {number}
+      <span aria-hidden title={text} className="day" style={style}>
+        <span className="day-box day-future" />
       </span>
     );
   }
@@ -134,18 +114,13 @@ function Square({ day, limit, style }: { day: SpendDay; limit: number; style: CS
       href={`/transactions${qs({ month: "all", from: day.date, to: day.date, type: "expense" })}`}
       // A month of squares would otherwise each fetch Activity ahead of any tap.
       prefetch={false}
-      className={`day day-${day.level} ${day.isToday ? "day-today" : ""} transition active:scale-[0.97]`}
+      className="day transition active:scale-[0.9]"
       style={style}
       title={text}
       aria-label={`${text}. See its entries`}
       aria-current={day.isToday ? "date" : undefined}
     >
-      {number}
-      {day.level === "over" && (
-        <span aria-hidden className="absolute right-1 top-0.5 text-[11px] font-black leading-none">
-          !
-        </span>
-      )}
+      <span className={`day-box day-${day.level} ${day.isToday ? "day-today" : ""}`} />
     </Link>
   );
 }

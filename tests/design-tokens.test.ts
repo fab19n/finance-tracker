@@ -62,10 +62,6 @@ const TEXT_PAIRS: [text: string, on: string[]][] = [
   ["--nav-strong", ["--nav-bg"]], // the chosen tab's label
   ["--hero-fg", ["--hero-bg"]], // text on the hero card
   ["--hero-danger-fg", ["--hero-danger-bg"]],
-  ["--day-1-fg", ["--day-1"]], // the day number on each step of the daily spending squares
-  ["--day-2-fg", ["--day-2"]],
-  ["--day-3-fg", ["--day-3"]],
-  ["--day-4-fg", ["--day-4"]],
 ];
 
 describe("design tokens", () => {
@@ -133,6 +129,12 @@ describe("design tokens", () => {
         expect(contrast(steps[i], card), `--day-${i + 1} against the card`).toBeGreaterThan(contrast(steps[i - 1], card));
         expect(contrast(steps[i], steps[i - 1]), `--day-${i} to --day-${i + 1}`).toBeGreaterThanOrEqual(1.3);
       }
+    });
+
+    // The squares show colour alone, so red must not lean on hue to be told from the deepest gold (colour-blind eyes).
+    it(`${themeName}: a day over the limit differs from the deepest gold in lightness as well as hue`, () => {
+      expect(contrast(colour(theme, "--day-over"), colour(theme, "--day-4"))).toBeGreaterThanOrEqual(1.8);
+      expect(contrast(colour(theme, "--day-over"), colour(theme, "--card"))).toBeGreaterThanOrEqual(3);
     });
   }
 

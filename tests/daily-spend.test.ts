@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dailySpend, dayLevel } from "@/lib/analytics/daily-spend";
-import { dailySummary, daySquareText } from "@/lib/analytics/dashboard-text";
+import { daySquareText } from "@/lib/analytics/dashboard-text";
 import { toBudgetBills, evaluateBills, asBillTxs, type BillDef } from "@/lib/plan/bills";
 import type { FlowRow } from "@/lib/analytics/summary";
 import { formatRM } from "@/lib/money";
@@ -28,6 +28,7 @@ const row = (date: string, amount: number, over: Partial<FlowRow> = {}): FlowRow
 /** A pay cycle, 26 Oct (a Monday) to 25 Nov 2026 (a Wednesday): 31 days over two months. */
 const CYCLE = { start: "2026-10-26", end: "2026-11-25", today: "2026-11-10", limit: LIMIT };
 const on = (r: ReturnType<typeof dailySpend>, date: string) => r.days.find((d) => d.date === date)!;
+const over = (r: ReturnType<typeof dailySpend>) => r.days.filter((d) => d.level === "over").map((d) => d.date);
 
 describe("dayLevel", () => {
   it("steps up a quarter of the limit at a time and turns over only past it", () => {
@@ -56,7 +57,7 @@ describe("dailySpend", () => {
     expect(on(r, "2026-10-26")).toMatchObject({ spent: RM(15.5), level: 2 });
     expect(on(r, "2026-11-25")).toMatchObject({ spent: RM(70), level: "over" });
     expect(on(r, "2026-11-01")).toMatchObject({ spent: 0, level: 0 });
-    expect(r.overDays).toBe(1);
+    expect(over(r)).toEqual(["2026-11-25"]);
   });
 
   it("judges the day's total, not each entry", () => {
@@ -72,12 +73,12 @@ describe("dailySpend", () => {
   it("leaves a linked bill payment out of the total, and keeps count of it", () => {
     const r = dailySpend([row("2026-11-01", 1200, { billId: 7 }), row("2026-11-01", 20)], CYCLE);
     expect(on(r, "2026-11-01")).toMatchObject({ spent: RM(20), bills: RM(1200), level: 2 });
-    expect(r.overDays).toBe(0);
+    expect(over(r)).toEqual([]);
   });
 
   it("leaves out EVERY linked payment, even a second one of the same bill", () => {
     const r = dailySpend([row("2026-11-01", 60, { billId: 7 }), row("2026-11-02", 60, { billId: 7 })], CYCLE);
-    expect(r.overDays).toBe(0);
+    expect(over(r)).toEqual([]);
   });
 
   it("leaves out an unlinked payment the Plan's checklist counts as paying a bill", () => {
@@ -104,13 +105,12 @@ describe("dailySpend", () => {
     expect(on(r, "2026-11-10").future).toBe(false);
     expect(on(r, "2026-11-11").future).toBe(true);
     expect(on(r, "2026-11-20")).toMatchObject({ future: false, spent: RM(8) });
-    expect(r.daysSoFar).toBe(17); // 26 Oct to 10 Nov is 16, plus the one entered ahead
+    expect(r.days.filter((d) => !d.future)).toHaveLength(17); // 26 Oct to 10 Nov is 16, plus the one entered ahead
   });
 
   it("has no today and nothing in the future for a finished period", () => {
     const r = dailySpend([], { ...CYCLE, today: "2027-01-15" });
     expect(r.days.some((d) => d.isToday || d.future)).toBe(false);
-    expect(r.daysSoFar).toBe(31);
   });
 });
 
@@ -154,7 +154,7 @@ describe("the calendar's shape", () => {
 describe("the words", () => {
   const day = { date: "2026-11-04", spent: RM(35), bills: 0, level: 3 as const, future: false };
 
-  it("says where a day stands against the limit, not just its colour", () => {
+  it("says the date, the amount and where it stands against the limit, which the square's colour alone can't", () => {
     expect(daySquareText(day, LIMIT)).toBe(`Wed, 4 Nov: ${rm(35)} spent, within the limit`);
     expect(daySquareText({ ...day, spent: RM(62), level: "over" }, LIMIT)).toBe(`Wed, 4 Nov: ${rm(62)} spent, over the limit by ${rm(12)}`);
     expect(daySquareText({ ...day, spent: LIMIT, level: 4 }, LIMIT)).toBe(`Wed, 4 Nov: ${rm(50)} spent, exactly the limit`);
@@ -164,12 +164,6 @@ describe("the words", () => {
 
   it("mentions the bills that were left out, so the figure can be matched with the day's entries", () => {
     expect(daySquareText({ ...day, bills: RM(1200) }, LIMIT)).toBe(`Wed, 4 Nov: ${rm(35)} spent, within the limit, plus ${rm(1200)} in bills (not counted)`);
-  });
-
-  it("sums up the period", () => {
-    expect(dailySummary(3, 16, LIMIT)).toBe(`Over ${rm(50)} on 3 of 16 days`);
-    expect(dailySummary(0, 1, LIMIT)).toBe(`No day over ${rm(50)} in 1 day`);
-    expect(dailySummary(0, 0, LIMIT)).toBe(`Daily limit ${rm(50)}`);
   });
 });
 
